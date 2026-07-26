@@ -5,7 +5,8 @@ Place De Brouckère). Le soft écoute l'Art-Net émis par la console ChamSys et
 affiche le show en 3D temps réel — puis, dans les phases futures, timeline
 synchronisée au timecode et édition de scènes en man-in-the-middle.
 
-**État : Phase 0 — socle du projet.** Aucune écoute ni émission réseau encore.
+**État : Phase 1 — écoute Art-Net + Monitor + package v0.** Le soft écoute
+l'Art-Net (UDP 6454) et affiche l'activité DMX ; il n'émet rien.
 
 ## Prérequis
 
@@ -15,20 +16,22 @@ synchronisée au timecode et édition de scènes en man-in-the-middle.
 
 ```
 npm install            # installe server + ui (workspaces)
-npm run dev            # serveur (watch) + UI Vite sur http://localhost:3019
+npm run dev            # serveur (watch, web sur 4480) + UI Vite sur http://localhost:3019
 npm run fake-show      # générateur Art-Net de test -> 127.0.0.1:6454, univers 1-4
 npm run generate-patch # régénère data/patch.json depuis scripts/generate-patch.mjs
 npm run build          # build serveur (tsc) + UI (vite)
+npm run package        # produit dist-package/LumenStage-Previz-v0.zip (Win+Mac)
 ```
 
 ## Architecture
 
 ```
-console ChamSys ──Art-Net UDP 6454──> /server (Node TS)          [Phase 1]
-                                        │  état DMX 4x512
-                                        └──WebSocket ~40 fps──> /ui (Vite+React+Three) [Phase 1-2]
+console ChamSys ──Art-Net UDP 6454──> /server (Node TS)
+                                        │  état DMX 4x512 + stats
+                                        └──WebSocket :4480 (~40 fps)──> /ui Monitor
 
 npm run fake-show : émule la console sur 127.0.0.1 pour développer sans MagicQ.
+Packagé : le serveur sert aussi l'UI buildée sur http://localhost:4480.
 ```
 
 - `/server` — réception Art-Net (parser ArtDMX maison), état, pont WebSocket.

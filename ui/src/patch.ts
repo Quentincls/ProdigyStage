@@ -1,0 +1,40 @@
+import { apiUrl } from './config'
+
+export interface FixtureType {
+  name: string
+  footprint: number
+  pixels: number
+  pixelOrder: string
+  standardMap: Record<string, number>
+  pixelStart: number
+}
+
+export interface Fixture {
+  id: string
+  type: string
+  head: number
+  universe: number
+  address: number
+  position: [number, number, number]
+  rotation: [number, number, number]
+  group: string
+}
+
+export interface Patch {
+  fixtureTypes: Record<string, FixtureType>
+  fixtures: Fixture[]
+  groups: string[]
+}
+
+// Retries until the server is reachable (it may start after the UI in dev).
+export async function fetchPatch(): Promise<Patch> {
+  for (;;) {
+    try {
+      const response = await fetch(apiUrl('/api/patch'))
+      if (response.ok) return (await response.json()) as Patch
+    } catch {
+      // server not up yet
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+}

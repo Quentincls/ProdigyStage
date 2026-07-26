@@ -12,6 +12,28 @@
 
 Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
 
+## Pont serveur → UI (Phase 1)
+
+- HTTP + WebSocket sur le port **4480** (`server/src/web.ts`). Le serveur sert
+  aussi l'UI buildée (`ui/dist` en repo, `ui/` en package) et `/api/patch`
+  (relit patch.json à chaque requête — hot reload gratuit).
+- Frame binaire ~40 fps : `[0x01, nbUnivers, puis par univers: id, actif(0|1),
+  512 octets DMX]` (2058 octets). Stats JSON à 1 Hz : pkt/s par univers,
+  IP source, état du socket UDP, trafic des autres univers.
+- Actif = au moins un paquet reçu dans les 2 dernières secondes.
+- UI : les buffers DMX restent hors React (canvas + requestAnimationFrame) ;
+  React ne re-rend qu'à 1 Hz sur les stats. Reconnexion WS auto (1 s).
+
+## Packaging v0 (`npm run package`)
+
+`dist-package/LumenStage/` : `server/` (JS compilé) + `ui/` (build Vite) +
+`data/patch.json` + `node_modules/ws` + lanceurs `Start-LumenStage.bat/.command`
+et `Start-FakeShow.bat/.command` + `LISEZMOI.html` (doc client 1 page).
+Zip écrit avec mode 0755 sur les `.command` (double-clic macOS préservé).
+Les lanceurs vérifient Node ≥ 20 (sinon ouvrent nodejs.org). `LUMENSTAGE_OPEN=1`
+fait ouvrir le navigateur par le serveur une fois le port 4480 prêt.
+Copie automatique du zip vers `Desktop\Livrables`.
+
 ## Univers
 
 - Univers "show" 1–4 = les 32 Tambora Batten (MVP). 5–8 = reste du rig,

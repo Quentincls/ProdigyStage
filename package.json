@@ -15,9 +15,11 @@
     "dev": "concurrently -n server,ui -c blue,magenta \"npm run dev -w server\" \"npm run dev -w ui\"",
     "build": "npm run build -w server && npm run build -w ui",
     "fake-show": "npm run fake-show -w server",
-    "generate-patch": "node scripts/generate-patch.mjs"
+    "generate-patch": "node scripts/generate-patch.mjs",
+    "package": "node scripts/package.mjs"
   },
   "devDependencies": {
+    "archiver": "^7.0.0",
     "concurrently": "^9.2.0"
   },
   "allowScripts": {

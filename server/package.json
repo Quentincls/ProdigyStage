@@ -8,8 +8,12 @@
     "build": "tsc -p tsconfig.json",
     "fake-show": "tsx src/fake-show.ts"
   },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/ws": "^8.18.0",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0"
   }

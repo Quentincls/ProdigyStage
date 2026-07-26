@@ -13,10 +13,37 @@ export function showUniverseToArtnet(showUniverse: number): number {
   return showUniverse + SHOW_TO_ARTNET_OFFSET
 }
 
+export function artnetUniverseToShow(artnetUniverse: number): number {
+  return artnetUniverse - SHOW_TO_ARTNET_OFFSET
+}
+
 const HEADER = Buffer.from('Art-Net\0', 'ascii')
 export const OP_DMX = 0x5000
 const PROTOCOL_VERSION = 14
 export const DMX_CHANNELS = 512
+
+export interface ArtDmxPacket {
+  artnetUniverse: number
+  sequence: number
+  length: number
+  data: Buffer
+}
+
+// Returns null for anything that is not a valid ArtDMX packet (ArtPoll,
+// ArtSync, foreign UDP traffic...). We are a pure spectator: no replies.
+export function parseArtDmx(msg: Buffer): ArtDmxPacket | null {
+  if (msg.length < 18) return null
+  if (!msg.subarray(0, 8).equals(HEADER)) return null
+  if (msg.readUInt16LE(8) !== OP_DMX) return null
+  const declaredLength = msg.readUInt16BE(16)
+  const length = Math.min(declaredLength, msg.length - 18, DMX_CHANNELS)
+  return {
+    artnetUniverse: msg.readUInt16LE(14) & 0x7fff,
+    sequence: msg[12],
+    length,
+    data: msg.subarray(18, 18 + length),
+  }
+}
 
 export function buildArtDmxPacket(
   artnetUniverse: number,

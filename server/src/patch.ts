@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 export interface FixtureType {
   name: string
@@ -26,9 +26,18 @@ export interface Patch {
   groups: string[]
 }
 
-// Same relative depth from server/src (dev via tsx) and server/dist (built).
-const PATCH_URL = new URL('../../data/patch.json', import.meta.url)
+// Two layouts share this code: the repo (server/src or server/dist ->
+// ../../data) and the distributed package (LumenStage/server -> ../data).
+const PATCH_CANDIDATES = ['../../data/patch.json', '../data/patch.json']
+
+export function patchPath(): URL {
+  for (const candidate of PATCH_CANDIDATES) {
+    const url = new URL(candidate, import.meta.url)
+    if (existsSync(url)) return url
+  }
+  throw new Error('data/patch.json not found (run: npm run generate-patch)')
+}
 
 export function loadPatch(): Patch {
-  return JSON.parse(readFileSync(PATCH_URL, 'utf8')) as Patch
+  return JSON.parse(readFileSync(patchPath(), 'utf8')) as Patch
 }
