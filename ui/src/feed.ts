@@ -32,23 +32,42 @@ class Feed {
     stats: null,
   }
   private started = false
+  private ws: WebSocket | null = null
+  private lastMessageAt = 0
 
   start(): void {
     if (this.started) return
     this.started = true
     this.connect()
+
+    // Resilience to laptop sleep: the socket can die without a close event.
+    // The server talks at least once per second, so a silent connection is a
+    // dead one -- force a close to trigger the reconnect path.
+    setInterval(() => {
+      if (this.connected && Date.now() - this.lastMessageAt > 5000) {
+        this.ws?.close()
+      }
+    }, 2000)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && this.connected && Date.now() - this.lastMessageAt > 5000) {
+        this.ws?.close()
+      }
+    })
   }
 
   private connect(): void {
     const ws = new WebSocket(wsUrl())
+    this.ws = ws
     ws.binaryType = 'arraybuffer'
 
     ws.onopen = () => {
       this.connected = true
+      this.lastMessageAt = Date.now()
       this.notify()
     }
 
     ws.onmessage = (event) => {
+      this.lastMessageAt = Date.now()
       if (typeof event.data === 'string') {
         const message = JSON.parse(event.data)
         if (message.type === 'stats') {

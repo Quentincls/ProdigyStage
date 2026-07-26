@@ -3,7 +3,7 @@
 // binary frame at ~40 fps plus a JSON stats message at 1 Hz. Emits NOTHING on
 // the Art-Net side.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { WebSocket } from 'ws'
 import { ArtnetListener } from './listener.js'
 import { loadPatch, patchPath } from './patch.js'
@@ -23,7 +23,14 @@ listener.start()
 const { wss } = startWebServer({
   port: WEB_PORT,
   // Re-read on every request so a hand-edited patch.json is picked up on reload.
-  patchJson: () => readFileSync(patchPath(), 'utf8'),
+  readPatch: () => readFileSync(patchPath(), 'utf8'),
+  writePatch: (raw) => {
+    const parsed = JSON.parse(raw) as { fixtureTypes?: unknown; fixtures?: unknown }
+    if (!parsed || typeof parsed !== 'object' || !parsed.fixtureTypes || !Array.isArray(parsed.fixtures)) {
+      throw new Error('invalid patch shape')
+    }
+    writeFileSync(patchPath(), JSON.stringify(parsed, null, 2) + '\n')
+  },
   openBrowser: process.env.LUMENSTAGE_OPEN === '1',
 })
 

@@ -37,7 +37,8 @@ function uiRoot(): string | null {
 
 export interface WebOptions {
   port?: number
-  patchJson: () => string
+  readPatch: () => string
+  writePatch: (raw: string) => void
   openBrowser?: boolean
 }
 
@@ -47,11 +48,39 @@ export function startWebServer(options: WebOptions): { server: Server; wss: WebS
 
   const server = createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
     const url = (req.url ?? '/').split('?')[0]
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204)
+      res.end()
+      return
+    }
+
+    if (url === '/api/patch' && req.method === 'POST') {
+      let body = ''
+      req.on('data', (chunk) => {
+        body += chunk
+        if (body.length > 1_000_000) req.destroy()
+      })
+      req.on('end', () => {
+        try {
+          options.writePatch(body)
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end('{"ok":true}')
+          console.log('web: patch.json updated from the placement UI')
+        } catch (error) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: (error as Error).message }))
+        }
+      })
+      return
+    }
 
     if (url === '/api/patch') {
       res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(options.patchJson())
+      res.end(options.readPatch())
       return
     }
 

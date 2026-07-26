@@ -15,14 +15,29 @@ Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
 ## Pont serveur → UI (Phase 1)
 
 - HTTP + WebSocket sur le port **4480** (`server/src/web.ts`). Le serveur sert
-  aussi l'UI buildée (`ui/dist` en repo, `ui/` en package) et `/api/patch`
-  (relit patch.json à chaque requête — hot reload gratuit).
+  aussi l'UI buildée (`ui/dist` en repo, `ui/` en package) et `/api/patch` :
+  GET relit patch.json à chaque requête (hot reload gratuit), POST l'écrit
+  (mode Placement, validation minimale de forme).
 - Frame binaire ~40 fps : `[0x01, nbUnivers, puis par univers: id, actif(0|1),
   512 octets DMX]` (2058 octets). Stats JSON à 1 Hz : pkt/s par univers,
   IP source, état du socket UDP, trafic des autres univers.
 - Actif = au moins un paquet reçu dans les 2 dernières secondes.
 - UI : les buffers DMX restent hors React (canvas + requestAnimationFrame) ;
-  React ne re-rend qu'à 1 Hz sur les stats. Reconnexion WS auto (1 s).
+  React ne re-rend qu'à 1 Hz sur les stats. Reconnexion WS auto (1 s) +
+  watchdog anti-veille : connexion silencieuse > 5 s = morte → close forcé
+  → reconnexion (le serveur parle au moins 1×/s).
+
+## Previz & Placement (Phases 2-3)
+
+- `ui/src/previz/PrevizScene.ts` (Three vanilla) : pixels et battens en
+  InstancedMesh, bloom UnrealBloomPass, glow additif au sol, vues 1/2/3
+  (tween basé horloge, indépendant du framerate). Les meshes de fixtures
+  sont reconstructibles à chaud (`applyPatch`) pour le mode Placement.
+- Placement : picking par raycast sur les battens (clic sans drag < 5 px),
+  sélection teintée en bleu, panneau à champs numériques (fixture seule ou
+  déplacement groupé par centroïde), Save = POST /api/patch. Aucune notion
+  DMX dans l'UI de placement.
+- Les touches 1/2/3 sont ignorées quand le focus est dans un champ.
 
 ## Packaging v0 (`npm run package`)
 

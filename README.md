@@ -5,8 +5,9 @@ Place De Brouckère). Le soft écoute l'Art-Net émis par la console ChamSys et
 affiche le show en 3D temps réel — puis, dans les phases futures, timeline
 synchronisée au timecode et édition de scènes en man-in-the-middle.
 
-**État : Phase 1 — écoute Art-Net + Monitor + package v0.** Le soft écoute
-l'Art-Net (UDP 6454) et affiche l'activité DMX ; il n'émet rien.
+**État : Phase 3 — previz 3D + mode Placement + package v1.** Le soft écoute
+l'Art-Net (UDP 6454), affiche le show en 3D temps réel (et en moniteur DMX),
+et permet de replacer les machines (sauvé dans patch.json). Il n'émet rien.
 
 ## Prérequis
 
@@ -20,7 +21,7 @@ npm run dev            # serveur (watch, web sur 4480) + UI Vite sur http://loca
 npm run fake-show      # générateur Art-Net de test -> 127.0.0.1:6454, univers 1-4
 npm run generate-patch # régénère data/patch.json depuis scripts/generate-patch.mjs
 npm run build          # build serveur (tsc) + UI (vite)
-npm run package        # produit dist-package/LumenStage-Previz-v0.zip (Win+Mac)
+npm run package        # produit dist-package/LumenStage-Previz-v1.zip (Win+Mac)
 ```
 
 ## Architecture

@@ -2,6 +2,7 @@
 // InstancedMesh whose instance colors are written from the feed's mutable DMX
 // buffers every time a new frame arrives; everything else is static geometry.
 // Bloom via UnrealBloomPass gives the emissive glow on a dark scene.
+// Fixture meshes can be rebuilt at runtime (applyPatch) for the placement mode.
 
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -14,6 +15,9 @@ import type { Fixture, Patch } from '../patch'
 
 // Room dimensions from the brief: ~40 x 15 m, 10 m high. Stage/arch at -X.
 const ROOM = { length: 40, width: 15, height: 10 }
+
+const BAR_BASE_COLOR = new THREE.Color('#101216')
+const BAR_SELECTED_COLOR = new THREE.Color('#3f6fe0')
 
 export const VIEWS: Record<number, { position: number[]; target: number[]; name: string }> = {
   1: { position: [0, 4.5, 6], target: [0, 6, -6], name: 'Face' },
@@ -30,21 +34,28 @@ interface PixelSlot {
 }
 
 export class PrevizScene {
+  onPick: ((fixtureId: string | null) => void) | null = null
+
   private renderer: THREE.WebGLRenderer
   private scene = new THREE.Scene()
   private camera: THREE.PerspectiveCamera
   private controls: OrbitControls
   private composer: EffectComposer
-  private bloom: UnrealBloomPass
+  private raycaster = new THREE.Raycaster()
 
-  private pixels: THREE.InstancedMesh
-  private glows: THREE.InstancedMesh
+  private fixtureGroup = new THREE.Group()
+  private bars: THREE.InstancedMesh | null = null
+  private pixels: THREE.InstancedMesh | null = null
+  private glows: THREE.InstancedMesh | null = null
+  private fixtures: Fixture[] = []
   private pixelSlots: PixelSlot[] = []
-  private glowSlots: PixelSlot[][] = [] // per fixture: its 16 pixel slots
+  private glowSlots: PixelSlot[][] = []
+  private selected = new Set<string>()
 
   private lastVersion = -1
   private raf = 0
   private disposed = false
+  private pointerDown: { x: number; y: number } | null = null
   private tween: {
     fromPosition: THREE.Vector3
     fromTarget: THREE.Vector3
@@ -68,18 +79,59 @@ export class PrevizScene {
     this.controls.maxDistance = 90
 
     this.buildRoom()
-    const { pixels, glows } = this.buildFixtures(patch)
-    this.pixels = pixels
-    this.glows = glows
+    this.scene.add(this.fixtureGroup)
+    this.applyPatch(patch)
 
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 1.05, 0.45, 0.3)
-    this.composer.addPass(this.bloom)
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 1.05, 0.45, 0.3))
     this.composer.addPass(new OutputPass())
+
+    canvas.addEventListener('pointerdown', this.onPointerDown)
+    canvas.addEventListener('pointerup', this.onPointerUp)
 
     this.loop()
   }
+
+  // ----- picking ----------------------------------------------------------
+
+  private onPointerDown = (event: PointerEvent): void => {
+    this.pointerDown = { x: event.clientX, y: event.clientY }
+  }
+
+  private onPointerUp = (event: PointerEvent): void => {
+    const down = this.pointerDown
+    this.pointerDown = null
+    if (!down || !this.onPick || !this.bars) return
+    // A click that moved is an orbit, not a pick.
+    if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5) return
+
+    const rect = (event.target as HTMLCanvasElement).getBoundingClientRect()
+    const pointer = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    )
+    this.raycaster.setFromCamera(pointer, this.camera)
+    const hit = this.raycaster.intersectObject(this.bars, false)[0]
+    this.onPick(
+      hit?.instanceId !== undefined ? (this.fixtures[hit.instanceId]?.id ?? null) : null,
+    )
+  }
+
+  setSelection(ids: string[]): void {
+    this.selected = new Set(ids)
+    this.applySelectionTint()
+  }
+
+  private applySelectionTint(): void {
+    if (!this.bars) return
+    this.fixtures.forEach((fixture, index) => {
+      this.bars!.setColorAt(index, this.selected.has(fixture.id) ? BAR_SELECTED_COLOR : BAR_BASE_COLOR)
+    })
+    this.bars.instanceColor!.needsUpdate = true
+  }
+
+  // ----- static scenery ---------------------------------------------------
 
   private buildRoom(): void {
     const line = new THREE.LineBasicMaterial({ color: '#23272e' })
@@ -126,31 +178,37 @@ export class PrevizScene {
     this.scene.add(arch)
   }
 
-  private buildFixtures(patch: Patch): {
-    pixels: THREE.InstancedMesh
-    glows: THREE.InstancedMesh
-  } {
-    const fixtures = patch.fixtures
-    const type = patch.fixtureTypes[fixtures[0]?.type ?? '']
-    const pixelsPerFixture = type?.pixels ?? 16
-    const totalPixels = fixtures.length * pixelsPerFixture
+  // ----- fixtures (rebuildable) ------------------------------------------
 
-    // Batten bodies.
+  applyPatch(patch: Patch): void {
+    for (const child of [...this.fixtureGroup.children]) {
+      const mesh = child as THREE.Mesh
+      mesh.geometry.dispose()
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      for (const material of materials) {
+        const mapped = material as THREE.MeshBasicMaterial
+        mapped.map?.dispose()
+        material.dispose()
+      }
+      this.fixtureGroup.remove(child)
+    }
+    this.pixelSlots = []
+    this.glowSlots = []
+    this.fixtures = patch.fixtures
+
+    const type = patch.fixtureTypes[this.fixtures[0]?.type ?? '']
+    const pixelsPerFixture = type?.pixels ?? 16
+
     const bars = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1.02, 0.12, 0.06),
-      new THREE.MeshBasicMaterial({ color: '#101216' }),
-      fixtures.length,
+      new THREE.MeshBasicMaterial({ color: '#ffffff' }),
+      this.fixtures.length,
     )
-
-    // Emissive pixels.
     const pixels = new THREE.InstancedMesh(
       new THREE.PlaneGeometry(0.058, 0.09),
       new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
-      totalPixels,
+      this.fixtures.length * pixelsPerFixture,
     )
-
-    // Fake floor glow: one soft additive pool per batten, tinted by the
-    // average pixel color (no real volumetrics in v1).
     const glows = new THREE.InstancedMesh(
       new THREE.PlaneGeometry(3.4, 5.2).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({
@@ -159,7 +217,7 @@ export class PrevizScene {
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
-      fixtures.length,
+      this.fixtures.length,
     )
 
     const dummy = new THREE.Object3D()
@@ -168,7 +226,7 @@ export class PrevizScene {
     const black = new THREE.Color(0x000000)
     const degreesToRadians = Math.PI / 180
 
-    fixtures.forEach((fixture: Fixture, fixtureIndex: number) => {
+    this.fixtures.forEach((fixture: Fixture, fixtureIndex: number) => {
       dummy.position.set(...fixture.position)
       dummy.rotation.set(
         fixture.rotation[0] * degreesToRadians,
@@ -208,12 +266,18 @@ export class PrevizScene {
       glows.setColorAt(fixtureIndex, black)
     })
 
-    this.scene.add(bars, pixels, glows)
-    return { pixels, glows }
+    this.bars = bars
+    this.pixels = pixels
+    this.glows = glows
+    this.fixtureGroup.add(bars, pixels, glows)
+    this.applySelectionTint()
+    this.lastVersion = -1 // force a recolor on the next frame
   }
 
+  // ----- per-frame --------------------------------------------------------
+
   private updateColors(): void {
-    if (feed.version === this.lastVersion) return
+    if (!this.pixels || !this.glows || feed.version === this.lastVersion) return
     this.lastVersion = feed.version
     const color = new THREE.Color()
 
@@ -227,7 +291,7 @@ export class PrevizScene {
         (buffer[slot.colorChannel + 2] / 255) * dimmer,
         THREE.SRGBColorSpace,
       )
-      this.pixels.setColorAt(instance, color)
+      this.pixels!.setColorAt(instance, color)
     })
     this.pixels.instanceColor!.needsUpdate = true
 
@@ -245,7 +309,7 @@ export class PrevizScene {
       const dimmer = buffer[slots[0].dimmerChannel] / 255
       const scale = (dimmer * 0.55) / (255 * slots.length)
       color.setRGB(r * scale, g * scale, b * scale, THREE.SRGBColorSpace)
-      this.glows.setColorAt(fixtureIndex, color)
+      this.glows!.setColorAt(fixtureIndex, color)
     })
     this.glows.instanceColor!.needsUpdate = true
   }
@@ -292,6 +356,9 @@ export class PrevizScene {
   dispose(): void {
     this.disposed = true
     cancelAnimationFrame(this.raf)
+    const canvas = this.renderer.domElement
+    canvas.removeEventListener('pointerdown', this.onPointerDown)
+    canvas.removeEventListener('pointerup', this.onPointerUp)
     this.controls.dispose()
     this.scene.traverse((object) => {
       const mesh = object as THREE.Mesh

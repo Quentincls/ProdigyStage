@@ -2,13 +2,24 @@ import { useEffect, useRef } from 'react'
 import type { Patch } from '../patch'
 import { PrevizScene, VIEWS } from './PrevizScene'
 
-export default function Previz({ patch }: { patch: Patch }) {
+interface PrevizProps {
+  patch: Patch
+  selection: string[]
+  onPick: (fixtureId: string | null) => void
+}
+
+export default function Previz({ patch, selection, onPick }: PrevizProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const sceneRef = useRef<PrevizScene | null>(null)
+  const onPickRef = useRef(onPick)
+  onPickRef.current = onPick
 
   useEffect(() => {
     const container = containerRef.current!
     const scene = new PrevizScene(canvasRef.current!, patch)
+    scene.onPick = (id) => onPickRef.current(id)
+    sceneRef.current = scene
 
     const observer = new ResizeObserver(() => {
       scene.resize(container.clientWidth, container.clientHeight)
@@ -16,6 +27,10 @@ export default function Previz({ patch }: { patch: Patch }) {
     observer.observe(container)
 
     const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') {
+        return
+      }
       const view = Number(event.key)
       if (VIEWS[view] && !event.metaKey && !event.ctrlKey && !event.altKey) {
         scene.setView(view)
@@ -27,8 +42,20 @@ export default function Previz({ patch }: { patch: Patch }) {
       observer.disconnect()
       window.removeEventListener('keydown', onKey)
       scene.dispose()
+      sceneRef.current = null
     }
+    // The scene is created once; patch/selection updates go through the
+    // dedicated effects below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    sceneRef.current?.applyPatch(patch)
   }, [patch])
+
+  useEffect(() => {
+    sceneRef.current?.setSelection(selection)
+  }, [selection])
 
   return (
     <div className="previz" ref={containerRef}>

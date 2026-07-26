@@ -38,3 +38,15 @@ export async function fetchPatch(): Promise<Patch> {
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 }
+
+export async function savePatch(patch: Patch): Promise<void> {
+  const response = await fetch(apiUrl('/api/patch'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`save failed (${response.status}) ${detail}`)
+  }
+}
