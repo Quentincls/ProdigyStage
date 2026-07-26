@@ -2,9 +2,13 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { feed } from './feed'
 import Monitor from './Monitor'
 import { fetchPatch, type Patch } from './patch'
+import Previz from './previz/Previz'
+
+type View = 'previz' | 'monitor'
 
 export default function App() {
   const [patch, setPatch] = useState<Patch | null>(null)
+  const [view, setView] = useState<View>('previz')
   const { connected, stats } = useSyncExternalStore(feed.subscribe, feed.getSnapshot)
 
   useEffect(() => {
@@ -31,7 +35,17 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <h1>PRODIGY STAGE</h1>
-          <span className="page">Monitor</span>
+          <nav className="tabs">
+            <button className={view === 'previz' ? 'active' : ''} onClick={() => setView('previz')}>
+              Previz
+            </button>
+            <button
+              className={view === 'monitor' ? 'active' : ''}
+              onClick={() => setView('monitor')}
+            >
+              Monitor
+            </button>
+          </nav>
         </div>
         <div className="statusline">
           <span className={`dot ${connected && totalPps > 0 ? 'ok' : connected ? 'idle' : 'down'}`} />
@@ -42,7 +56,15 @@ export default function App() {
         </div>
       </header>
       <main className="content">
-        {patch ? <Monitor patch={patch} /> : <p className="loading">Waiting for server…</p>}
+        {!patch ? (
+          <p className="loading">Waiting for server…</p>
+        ) : view === 'previz' ? (
+          <Previz patch={patch} />
+        ) : (
+          <div className="monitor-wrap">
+            <Monitor patch={patch} />
+          </div>
+        )}
       </main>
     </div>
   )
