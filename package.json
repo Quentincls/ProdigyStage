@@ -1,0 +1,26 @@
+{
+  "name": "prodigy-stage",
+  "private": true,
+  "version": "0.1.0",
+  "description": "PRODIGY STAGE - Art-Net previz, timeline and scene editor for the Prodigy 12 show",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "server",
+    "ui"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,ui -c blue,magenta \"npm run dev -w server\" \"npm run dev -w ui\"",
+    "build": "npm run build -w server && npm run build -w ui",
+    "fake-show": "npm run fake-show -w server",
+    "generate-patch": "node scripts/generate-patch.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}

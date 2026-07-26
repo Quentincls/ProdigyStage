@@ -1,0 +1,53 @@
+# Architecture & conventions
+
+## Flux (cible)
+
+```
+                 ┌──────────────────────────────┐
+ ChamSys console │        /server (Node)        │      /ui (navigateur)
+ ──ArtDMX UDP──> │ parser ArtDMX -> état 4x512  │ ──WS état consolidé ~40 fps──> Monitor / Previz 3D
+      6454       │ (Phase 6: merge + réémission)│
+                 └──────────────────────────────┘
+```
+
+Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
+
+## Univers
+
+- Univers "show" 1–4 = les 32 Tambora Batten (MVP). 5–8 = reste du rig,
+  hors périmètre jusqu'à décision contraire.
+- Sur le réseau, l'adresse de port Art-Net commence à 0 : univers show N
+  = univers Art-Net N-1 (convention MagicQ par défaut). Réglable en un seul
+  point : `SHOW_TO_ARTNET_OFFSET` dans `server/src/artnet.ts`.
+  **À confirmer sur le vrai flux console (Phase 3/4bis).**
+
+## Patch (data/patch.json)
+
+Généré par `npm run generate-patch` (source : `scripts/generate-patch.mjs`).
+Vérifié le 2026-07-26 contre la PATCH LIJST officielle
+(III_LIGHT_DOCU_LIGHT_BXL_PDF, p. 28–29) : adresses Standard
+001/062/123/184/245/306/367/428, PixelRGB = Standard + 13, heads 1–16 (L)
+sur univers 1–2, heads 101–116 (R) sur univers 3–4.
+
+Reste une hypothèse (Phase 3/4bis, sur vraies données) : l'ordre interne des
+13 canaux Standard et l'ordre RGB des pixels. Corrigeable en data via
+`fixtureTypes.*.standardMap` / `pixelOrder` sans toucher au code.
+
+## Géométrie
+
+- +X le long de la salle, x=0 au milieu des murs de battens, côté scène/arche
+  en X négatif (L1/R1 sont côté scène — hypothèse à confirmer, la patch list
+  ne donne pas les positions).
+- +Y vers le haut, +Z du mur gauche vers le mur droit.
+- `rotation` en degrés Euler [rx, ry, rz] ; ry=0 regarde +Z (mur gauche vers
+  la tribune), ry=180 regarde -Z (mur droit vers la tribune).
+- Conformément au LICHTPLAN (p. 5), chaque mur est une ligne **continue** de
+  16 battens jointifs (~16 m), à 6 m de hauteur, murs espacés de 12 m.
+  (Le brief initial supposait 32 m espacés — le plan officiel prime.)
+  Affinage via l'UI de placement en Phase 3.
+
+## Décisions
+
+- Parser ArtDMX écrit à la main (format trivial, pas de lib abandonnée).
+- Pas de base de données, pas de framework backend. WebSocket via `ws`.
+- UI anglais, sobre, sombre. Aucune notion de canal DMX visible côté éditeur.
