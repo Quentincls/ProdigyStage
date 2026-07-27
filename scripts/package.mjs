@@ -54,6 +54,13 @@ for (const file of readdirSync(launchers)) {
 }
 copyFileSync(join(ROOT, 'docs', 'client', 'README.html'), join(STAGE, 'README.html'))
 
+// Without this, Node reparses every server file as ESM and prints a
+// MODULE_TYPELESS_PACKAGE_JSON warning in the client's terminal window.
+writeFileSync(
+  join(STAGE, 'package.json'),
+  JSON.stringify({ name: 'lumenstage', private: true, type: 'module' }, null, 2) + '\n',
+)
+
 // Build stamp shown by Update-LumenStage so "am I on the new version?" is
 // answerable over the phone.
 let commit = 'unknown'
