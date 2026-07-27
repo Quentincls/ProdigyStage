@@ -36,6 +36,7 @@ const TARGETS: { value: TrackTarget; label: string }[] = [
 export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect }: SceneEditorProps) {
   const scene = show.scenes.find((s) => s.id === sceneId)
   const [advanced, setAdvanced] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(false)
   const previewing = editor.playing && editor.previewSceneId === sceneId
 
   useEffect(() => {
@@ -127,77 +128,96 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
   const mainLook = scene.tracks[0]
   const extraLooks = scene.tracks.slice(1)
 
+  const library = [...BUILTIN_PRESETS, ...show.presets]
+  const currentPreset = mainLook
+    ? library.find(
+        (preset) => preset.effect === mainLook.effect && sameParams(mainLook.params, preset.params),
+      )
+    : undefined
+  const lookName =
+    currentPreset?.name ?? `${EFFECTS.find((e) => e.type === mainLook?.effect)?.label ?? 'Custom'} (edited)`
+
   return (
     <aside className="panel panel-wide">
+      {/* Identity: what this scene is and when it happens. */}
       <header className="panel-header scene-header">
-        <input
-          className="scene-name"
-          value={scene.name}
-          onChange={(e) => updateScene({ name: e.target.value })}
-        />
-        <button className="button" onClick={onClose}>
-          Close
-        </button>
-      </header>
-
-      <div className="panel-section">
-        <div className="field-row">
-          <label className="field">
-            <span>Start</span>
+        <div className="scene-identity">
+          <input
+            className="scene-name"
+            value={scene.name}
+            onChange={(e) => updateScene({ name: e.target.value })}
+          />
+          <div className="scene-when">
             <TimeInput
               value={scene.start}
               onCommit={(v) =>
                 updateScene({ start: clampTrimStart(show.scenes, sceneId, scene.start, scene.end, v) })
               }
             />
-          </label>
-          <label className="field">
-            <span>End</span>
+            <span className="scene-when-sep">→</span>
             <TimeInput
               value={scene.end}
               onCommit={(v) =>
                 updateScene({ end: clampTrimEnd(show.scenes, sceneId, scene.start, scene.end, v) })
               }
             />
-          </label>
-          <div className="field">
-            <span>&nbsp;</span>
-            <button
-              className={`button ${previewing ? '' : 'primary'}`}
-              onClick={() => (previewing ? backToLive() : startPreview(scene.id))}
-            >
-              {previewing ? '■ Stop' : '▶ Preview'}
-            </button>
+            <span className="scene-duration">{formatDuration(scene.end - scene.start)}</span>
           </div>
         </div>
-      </div>
+        <button className="icon-close" onClick={onClose} aria-label="Close">
+          ✕
+        </button>
+      </header>
 
-      <div className="panel-section">
-        <span className="panel-label">Start from a look</span>
-        <div className="preset-grid">
-          {[...BUILTIN_PRESETS, ...show.presets].map((preset) => (
-            <button
-              key={preset.id}
-              className={`preset-card ${
-                mainLook && mainLook.effect === preset.effect && sameParams(mainLook.params, preset.params)
-                  ? 'active'
-                  : ''
-              }`}
-              onClick={() => applyPreset(preset)}
-            >
-              <LookThumb type={preset.effect} params={preset.params} />
-              <span>{preset.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* The one action on this screen. */}
+      <button
+        className={`button block ${previewing ? '' : 'primary'}`}
+        onClick={() => (previewing ? backToLive() : startPreview(scene.id))}
+      >
+        {previewing ? '■ Stop preview' : '▶ Preview this scene'}
+      </button>
 
+      {/* What it looks like. The library is one click away, not always open,
+          so the panel is about this scene rather than about the catalogue. */}
+      <section className="panel-group">
+        <span className="panel-label">Look</span>
+        {mainLook && (
+          <div className="current-look">
+            <LookThumb type={mainLook.effect} params={mainLook.params} width={240} height={26} />
+            <div className="current-look-row">
+              <span className="current-look-name">{lookName}</span>
+              <button className="chip" onClick={() => setLibraryOpen(!libraryOpen)}>
+                {libraryOpen ? 'Done' : 'Change'}
+              </button>
+            </div>
+          </div>
+        )}
+        {libraryOpen && (
+          <div className="preset-grid">
+            {library.map((preset) => (
+              <button
+                key={preset.id}
+                className={`preset-card ${currentPreset?.id === preset.id ? 'active' : ''}`}
+                onClick={() => applyPreset(preset)}
+              >
+                <LookThumb type={preset.effect} params={preset.params} />
+                <span>{preset.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Fine tuning of the chosen look. */}
       {mainLook && (
-        <LookControls
-          look={mainLook}
-          onUpdate={(update) => updateTrack(mainLook.id, update)}
-          onSavePreset={() => saveAsPreset(mainLook)}
-        />
+        <section className="panel-group">
+          <span className="panel-label">Adjust</span>
+          <LookControls
+            look={mainLook}
+            onUpdate={(update) => updateTrack(mainLook.id, update)}
+            onSavePreset={() => saveAsPreset(mainLook)}
+          />
+        </section>
       )}
 
       <button className="ghost-button advanced-toggle" onClick={() => setAdvanced(!advanced)}>
@@ -206,6 +226,28 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
 
       {advanced && (
         <>
+          {mainLook && (
+            <div className="panel-section">
+              <span className="panel-label">Effect type</span>
+              <div className="effect-picker">
+                {EFFECTS.map((def) => (
+                  <EffectChip
+                    key={def.type}
+                    type={def.type}
+                    label={def.label}
+                    active={mainLook.effect === def.type}
+                    onClick={() =>
+                      updateTrack(mainLook.id, {
+                        effect: def.type,
+                        params: defaultParams(def.type),
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {mainLook && (
             <div className="panel-section">
               <span className="panel-label">Fades (s)</span>
@@ -260,7 +302,11 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
                   </button>
                 </div>
               </div>
-              <LookControls look={look} onUpdate={(update) => updateTrack(look.id, update)} />
+              <LookControls
+                look={look}
+                onUpdate={(update) => updateTrack(look.id, update)}
+                showEffects
+              />
             </div>
           ))}
 
@@ -284,41 +330,50 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
   )
 }
 
-// Target + effect + its few parameters. The whole vocabulary a user needs.
+// Which walls, and the few parameters of the chosen look. The effect *type*
+// is picked from the look library, so its raw picker only shows under
+// Advanced -- two ways to choose a look side by side just made people guess.
 function LookControls({
   look,
   onUpdate,
   onSavePreset,
+  showEffects = false,
 }: {
   look: TrackSpec
   onUpdate: (update: Partial<TrackSpec>) => void
   onSavePreset?: () => void
+  showEffects?: boolean
 }) {
   return (
     <div className="panel-section">
-      <select
-        className="recording-select"
-        value={look.target}
-        onChange={(e) => onUpdate({ target: e.target.value as TrackTarget })}
-      >
-        {TARGETS.map((t) => (
-          <option key={t.value} value={t.value}>
-            {t.label}
-          </option>
-        ))}
-      </select>
+      <label className="param-row">
+        <span>Walls</span>
+        <select
+          className="recording-select"
+          value={look.target}
+          onChange={(e) => onUpdate({ target: e.target.value as TrackTarget })}
+        >
+          {TARGETS.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
-      <div className="effect-picker">
-        {EFFECTS.map((def) => (
-          <EffectChip
-            key={def.type}
-            type={def.type}
-            label={def.label}
-            active={look.effect === def.type}
-            onClick={() => onUpdate({ effect: def.type, params: defaultParams(def.type) })}
-          />
-        ))}
-      </div>
+      {showEffects && (
+        <div className="effect-picker">
+          {EFFECTS.map((def) => (
+            <EffectChip
+              key={def.type}
+              type={def.type}
+              label={def.label}
+              active={look.effect === def.type}
+              onClick={() => onUpdate({ effect: def.type, params: defaultParams(def.type) })}
+            />
+          ))}
+        </div>
+      )}
 
       {EFFECTS.find((e) => e.type === look.effect)?.params.map((param) => (
         <label className="param-row" key={param.key}>
@@ -453,4 +508,9 @@ function sameParams(a: Record<string, ParamValue>, b: Record<string, ParamValue>
   const keys = new Set([...Object.keys(a), ...Object.keys(b)])
   for (const key of keys) if (a[key] !== b[key]) return false
   return true
+}
+
+function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds))
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
 }

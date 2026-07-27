@@ -115,6 +115,34 @@ Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
   DMX monitor. La Phase 6 branchera SPECTATOR/ARMED/BLACKOUT sur ce même
   emplacement (hold 1 s pour armer, bannière watchdog).
 
+## UX (passe hiérarchie, 2026-07-27)
+
+Retour client : « la hiérarchie des informations est incompréhensible ».
+Corrections structurelles, pas cosmétiques :
+
+- **Previz** : les vues sont des **directions** (`VIEWS[].dir`), la distance
+  vient de la sphère englobante du rig et du ratio du viewport
+  (`measureRig` / `frameDistance` / `applyView`). Avant : positions en dur
+  qui cadraient mal et laissaient les murs sortir du champ. Reframe au
+  resize sauf si l'opérateur a bougé la caméra (`userMoved`). Barres
+  éteintes en `#2b313b` : le rig ne disparaît plus quand la console noircit.
+- **Transport** (`editor.ts`) : `live` / `paused` / `playing` / `preview`.
+  `pauseAt` fige, `playLocal` fait tourner la timeline sur l'horloge locale
+  (relire un show console éteinte), `seekTo` respecte l'état courant.
+  Un seul contrôle pour revenir au direct : le bouton LIVE (l'ancien
+  « Back to live » du dock faisait doublon, supprimé).
+- **Bibliothèque de looks** (`ui/src/presets.ts`) : 12 presets livrés,
+  vignettes rendues par le vrai moteur (`LookThumb`). Une install neuve
+  n'avait aucun preset — l'éditeur ouvrait sur le vide.
+- **Panneau de scène** — quatre zones, dans l'ordre de lecture : identité
+  (nom + plage + durée), **une** action primaire pleine largeur (Preview),
+  `LOOK` (look courant en grand + « Change » qui déplie la bibliothèque),
+  `ADJUST` (murs + paramètres), puis Advanced. Le sélecteur de type
+  d'effet est passé sous Advanced : deux façons concurrentes de choisir un
+  look côte à côte obligeaient à deviner laquelle utiliser.
+- Sections séparées par un filet (`.panel-group`), menu Tools sur sa propre
+  élévation (il flotte au-dessus du panneau, même surface = illisible).
+
 ## Sortie Art-Net — man-in-the-middle (Phase 6)
 
 **Tout ce qui émet vers le rig vit dans `server/src/output.ts`, et nulle part

@@ -54,7 +54,7 @@ export default function Timeline({
   const nowPlayingRef = useRef<HTMLSpanElement>(null)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [overridden, setOverridden] = useState(false)
+  const [, setOverridden] = useState(false)
   const fitRef = useRef<() => void>(() => {})
 
   // Mutable state read by the draw loop and the pointer handlers.
@@ -687,36 +687,13 @@ export default function Timeline({
           <button className="button" onClick={addSection}>
             + Section
           </button>
-          {overridden && (
-            <button
-              className="button live-button"
-              onClick={() => {
-                backToLive()
-                setOverridden(false)
-              }}
-            >
-              Back to live
-            </button>
-          )}
+          {/* Returning to live is the transport's LIVE button -- one control,
+              one place, rather than two buttons doing the same thing. */}
           <span className={`save-state ${saveState}`}>
             {saveState === 'saving' ? 'saving…' : saveState === 'saved' ? 'saved' : saveState === 'error' ? 'save failed' : ''}
           </span>
         </div>
-      ) : (
-        overridden && (
-          <div className="dock-controls">
-            <button
-              className="button live-button"
-              onClick={() => {
-                backToLive()
-                setOverridden(false)
-              }}
-            >
-              Back to live
-            </button>
-          </div>
-        )
-      )}
+      ) : null}
     </footer>
   )
 }
