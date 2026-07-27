@@ -39,6 +39,11 @@ export interface WebOptions {
   port?: number
   readPatch: () => string
   writePatch: (raw: string) => void
+  readShow: () => string
+  writeShow: (raw: string) => void
+  listRecordings: () => unknown
+  controlRecord: (action: string) => unknown
+  controlReplay: (action: string, file?: string) => unknown
   openBrowser?: boolean
 }
 
@@ -84,6 +89,42 @@ export function startWebServer(options: WebOptions): { server: Server; wss: WebS
       return
     }
 
+    if (url === '/api/show' && req.method === 'POST') {
+      collectBody(req, res, (body) => {
+        options.writeShow(body)
+        return { ok: true }
+      })
+      return
+    }
+
+    if (url === '/api/show') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(options.readShow())
+      return
+    }
+
+    if (url === '/api/recordings') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(options.listRecordings()))
+      return
+    }
+
+    if (url === '/api/record' && req.method === 'POST') {
+      collectBody(req, res, (body) => {
+        const { action } = JSON.parse(body) as { action: string }
+        return options.controlRecord(action)
+      })
+      return
+    }
+
+    if (url === '/api/replay' && req.method === 'POST') {
+      collectBody(req, res, (body) => {
+        const { action, file } = JSON.parse(body) as { action: string; file?: string }
+        return options.controlReplay(action, file)
+      })
+      return
+    }
+
     if (!root) {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
       res.end('PRODIGY STAGE server is running.\nUI build not found - in dev, open http://localhost:3019 (npm run dev).\n')
@@ -111,6 +152,30 @@ export function startWebServer(options: WebOptions): { server: Server; wss: WebS
   })
 
   return { server, wss }
+}
+
+// Shared body collector for the small JSON POST endpoints: 200 with the
+// handler's JSON result, 400 with the error message if the handler throws.
+function collectBody(
+  req: import('node:http').IncomingMessage,
+  res: import('node:http').ServerResponse,
+  handle: (body: string) => unknown,
+): void {
+  let body = ''
+  req.on('data', (chunk) => {
+    body += chunk
+    if (body.length > 1_000_000) req.destroy()
+  })
+  req.on('end', () => {
+    try {
+      const result = handle(body)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(result ?? { ok: true }))
+    } catch (error) {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: (error as Error).message }))
+    }
+  })
 }
 
 function openBrowser(url: string): void {

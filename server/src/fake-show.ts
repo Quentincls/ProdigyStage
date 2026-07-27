@@ -8,7 +8,13 @@
 //   FAKE_SHOW_TARGET=x.x.x.x   optional override of the destination IP
 
 import { createSocket } from 'node:dgram'
-import { ARTNET_PORT, buildArtDmxPacket, DMX_CHANNELS, showUniverseToArtnet } from './artnet.js'
+import {
+  ARTNET_PORT,
+  buildArtDmxPacket,
+  buildArtTimeCodePacket,
+  DMX_CHANNELS,
+  showUniverseToArtnet,
+} from './artnet.js'
 import { loadPatch } from './patch.js'
 
 const TARGET = process.env.FAKE_SHOW_TARGET ?? '127.0.0.1'
@@ -129,6 +135,32 @@ function tick() {
     socket.send(packet, ARTNET_PORT, TARGET)
     sentThisSecond.set(universe, sentThisSecond.get(universe)! + 1)
   }
+
+  sendTimecode(t)
+}
+
+// Art-Net timecode at 25 fps, looping like a 10-minute show.
+const TC_FPS = 25
+const TC_LOOP_SECONDS = 600
+let lastTcFrame = -1
+
+function sendTimecode(t: number): void {
+  const showTime = t % TC_LOOP_SECONDS
+  const frameIndex = Math.floor(showTime * TC_FPS)
+  if (frameIndex === lastTcFrame) return
+  lastTcFrame = frameIndex
+  const seconds = Math.floor(showTime)
+  socket.send(
+    buildArtTimeCodePacket({
+      frames: frameIndex % TC_FPS,
+      seconds: seconds % 60,
+      minutes: Math.floor(seconds / 60) % 60,
+      hours: Math.floor(seconds / 3600),
+      fpsType: 1, // 25 fps
+    }),
+    ARTNET_PORT,
+    TARGET,
+  )
 }
 
 console.log(`fake-show: emitting universes 1-4 to ${TARGET}:${ARTNET_PORT} at ${FPS} fps`)

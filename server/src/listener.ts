@@ -2,9 +2,17 @@
 // state buffer per show universe plus reception stats. Emits nothing.
 
 import { createSocket, type Socket } from 'node:dgram'
-import { ARTNET_PORT, artnetUniverseToShow, DMX_CHANNELS, parseArtDmx } from './artnet.js'
+import {
+  ARTNET_PORT,
+  artnetUniverseToShow,
+  DMX_CHANNELS,
+  parseArtDmx,
+  parseArtTimeCode,
+  type ArtTimecode,
+} from './artnet.js'
 
 const ACTIVE_WINDOW_MS = 2000
+const TIMECODE_WINDOW_MS = 1500
 
 export interface UniverseStats {
   pps: number
@@ -19,6 +27,10 @@ export class ArtnetListener {
   listening = false
   lastError: string | null = null
   otherPps = 0
+  timecode: ArtTimecode | null = null
+  lastTimecodeAt = 0
+  // Raw tap for the recorder: every Art-Net packet, before parsing.
+  onRaw: ((msg: Buffer, at: number) => void) | null = null
 
   private socket: Socket | null = null
   private buffers = new Map<number, Uint8Array>()
@@ -41,8 +53,16 @@ export class ArtnetListener {
     this.socket = socket
 
     socket.on('message', (msg, rinfo) => {
+      this.onRaw?.(msg, Date.now())
       const packet = parseArtDmx(msg)
-      if (!packet) return
+      if (!packet) {
+        const timecode = parseArtTimeCode(msg)
+        if (timecode) {
+          this.timecode = timecode
+          this.lastTimecodeAt = Date.now()
+        }
+        return
+      }
       const universe = artnetUniverseToShow(packet.artnetUniverse)
       const buffer = this.buffers.get(universe)
       if (!buffer) {
@@ -101,5 +121,9 @@ export class ArtnetListener {
 
   isActive(universe: number): boolean {
     return Date.now() - this.stats.get(universe)!.lastPacketAt < ACTIVE_WINDOW_MS
+  }
+
+  isTimecodeActive(): boolean {
+    return Date.now() - this.lastTimecodeAt < TIMECODE_WINDOW_MS
   }
 }

@@ -14,14 +14,37 @@ export interface FeedStats {
   udp: { port: number; listening: boolean; error: string | null }
   perUniverse: Record<string, UniverseStat>
   otherPps: number
+  record: { recording: boolean; file: string | null; seconds: number; frames: number }
+  replay: { replaying: boolean; file: string | null; seconds: number }
+}
+
+export interface FeedTimecode {
+  receiving: boolean
+  hours: number
+  minutes: number
+  seconds: number
+  frames: number
+  fps: number
+  total: number // seconds, fractional
 }
 
 const DMX_CHANNELS = 512
+const TIMECODE_FPS = [24, 25, 29.97, 30]
 
 class Feed {
   universes = new Map<number, Uint8Array>()
   active = new Map<number, boolean>()
   version = 0 // incremented on every DMX frame; polled by the canvas loop
+  // Mutable, read by the timeline's canvas loop at 60 fps (no React state).
+  timecode: FeedTimecode = {
+    receiving: false,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+    frames: 0,
+    fps: 25,
+    total: 0,
+  }
 
   connected = false
   stats: FeedStats | null = null
@@ -77,7 +100,7 @@ class Feed {
         return
       }
       const view = new Uint8Array(event.data as ArrayBuffer)
-      if (view[0] !== 0x01) return
+      if (view[0] !== 0x02) return
       const count = view[1]
       let offset = 2
       for (let i = 0; i < count; i++) {
@@ -91,6 +114,14 @@ class Feed {
         buffer.set(view.subarray(offset, offset + DMX_CHANNELS))
         offset += DMX_CHANNELS
       }
+      const tc = this.timecode
+      tc.receiving = view[offset++] === 1
+      tc.hours = view[offset++]
+      tc.minutes = view[offset++]
+      tc.seconds = view[offset++]
+      tc.frames = view[offset++]
+      tc.fps = TIMECODE_FPS[view[offset++]] ?? 25
+      tc.total = tc.hours * 3600 + tc.minutes * 60 + tc.seconds + tc.frames / tc.fps
       this.version++
     }
 

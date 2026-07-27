@@ -39,6 +39,25 @@ Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
   DMX dans l'UI de placement.
 - Les touches 1/2/3 sont ignorées quand le focus est dans un champ.
 
+## Timecode + timeline (Phase 4)
+
+- ArtTimeCode (0x9700) reçu sur le même socket UDP ; état dans le listener,
+  fenêtre d'activité 1,5 s. Frame binaire passée en v2 (`0x02`) : + 6 octets
+  timecode (receiving, h, m, s, frames, fpsType). Abstraction future MTC/LTC :
+  remplacer la source dans `listener.ts` (l'UI ne connaît que la frame).
+- Timeline canvas (`ui/src/Timeline.tsx`) : règle adaptative, tête de lecture
+  (verte LIVE / orange REPLAY), zoom molette + pan drag, suivi auto de la tête
+  (pause 4 s après interaction). Marqueurs de sections dans `data/show.json`
+  (GET/POST `/api/show`), auto-save debounce 600 ms.
+- Enregistreur (`recorder.ts`) : tap brut sur tous les paquets Art-Net reçus →
+  `data/recordings/run-*.artrec` (gzip, frames `[u32 deltaMs][u16 len][pkt]`,
+  ~6 Ko/s) + sidecar `.json` (durée, nb paquets). Contrôlé par l'UI
+  (`/api/record`) ; liste via `/api/recordings`.
+- Replay : `replayer.ts` réémet vers 127.0.0.1:6454 avec le timing d'origine
+  (streaming + backpressure, pas de fichier en mémoire). Depuis l'UI
+  (`/api/replay`) ou `npm run replay -- <file>`. Le serveur reste un pur
+  spectateur du rig : le replay ne sort jamais de la machine.
+
 ## Packaging v0 (`npm run package`)
 
 `dist-package/LumenStage/` : `server/` (JS compilé) + `ui/` (build Vite) +

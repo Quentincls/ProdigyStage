@@ -18,7 +18,8 @@ et permet de replacer les machines (sauvé dans patch.json). Il n'émet rien.
 ```
 npm install            # installe server + ui (workspaces)
 npm run dev            # serveur (watch, web sur 4480) + UI Vite sur http://localhost:3019
-npm run fake-show      # générateur Art-Net de test -> 127.0.0.1:6454, univers 1-4
+npm run fake-show      # générateur Art-Net de test -> 127.0.0.1:6454, univers 1-4 + timecode 25 fps
+npm run replay -- data/recordings/run-XXX.artrec  # rejoue un run enregistré
 npm run generate-patch # régénère data/patch.json depuis scripts/generate-patch.mjs
 npm run build          # build serveur (tsc) + UI (vite)
 npm run package        # produit dist-package/LumenStage-Previz-v1.zip (Win+Mac)

@@ -357,6 +357,153 @@ body {
   color: var(--down);
 }
 
+/* ----- timeline dock ----- */
+
+.dock {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  height: 118px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex: none;
+}
+
+.tc-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 150px;
+}
+
+.tc-readout {
+  font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tc-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.timeline-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.timeline-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.marker-editor {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(14, 15, 18, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+.marker-editor input {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 7px;
+  width: 64px;
+}
+
+.marker-editor input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.marker-editor .marker-name {
+  width: 130px;
+}
+
+.marker-editor label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.dock-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(96px, auto));
+  align-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+.dock-controls .button {
+  padding: 5px 10px;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.dock-controls .save-state {
+  grid-column: span 2;
+  text-align: right;
+}
+
+.button.record.on {
+  color: #fff;
+  background: rgba(229, 72, 77, 0.25);
+  border-color: var(--down);
+  animation: rec-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+  50% { border-color: rgba(229, 72, 77, 0.35); }
+}
+
+.recording-select {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  max-width: 220px;
+}
+
+.save-state {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-height: 14px;
+}
+
+.save-state.error {
+  color: var(--down);
+}
+
 .loading {
   color: var(--text-dim);
   font-size: 14px;

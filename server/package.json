@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "fake-show": "tsx src/fake-show.ts"
+    "fake-show": "tsx src/fake-show.ts",
+    "replay": "tsx src/replay-cli.ts"
   },
   "dependencies": {
     "ws": "^8.18.0"

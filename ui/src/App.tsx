@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { feed } from './feed'
 import Monitor from './Monitor'
 import { fetchPatch, savePatch, type Patch } from './patch'
 import PlacementPanel from './previz/PlacementPanel'
 import Previz from './previz/Previz'
+import { fetchShow, saveShow, type ShowFile } from './show'
+import Timeline from './Timeline'
 
 type View = 'previz' | 'monitor'
 
@@ -15,13 +17,41 @@ export default function App() {
   const [selection, setSelection] = useState<string[]>([])
   const { connected, stats } = useSyncExternalStore(feed.subscribe, feed.getSnapshot)
 
+  const [show, setShow] = useState<ShowFile | null>(null)
+  const [showSaveState, setShowSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const showSaveTimer = useRef<number | null>(null)
+  const showLoaded = useRef(false)
+
   useEffect(() => {
     feed.start()
     void fetchPatch().then((initial) => {
       setPatch(initial)
       setSavedJson(JSON.stringify(initial))
     })
+    void fetchShow()
+      .then((initial) => {
+        setShow(initial)
+        showLoaded.current = true
+      })
+      .catch(() => setShow({ markers: [] }))
   }, [])
+
+  // Auto-save show.json, debounced: markers are low-stakes and frequent edits
+  // (typing a name) should not hammer the server.
+  function handleShowChange(next: ShowFile): void {
+    setShow(next)
+    if (!showLoaded.current) return
+    if (showSaveTimer.current !== null) window.clearTimeout(showSaveTimer.current)
+    setShowSaveState('saving')
+    showSaveTimer.current = window.setTimeout(() => {
+      saveShow(next)
+        .then(() => {
+          setShowSaveState('saved')
+          window.setTimeout(() => setShowSaveState('idle'), 1200)
+        })
+        .catch(() => setShowSaveState('error'))
+    }, 600)
+  }
 
   const dirty = useMemo(
     () => patch !== null && JSON.stringify(patch) !== savedJson,
@@ -131,6 +161,7 @@ export default function App() {
           </div>
         )}
       </main>
+      {show && <Timeline show={show} onChange={handleShowChange} saveState={showSaveState} />}
     </div>
   )
 }

@@ -15,6 +15,7 @@
     "dev": "concurrently -n server,ui -c blue,magenta \"npm run dev -w server\" \"npm run dev -w ui\"",
     "build": "npm run build -w server && npm run build -w ui",
     "fake-show": "npm run fake-show -w server",
+    "replay": "npm run replay -w server --",
     "generate-patch": "node scripts/generate-patch.mjs",
     "package": "node scripts/package.mjs"
   },
