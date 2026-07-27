@@ -79,6 +79,9 @@ export class PrevizScene {
   private bars: THREE.InstancedMesh | null = null
   private pixels: THREE.InstancedMesh | null = null
   private glows: THREE.InstancedMesh | null = null
+  // Camera-facing halo per fixture: the light you see *in the air*, which a
+  // flat emissive plane alone never suggests.
+  private halos: THREE.InstancedMesh | null = null
   private fixtures: Fixture[] = []
   private pixelSlots: PixelSlot[] = []
   private tiltSlots: TiltSlot[] = []
@@ -126,9 +129,14 @@ export class PrevizScene {
     this.applyPatch(patch)
     this.applyView(DEFAULT_VIEW, false)
 
+    // Filmic tone mapping keeps saturated LEDs from clipping to flat white,
+    // and a wider bloom sells the light rather than the emitter.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+    this.renderer.toneMappingExposure = 1.35
+
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 1.05, 0.45, 0.3))
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 1.45, 0.75, 0.12))
     this.composer.addPass(new OutputPass())
 
     canvas.addEventListener('pointerdown', this.onPointerDown)
@@ -256,16 +264,29 @@ export class PrevizScene {
       new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
       this.fixtures.length * pixelsPerFixture,
     )
+    const glowTexture = makeGlowTexture()
     const glows = new THREE.InstancedMesh(
       new THREE.PlaneGeometry(3.4, 5.2).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({
-        map: makeGlowTexture(),
+        map: glowTexture,
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
       this.fixtures.length,
     )
+    const halos = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(2.6, 2.6),
+      new THREE.MeshBasicMaterial({
+        map: glowTexture,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0.55,
+      }),
+      this.fixtures.length,
+    )
+    halos.frustumCulled = false
 
     const dummy = new THREE.Object3D()
     const pixelMatrix = new THREE.Matrix4()
@@ -356,12 +377,14 @@ export class PrevizScene {
       dummy.updateMatrix()
       glows.setMatrixAt(fixtureIndex, dummy.matrix)
       glows.setColorAt(fixtureIndex, black)
+      halos.setColorAt(fixtureIndex, black)
     })
 
     this.bars = bars
     this.pixels = pixels
     this.glows = glows
-    this.fixtureGroup.add(bars, pixels, glows)
+    this.halos = halos
+    this.fixtureGroup.add(bars, pixels, glows, halos)
     this.applySelectionTint()
     this.lastVersion = -1 // force a recolor on the next frame
   }
@@ -452,8 +475,33 @@ export class PrevizScene {
         THREE.SRGBColorSpace,
       )
       this.glows!.setColorAt(f, color)
+      this.halos?.setColorAt(f, color)
     }
     this.glows.instanceColor!.needsUpdate = true
+    if (this.halos?.instanceColor) this.halos.instanceColor.needsUpdate = true
+  }
+
+  // Halos are billboards: rebuilt each frame so they always face the camera
+  // and sit at the fixture, scaled with how hard it is running.
+  private updateHalos(): void {
+    const halos = this.halos
+    if (!halos) return
+    const matrix = new THREE.Matrix4()
+    const position = new THREE.Vector3()
+    const scale = new THREE.Vector3()
+    const sums = this.glowSums
+    this.fixtures.forEach((fixture, index) => {
+      const o = index * 3
+      const level = sums.length > o ? (sums[o] + sums[o + 1] + sums[o + 2]) / 3 : 0
+      const perPixel = this.pixelSlots.length / Math.max(1, this.fixtures.length)
+      const brightness = Math.min(1, level / Math.max(1, perPixel))
+      const size = 0.35 + brightness * 1.15
+      position.fromArray(fixture.position)
+      scale.setScalar(size)
+      matrix.compose(position, this.camera.quaternion, scale)
+      halos.setMatrixAt(index, matrix)
+    })
+    halos.instanceMatrix.needsUpdate = true
   }
 
   // Re-pose bars and their pixels when the motorized tilt moves. DMX is the
@@ -573,6 +621,7 @@ export class PrevizScene {
     this.controls.update()
     this.updateColors()
     this.updateTilt()
+    this.updateHalos()
     this.composer.render()
   }
 

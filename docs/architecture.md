@@ -141,7 +141,20 @@ Corrections structurelles, pas cosmétiques :
   d'effet est passé sous Advanced : deux façons concurrentes de choisir un
   look côte à côte obligeaient à deviner laquelle utiliser.
 - Sections séparées par un filet (`.panel-group`), menu Tools sur sa propre
-  élévation (il flotte au-dessus du panneau, même surface = illisible).
+  élévation (il flotte au-dessus du panneau, même surface = illisible), avec
+  titre + une ligne d'explication par entrée, et « Live output » isolé sous
+  un séparateur avec un badge ON quand il émet.
+- **Une scène = au plus un look par mur.** `renderScenePixel` applique le
+  *dernier* track qui correspond au mur : deux looks sur « both » et le
+  second masquait totalement le premier — on pouvait donc ajouter des looks
+  strictement invisibles. L'UI n'expose plus « ajouter un look » mais
+  « donner un look différent à chaque mur » (split/merge, 1 ou 2 tracks).
+- Nouvelles scènes nommées « At 0:11 » (leur position dans le show) plutôt
+  que « Scene 3 », et champ nom avec placeholder « Name this moment ».
+- **Rendu** : tone mapping ACES + bloom élargi (1,45 / 0,75 / 0,12) et un
+  halo additif face caméra par machine (`updateHalos`, billboard reconstruit
+  chaque frame, taille pilotée par l'intensité). Les barres se voient
+  désormais comme de la lumière dans l'air, pas comme des plans émissifs.
 
 ## Sortie Art-Net — man-in-the-middle (Phase 6)
 

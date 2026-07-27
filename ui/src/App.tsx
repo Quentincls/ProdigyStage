@@ -12,6 +12,7 @@ import SceneEditor from './SceneEditor'
 import { findFreeSlot } from './sceneRules'
 import { controlOutput, fetchShow, saveShow, type ShowFile } from './show'
 import Timeline from './Timeline'
+import { formatTime } from './TimeInput'
 
 // Two intents, two modes: Watch (default, safe, zero chrome) and Edit.
 // Technical tools (DMX monitor, placement, runs, live output) live behind the
@@ -237,7 +238,9 @@ export default function App() {
     const slot = findFreeSlot(show.scenes, start, 60)
     const scene = {
       id: crypto.randomUUID(),
-      name: `Scene ${show.scenes.length + 1}`,
+      // Named after when it happens: more useful than "Scene 4" when you are
+      // looking for the moment you want to change.
+      name: `At ${formatTime(slot.start)}`,
       start: slot.start,
       end: slot.end,
       tracks: [
@@ -295,18 +298,38 @@ export default function App() {
             {toolsOpen && (
               <>
                 <div className="menu-backdrop" onClick={() => setToolsOpen(false)} />
+                {/* Each entry says what it is for: a bare list of four nouns
+                    made people click to find out. */}
                 <div className="tools-menu">
-                  <button onClick={() => openTool('monitor')}>
-                    DMX monitor {tool === 'monitor' ? '·' : ''}
+                  <span className="menu-label">Tools</span>
+                  <button className={tool === 'runs' ? 'on' : ''} onClick={() => openTool('runs')}>
+                    <b>Runs</b>
+                    <em>Record the console, replay it anytime</em>
                   </button>
-                  <button onClick={() => openTool('placement')}>
-                    Placement {tool === 'placement' ? '·' : ''}
+                  <button
+                    className={tool === 'placement' ? 'on' : ''}
+                    onClick={() => openTool('placement')}
+                  >
+                    <b>Placement</b>
+                    <em>Move the light bars to match the venue</em>
                   </button>
-                  <button onClick={() => openTool('runs')}>
-                    Runs — record and replay {tool === 'runs' ? '·' : ''}
+                  <button
+                    className={tool === 'monitor' ? 'on' : ''}
+                    onClick={() => openTool('monitor')}
+                  >
+                    <b>Signal monitor</b>
+                    <em>Raw values coming from the console</em>
                   </button>
-                  <button onClick={() => openTool('output')}>
-                    Live output {outputMode !== 'off' ? '●' : tool === 'output' ? '·' : ''}
+                  <span className="menu-sep" />
+                  <button
+                    className={`danger-item ${tool === 'output' ? 'on' : ''}`}
+                    onClick={() => openTool('output')}
+                  >
+                    <b>
+                      Live output
+                      {outputMode !== 'off' && <span className="menu-live">ON</span>}
+                    </b>
+                    <em>Play your scenes on the real lights</em>
                   </button>
                 </div>
               </>

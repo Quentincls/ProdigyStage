@@ -74,20 +74,27 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
     updateScene({ tracks: [applied, ...scene!.tracks.slice(1)] })
   }
 
-  function addLook(): void {
+  // One look per wall, never two on the same one.
+  function splitWalls(): void {
+    const main = scene!.tracks[0]
+    if (!main) return
     updateScene({
       tracks: [
-        ...scene!.tracks,
+        { ...main, target: 'wall-left' },
         {
+          ...main,
           id: crypto.randomUUID(),
-          target: 'both',
-          effect: 'solid',
-          params: defaultParams('solid'),
-          fadeIn: 0.5,
-          fadeOut: 0.5,
+          target: 'wall-right',
+          params: { ...main.params },
         },
       ],
     })
+  }
+
+  function mergeWalls(): void {
+    const main = scene!.tracks[0]
+    if (!main) return
+    updateScene({ tracks: [{ ...main, target: 'both' }] })
   }
 
   function saveAsPreset(track: TrackSpec): void {
@@ -127,6 +134,7 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
 
   const mainLook = scene.tracks[0]
   const extraLooks = scene.tracks.slice(1)
+  const splitByWall = extraLooks.length > 0
 
   const library = [...BUILTIN_PRESETS, ...show.presets]
   const currentPreset = mainLook
@@ -142,9 +150,13 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
       {/* Identity: what this scene is and when it happens. */}
       <header className="panel-header scene-header">
         <div className="scene-identity">
+          {/* Auto names like "Scene 3" say nothing. The placeholder invites
+              naming the moment of the show this covers. */}
           <input
             className="scene-name"
             value={scene.name}
+            placeholder="Name this moment"
+            title="A scene is one moment of the show. Name it after what happens then."
             onChange={(e) => updateScene({ name: e.target.value })}
           />
           <div className="scene-when">
@@ -211,11 +223,12 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
       {/* Fine tuning of the chosen look. */}
       {mainLook && (
         <section className="panel-group">
-          <span className="panel-label">Adjust</span>
+          <span className="panel-label">{splitByWall ? 'Adjust — left wall' : 'Adjust'}</span>
           <LookControls
             look={mainLook}
             onUpdate={(update) => updateTrack(mainLook.id, update)}
             onSavePreset={() => saveAsPreset(mainLook)}
+            hideWalls={splitByWall}
           />
         </section>
       )}
@@ -284,35 +297,41 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
             </div>
           )}
 
-          {extraLooks.map((look, index) => (
-            <div className="panel-section track" key={look.id}>
-              <div className="track-head">
-                <span className="panel-label">Look {index + 2}</span>
-                <div className="track-actions">
-                  <button className="chip" onClick={() => saveAsPreset(look)}>
-                    Save preset
-                  </button>
-                  <button
-                    className="chip"
-                    onClick={() =>
-                      updateScene({ tracks: scene.tracks.filter((t) => t.id !== look.id) })
-                    }
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-              <LookControls
-                look={look}
-                onUpdate={(update) => updateTrack(look.id, update)}
-                showEffects
-              />
-            </div>
-          ))}
-
-          <button className="button" onClick={addLook}>
-            + Add another look
-          </button>
+          {/* A scene shows at most one look per wall: the engine applies the
+              last look matching a wall, so a second look on the same wall
+              would simply hide the first. Split by wall or not at all. */}
+          <div className="panel-section">
+            <span className="panel-label">Walls</span>
+            {splitByWall ? (
+              <>
+                <span className="muted-note">
+                  Left and right walls run their own look. The one above is the left wall.
+                </span>
+                {extraLooks[0] && (
+                  <div className="panel-section track">
+                    <div className="track-head">
+                      <span className="panel-label">Right wall</span>
+                      <button className="chip" onClick={() => saveAsPreset(extraLooks[0])}>
+                        Save preset
+                      </button>
+                    </div>
+                    <LookControls
+                      look={extraLooks[0]}
+                      onUpdate={(update) => updateTrack(extraLooks[0].id, update)}
+                      showEffects
+                    />
+                  </div>
+                )}
+                <button className="button" onClick={mergeWalls}>
+                  Use one look for both walls
+                </button>
+              </>
+            ) : (
+              <button className="button" onClick={splitWalls}>
+                Give each wall its own look
+              </button>
+            )}
+          </div>
 
           <ManagePresets show={show} onChange={onChange} />
         </>
@@ -338,28 +357,32 @@ function LookControls({
   onUpdate,
   onSavePreset,
   showEffects = false,
+  hideWalls = false,
 }: {
   look: TrackSpec
   onUpdate: (update: Partial<TrackSpec>) => void
   onSavePreset?: () => void
   showEffects?: boolean
+  hideWalls?: boolean
 }) {
   return (
     <div className="panel-section">
-      <label className="param-row">
-        <span>Walls</span>
-        <select
-          className="recording-select"
-          value={look.target}
-          onChange={(e) => onUpdate({ target: e.target.value as TrackTarget })}
-        >
-          {TARGETS.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {!hideWalls && (
+        <label className="param-row">
+          <span>Walls</span>
+          <select
+            className="recording-select"
+            value={look.target}
+            onChange={(e) => onUpdate({ target: e.target.value as TrackTarget })}
+          >
+            {TARGETS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {showEffects && (
         <div className="effect-picker">
