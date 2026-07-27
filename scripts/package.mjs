@@ -12,6 +12,7 @@ import {
   mkdirSync,
   readdirSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -45,6 +46,17 @@ for (const file of readdirSync(launchers)) {
   copyFileSync(join(launchers, file), join(STAGE, file))
 }
 copyFileSync(join(ROOT, 'docs', 'client', 'README.html'), join(STAGE, 'README.html'))
+
+// Build stamp shown by Update-LumenStage so "am I on the new version?" is
+// answerable over the phone.
+let commit = 'unknown'
+try {
+  commit = execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString().trim()
+} catch {
+  // not a git checkout (e.g. building from an exported archive)
+}
+const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16)
+writeFileSync(join(STAGE, 'version.txt'), `LumenStage build ${stamp} UTC (${commit})\n`)
 
 console.log('package: zipping...')
 const zipPath = join(OUT_DIR, ZIP_NAME)
