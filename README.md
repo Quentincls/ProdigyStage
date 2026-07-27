@@ -21,6 +21,9 @@ synchronisée au timecode et édition de scènes en man-in-the-middle.
       placement, runs), manipulation directe sur la timeline (drag = déplacer,
       bords = trim, clic = scrub), éditeur à un look + Advanced replié, statut
       en phrases humaines.
+- [x] **Passe UX profonde** — non-chevauchement aimanté (pas de multi-pistes),
+      undo/redo Ctrl+Z, mini-map + Fit, blocs teintés couleur du look, poignées
+      de trim, Now playing, dupliquer, raccourcis Espace/Échap.
 
 **Le soft n'émet toujours RIEN vers le rig** — pur spectateur jusqu'à la Phase 6.
 

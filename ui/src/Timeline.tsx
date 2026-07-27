@@ -5,9 +5,10 @@
 // renders the chrome (buttons, selected-marker editor) at interaction rate.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { SceneSpec } from '../../core/effects'
+import { activeScene, hexToRgb, type SceneSpec } from '../../core/effects'
 import { backToLive, editor, effectiveShowTime, isTimeOverridden } from './editor'
 import { feed } from './feed'
+import { clampMove, clampTrimEnd, clampTrimStart } from './sceneRules'
 import { type Marker, type ShowFile } from './show'
 import { formatTime, pad, round1, TimeInput } from './TimeInput'
 
@@ -37,12 +38,15 @@ export default function Timeline({
   onAddScene,
 }: TimelineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const minimapRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const tcRef = useRef<HTMLSpanElement>(null)
   const tcSubRef = useRef<HTMLSpanElement>(null)
+  const nowPlayingRef = useRef<HTMLSpanElement>(null)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [overridden, setOverridden] = useState(false)
+  const fitRef = useRef<() => void>(() => {})
 
   // Mutable state read by the draw loop and the pointer handlers.
   const view = useRef({ start: -5, pxPerSec: 6, followPausedUntil: 0 })
@@ -132,19 +136,45 @@ export default function Timeline({
         ctx.fillText(formatTime(t), x + 4, 3)
       }
 
-      // Section markers (slim band) then scenes (main band).
+      // Section markers (slim band) then scenes (main band, tinted by their
+      // main look's color so the timeline reads at a glance).
       drawBand(ctx, markersRef.current, selectedRef.current, MARKER_TOP, MARKER_BOTTOM, width, {
         fill: 'rgba(91,140,255,0.16)',
         fillSelected: 'rgba(91,140,255,0.34)',
         stroke: 'rgba(91,140,255,0.45)',
         strokeSelected: '#5b8cff',
       })
-      drawBand(ctx, scenesRef.current, selectedSceneRef.current, SCENE_TOP, height - 6, width, {
-        fill: 'rgba(167,139,250,0.16)',
-        fillSelected: 'rgba(167,139,250,0.38)',
-        stroke: 'rgba(167,139,250,0.5)',
-        strokeSelected: '#a78bfa',
-      })
+      drawBand(
+        ctx,
+        scenesRef.current,
+        selectedSceneRef.current,
+        SCENE_TOP,
+        height - 6,
+        width,
+        {
+          fill: 'rgba(167,139,250,0.16)',
+          fillSelected: 'rgba(167,139,250,0.38)',
+          stroke: 'rgba(167,139,250,0.5)',
+          strokeSelected: '#a78bfa',
+        },
+        (item) => sceneTint(item as SceneSpec),
+        true,
+      )
+
+      // First-time hint in edit mode.
+      if (modeRef.current === 'edit' && scenesRef.current.length === 0) {
+        ctx.fillStyle = '#5f6570'
+        ctx.font = '12px Inter, sans-serif'
+        ctx.textBaseline = 'middle'
+        ctx.textAlign = 'center'
+        ctx.fillText(
+          'Press + Scene to create your first scene at the playhead',
+          width / 2,
+          (SCENE_TOP + height - 6) / 2,
+        )
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+      }
 
       replayingRef.current = feed.stats?.replay.replaying ?? false
 
@@ -183,8 +213,68 @@ export default function Timeline({
             ? `${tc.fps} fps · ${replayingRef.current ? 'REPLAY' : 'LIVE'}`
             : 'no timecode'
       }
+      if (nowPlayingRef.current) {
+        const playing = showTime !== null ? activeScene(editor.scenes, showTime) : null
+        const label = playing ? `▶ ${playing.name}` : ''
+        if (nowPlayingRef.current.textContent !== label) nowPlayingRef.current.textContent = label
+      }
+
+      drawMinimap(showTime, timeOverridden, width)
     }
     draw()
+
+    // Full-show extent used by the minimap and the Fit button. Function
+    // declaration on purpose: draw() runs synchronously before this line.
+    function extentOf(): number {
+      let end = 600
+      for (const scene of scenesRef.current) end = Math.max(end, scene.end)
+      for (const marker of markersRef.current) end = Math.max(end, marker.end)
+      if (feed.timecode.receiving) end = Math.max(end, feed.timecode.total)
+      return end + 60
+    }
+
+    fitRef.current = () => {
+      const extent = extentOf()
+      const width = canvas.clientWidth
+      if (width === 0) return
+      view.current.pxPerSec = clamp(width / extent, 0.05, 400)
+      view.current.start = 0
+      view.current.followPausedUntil = performance.now() + 4000
+    }
+
+    function drawMinimap(showTime: number | null, timeOverridden: boolean, mainWidth: number): void {
+      const minimap = minimapRef.current
+      if (!minimap) return
+      const w = minimap.clientWidth
+      const h = minimap.clientHeight
+      if (w === 0) return
+      const dpr = Math.min(devicePixelRatio, 2)
+      if (minimap.width !== w * dpr || minimap.height !== h * dpr) {
+        minimap.width = w * dpr
+        minimap.height = h * dpr
+      }
+      const mctx = minimap.getContext('2d')!
+      mctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      mctx.clearRect(0, 0, w, h)
+      const extent = extentOf()
+      const mx = (t: number) => (t / extent) * w
+
+      for (const scene of scenesRef.current) {
+        mctx.fillStyle = rgba(sceneTint(scene) ?? '#a78bfa', 0.85)
+        mctx.fillRect(mx(scene.start), h / 2 - 2, Math.max(2, mx(scene.end) - mx(scene.start)), 4)
+      }
+      if (showTime !== null) {
+        mctx.fillStyle = timeOverridden ? '#a78bfa' : replayingRef.current ? '#f5a623' : '#3ecf8e'
+        mctx.fillRect(mx(showTime) - 0.75, 0, 1.5, h)
+      }
+      const state = view.current
+      const vx1 = mx(state.start)
+      const vx2 = mx(state.start + mainWidth / state.pxPerSec)
+      mctx.fillStyle = 'rgba(232,234,237,0.07)'
+      mctx.strokeStyle = 'rgba(138,143,152,0.8)'
+      mctx.fillRect(vx1, 0.5, Math.max(8, vx2 - vx1), h - 1)
+      mctx.strokeRect(vx1 + 0.5, 0.5, Math.max(8, vx2 - vx1), h - 1)
+    }
 
     function drawBand(
       ctx: CanvasRenderingContext2D,
@@ -194,17 +284,35 @@ export default function Timeline({
       bottom: number,
       width: number,
       colors: { fill: string; fillSelected: string; stroke: string; strokeSelected: string },
+      colorOf?: (item: unknown) => string | null,
+      handles = false,
     ): void {
       for (const item of items) {
         const x1 = xOf(item.start)
         const x2 = xOf(item.end)
         if (x2 < 0 || x1 > width) continue
         const isSelected = item.id === selectedId
-        ctx.fillStyle = isSelected ? colors.fillSelected : colors.fill
-        ctx.strokeStyle = isSelected ? colors.strokeSelected : colors.stroke
+        const tint = colorOf?.(item) ?? null
+        ctx.fillStyle = tint
+          ? rgba(tint, isSelected ? 0.38 : 0.18)
+          : isSelected
+            ? colors.fillSelected
+            : colors.fill
+        ctx.strokeStyle = tint
+          ? rgba(tint, isSelected ? 1 : 0.55)
+          : isSelected
+            ? colors.strokeSelected
+            : colors.stroke
         roundedRect(ctx, x1, top, Math.max(2, x2 - x1), bottom - top, 4)
         ctx.fill()
         ctx.stroke()
+        // Trim handles on the selected block: two notches at the edges.
+        if (handles && isSelected) {
+          ctx.fillStyle = tint ? rgba(tint, 1) : colors.strokeSelected
+          const notchTop = top + (bottom - top) / 2 - 6
+          ctx.fillRect(x1 + 1.5, notchTop, 3, 12)
+          ctx.fillRect(x2 - 4.5, notchTop, 3, 12)
+        }
         ctx.fillStyle = isSelected ? '#e8eaed' : '#aab2c0'
         ctx.font = '11px Inter, sans-serif'
         ctx.save()
@@ -222,7 +330,7 @@ export default function Timeline({
     // pan. In Watch: drag pans, nothing else. Wheel zooms, horizontal wheel
     // pans, everywhere.
     type Drag =
-      | { type: 'pan'; x: number; viewStart: number }
+      | { type: 'pan'; x: number; viewStart: number; moved?: boolean; deselect?: boolean }
       | { type: 'scrub' }
       | { type: 'pending-scene'; x: number; sceneId: string; start: number; end: number }
       | { type: 'move' | 'trim-l' | 'trim-r'; x: number; sceneId: string; start: number; end: number }
@@ -306,23 +414,27 @@ export default function Timeline({
             }
         return
       }
-      // Empty area: scrub there and deselect, like clicking an editor's timeline.
-      onSelectSceneRef.current(null)
-      setSelectedId(null)
-      drag = { type: 'scrub' }
-      scrubTo(event.clientX)
+      // Empty area: drag pans (natural editor gesture); a plain click deselects.
+      drag = { type: 'pan', x: event.clientX, viewStart: view.current.start, deselect: true }
     }
 
     const onPointerMove = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect()
       if (!drag) {
-        // Hover feedback in edit mode: trim cursor on scene edges.
+        // Hover feedback in edit mode: scrub cursor on the ruler, trim cursor
+        // on scene edges.
         if (modeRef.current === 'edit') {
           const t = timeAt(event.clientX - rect.left)
           const y = event.clientY - rect.top
           const scene = sceneHit(t, y)
           canvas.style.cursor =
-            scene && edgeOf(scene, t) ? 'ew-resize' : scene ? 'pointer' : 'grab'
+            y < RULER_H
+              ? 'crosshair'
+              : scene && edgeOf(scene, t)
+                ? 'ew-resize'
+                : scene
+                  ? 'pointer'
+                  : 'grab'
         } else {
           canvas.style.cursor = 'grab'
         }
@@ -330,10 +442,13 @@ export default function Timeline({
       }
       const dt = (event.clientX - ('x' in drag ? drag.x : event.clientX)) / view.current.pxPerSec
       switch (drag.type) {
-        case 'pan':
-          view.current.start = drag.viewStart - (event.clientX - drag.x) / view.current.pxPerSec
+        case 'pan': {
+          const dx = event.clientX - drag.x
+          if (Math.abs(dx) > 4) drag.moved = true
+          view.current.start = drag.viewStart - dx / view.current.pxPerSec
           view.current.followPausedUntil = performance.now() + 4000
           break
+        }
         case 'scrub':
           scrubTo(event.clientX)
           break
@@ -344,18 +459,38 @@ export default function Timeline({
           break
         case 'move': {
           const duration = drag.end - drag.start
-          const start = snap(drag.start + dt)
-          updateScene(drag.sceneId, { start: round1(start), end: round1(start + duration) })
+          const start = clampMove(
+            scenesRef.current,
+            drag.sceneId,
+            drag.start,
+            drag.end,
+            snap(drag.start + dt),
+          )
+          updateScene(drag.sceneId, { start, end: round1(start + duration) })
           break
         }
         case 'trim-l': {
-          const start = Math.min(snap(drag.start + dt), drag.end - 1)
-          updateScene(drag.sceneId, { start: round1(start) })
+          updateScene(drag.sceneId, {
+            start: clampTrimStart(
+              scenesRef.current,
+              drag.sceneId,
+              drag.start,
+              drag.end,
+              snap(drag.start + dt),
+            ),
+          })
           break
         }
         case 'trim-r': {
-          const end = Math.max(snap(drag.end + dt), drag.start + 1)
-          updateScene(drag.sceneId, { end: round1(end) })
+          updateScene(drag.sceneId, {
+            end: clampTrimEnd(
+              scenesRef.current,
+              drag.sceneId,
+              drag.start,
+              drag.end,
+              snap(drag.end + dt),
+            ),
+          })
           break
         }
       }
@@ -364,6 +499,9 @@ export default function Timeline({
     const onPointerUp = () => {
       if (drag?.type === 'pending-scene') {
         onSelectSceneRef.current(drag.sceneId)
+        setSelectedId(null)
+      } else if (drag?.type === 'pan' && drag.deselect && !drag.moved) {
+        onSelectSceneRef.current(null)
         setSelectedId(null)
       }
       drag = null
@@ -385,10 +523,42 @@ export default function Timeline({
       view.current.followPausedUntil = performance.now() + 4000
     }
 
+    // Minimap: drag the view window, or click outside it to jump there.
+    const minimap = minimapRef.current!
+    let minimapDrag: { grabOffset: number } | null = null
+    const minimapTime = (clientX: number): number => {
+      const rect = minimap.getBoundingClientRect()
+      return ((clientX - rect.left) / rect.width) * extentOf()
+    }
+    const onMiniDown = (event: PointerEvent) => {
+      minimap.setPointerCapture(event.pointerId)
+      const t = minimapTime(event.clientX)
+      const state = view.current
+      const viewSeconds = canvas.clientWidth / state.pxPerSec
+      if (t >= state.start && t <= state.start + viewSeconds) {
+        minimapDrag = { grabOffset: t - state.start }
+      } else {
+        state.start = t - viewSeconds / 2
+        minimapDrag = { grabOffset: viewSeconds / 2 }
+      }
+      state.followPausedUntil = performance.now() + 4000
+    }
+    const onMiniMove = (event: PointerEvent) => {
+      if (!minimapDrag) return
+      view.current.start = minimapTime(event.clientX) - minimapDrag.grabOffset
+      view.current.followPausedUntil = performance.now() + 4000
+    }
+    const onMiniUp = () => {
+      minimapDrag = null
+    }
+
     canvas.addEventListener('pointerdown', onPointerDown)
     canvas.addEventListener('pointermove', onPointerMove)
     canvas.addEventListener('pointerup', onPointerUp)
     canvas.addEventListener('wheel', onWheel, { passive: false })
+    minimap.addEventListener('pointerdown', onMiniDown)
+    minimap.addEventListener('pointermove', onMiniMove)
+    minimap.addEventListener('pointerup', onMiniUp)
 
     const observer = new ResizeObserver(() => {})
     observer.observe(wrap)
@@ -396,6 +566,9 @@ export default function Timeline({
     return () => {
       cancelAnimationFrame(raf)
       observer.disconnect()
+      minimap.removeEventListener('pointerdown', onMiniDown)
+      minimap.removeEventListener('pointermove', onMiniMove)
+      minimap.removeEventListener('pointerup', onMiniUp)
       canvas.removeEventListener('pointerdown', onPointerDown)
       canvas.removeEventListener('pointermove', onPointerMove)
       canvas.removeEventListener('pointerup', onPointerUp)
@@ -444,10 +617,15 @@ export default function Timeline({
         <span className="tc-sub" ref={tcSubRef}>
           no timecode
         </span>
+        <span className="now-playing" ref={nowPlayingRef} />
       </div>
 
       <div className="timeline-wrap" ref={wrapRef}>
-        <canvas ref={canvasRef} />
+        <canvas className="timeline-main" ref={canvasRef} />
+        <canvas className="timeline-minimap" ref={minimapRef} />
+        <button className="fit-button" onClick={() => fitRef.current()}>
+          Fit
+        </button>
         {mode === 'edit' && selected && (
           <div className="marker-editor">
             <input
@@ -525,6 +703,19 @@ export default function Timeline({
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
+}
+
+// The color of a scene's main look, used to tint its timeline block.
+function sceneTint(scene: SceneSpec): string | null {
+  const params = scene.tracks[0]?.params
+  if (!params) return null
+  const value = params.color ?? params.colorA
+  return typeof value === 'string' ? value : null
+}
+
+function rgba(hex: string, alpha: number): string {
+  const [r, g, b] = hexToRgb(hex)
+  return `rgba(${r},${g},${b},${alpha})`
 }
 
 function roundedRect(

@@ -76,6 +76,25 @@ Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
   auto-sauvé (même debounce que les marqueurs). Aucune notion DMX visible.
 - Toujours AUCUNE émission réseau : les scènes ne se voient que dans la previz.
 
+## UX (passe profonde) — règles et navigation
+
+- **Pas de multi-pistes : les scènes ne se chevauchent JAMAIS** (règle produit,
+  `ui/src/sceneRules.ts`). Une seule ligne, bords aimantés (snap 0,5 s aux
+  voisines, grille 1 s / 0,1 s zoomé, durée min 1 s). Création/duplication via
+  `findFreeSlot` (premier créneau libre ≥ 5 s). À tout instant, au plus une
+  scène remplace la console.
+- **Undo/redo** (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y) sur show.json, 100 états,
+  coalescence 400 ms (un drag de slider = un seul pas). Raccourcis : Espace =
+  préécoute de la scène sélectionnée, Échap = preview > panneau > outil.
+- **Navigation timeline** : mini-map sous la timeline (étendue totale du show,
+  scènes en ticks colorés, fenêtre de vue draggable, clic = saut), bouton Fit,
+  drag vide = pan, scrub réservé à la règle (curseur crosshair), molette = zoom,
+  molette horizontale = pan.
+- **Lisibilité** : blocs de scène teintés de la couleur du look principal,
+  poignées de trim sur le bloc sélectionné, badge « ▶ nom » sous le timecode
+  quand une scène est active, hint « Press + Scene… » quand la timeline est
+  vide, Dupliquer + confirmation avant Delete.
+
 ## UX (Phase 5.5) — deux modes, un tiroir
 
 - **Watch** (défaut) : previz plein écran + timecode + timeline lecture seule.

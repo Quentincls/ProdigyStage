@@ -13,6 +13,7 @@ import {
   type TrackTarget,
 } from '../../core/effects'
 import { backToLive, editor, startPreview } from './editor'
+import { clampTrimEnd, clampTrimStart, findFreeSlot } from './sceneRules'
 import { type PresetSpec, type ShowFile } from './show'
 import { round1, TimeInput } from './TimeInput'
 
@@ -21,6 +22,7 @@ interface SceneEditorProps {
   sceneId: string
   onChange: (show: ShowFile) => void
   onClose: () => void
+  onSelect: (id: string) => void
 }
 
 const TARGETS: { value: TrackTarget; label: string }[] = [
@@ -29,7 +31,7 @@ const TARGETS: { value: TrackTarget; label: string }[] = [
   { value: 'wall-right', label: 'Right wall' },
 ]
 
-export default function SceneEditor({ show, sceneId, onChange, onClose }: SceneEditorProps) {
+export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect }: SceneEditorProps) {
   const scene = show.scenes.find((s) => s.id === sceneId)
   const [advanced, setAdvanced] = useState(false)
   const previewing = editor.playing && editor.previewSceneId === sceneId
@@ -100,9 +102,24 @@ export default function SceneEditor({ show, sceneId, onChange, onClose }: SceneE
   }
 
   function deleteScene(): void {
+    if (!window.confirm(`Delete “${scene!.name}”?`)) return
     if (editor.previewSceneId === sceneId) backToLive()
     onChange({ ...show, scenes: show.scenes.filter((s) => s.id !== sceneId) })
     onClose()
+  }
+
+  function duplicateScene(): void {
+    const source = scene!
+    const slot = findFreeSlot(show.scenes, source.end, source.end - source.start)
+    const copy: SceneSpec = {
+      id: crypto.randomUUID(),
+      name: `${source.name} copy`,
+      start: slot.start,
+      end: slot.end,
+      tracks: source.tracks.map((track) => ({ ...track, id: crypto.randomUUID(), params: { ...track.params } })),
+    }
+    onChange({ ...show, scenes: [...show.scenes, copy] })
+    onSelect(copy.id)
   }
 
   const mainLook = scene.tracks[0]
@@ -125,11 +142,21 @@ export default function SceneEditor({ show, sceneId, onChange, onClose }: SceneE
         <div className="field-row">
           <label className="field">
             <span>Start</span>
-            <TimeInput value={scene.start} onCommit={(v) => updateScene({ start: v })} />
+            <TimeInput
+              value={scene.start}
+              onCommit={(v) =>
+                updateScene({ start: clampTrimStart(show.scenes, sceneId, scene.start, scene.end, v) })
+              }
+            />
           </label>
           <label className="field">
             <span>End</span>
-            <TimeInput value={scene.end} onCommit={(v) => updateScene({ end: v })} />
+            <TimeInput
+              value={scene.end}
+              onCommit={(v) =>
+                updateScene({ end: clampTrimEnd(show.scenes, sceneId, scene.start, scene.end, v) })
+              }
+            />
           </label>
           <div className="field">
             <span>&nbsp;</span>
@@ -233,14 +260,17 @@ export default function SceneEditor({ show, sceneId, onChange, onClose }: SceneE
           </button>
 
           <ManagePresets show={show} onChange={onChange} />
-
-          <footer className="panel-footer">
-            <button className="button danger" onClick={deleteScene}>
-              Delete scene
-            </button>
-          </footer>
         </>
       )}
+
+      <footer className="panel-footer">
+        <button className="button" onClick={duplicateScene}>
+          Duplicate
+        </button>
+        <button className="button danger" onClick={deleteScene}>
+          Delete scene
+        </button>
+      </footer>
     </aside>
   )
 }

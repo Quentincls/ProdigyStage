@@ -443,7 +443,7 @@ body {
   display: flex;
   align-items: stretch;
   gap: 14px;
-  height: 118px;
+  height: 132px;
   padding: 10px 16px;
   border-top: 1px solid var(--border);
   background: var(--panel);
@@ -477,6 +477,8 @@ body {
 
 .timeline-wrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
   border: 1px solid var(--border);
@@ -485,12 +487,53 @@ body {
   overflow: hidden;
 }
 
-.timeline-wrap canvas {
+.timeline-main {
   display: block;
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   cursor: grab;
   touch-action: none;
+}
+
+.timeline-minimap {
+  display: block;
+  width: 100%;
+  height: 14px;
+  flex: none;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.fit-button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: rgba(22, 24, 29, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.fit-button:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.now-playing {
+  font-size: 11px;
+  color: #a78bfa;
+  min-height: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
 }
 
 .marker-editor {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { defaultParams } from '../../core/effects'
-import { backToLive, editor } from './editor'
+import { backToLive, editor, isTimeOverridden, startPreview } from './editor'
 import { feed } from './feed'
 import Monitor from './Monitor'
 import { fetchPatch, savePatch, type Patch } from './patch'
@@ -8,9 +8,9 @@ import PlacementPanel from './previz/PlacementPanel'
 import Previz from './previz/Previz'
 import RunsPanel from './RunsPanel'
 import SceneEditor from './SceneEditor'
+import { findFreeSlot } from './sceneRules'
 import { fetchShow, saveShow, type ShowFile } from './show'
 import Timeline from './Timeline'
-import { round1 } from './TimeInput'
 
 // Two intents, two modes: Watch (default, safe, zero chrome) and Edit.
 // Technical tools (DMX monitor, placement, runs) live behind the gear menu.
@@ -52,9 +52,18 @@ export default function App() {
       .catch(() => setShow({ markers: [], scenes: [], presets: [] }))
   }, [])
 
-  // Auto-save show.json, debounced: markers are low-stakes and frequent edits
-  // (typing a name) should not hammer the server.
-  function handleShowChange(next: ShowFile): void {
+  // Undo history: direct manipulation demands Ctrl+Z. Consecutive edits
+  // within 400 ms coalesce into one step (a slider drag = one undo).
+  const historyRef = useRef<{ past: ShowFile[]; future: ShowFile[]; lastPushAt: number }>({
+    past: [],
+    future: [],
+    lastPushAt: 0,
+  })
+  const showRef = useRef<ShowFile | null>(null)
+  showRef.current = show
+
+  // Apply + auto-save (debounced: typing a name should not hammer the server).
+  function applyShow(next: ShowFile): void {
     setShow(next)
     if (!showLoaded.current) return
     if (showSaveTimer.current !== null) window.clearTimeout(showSaveTimer.current)
@@ -69,10 +78,91 @@ export default function App() {
     }, 600)
   }
 
+  function handleShowChange(next: ShowFile): void {
+    const current = showRef.current
+    if (current && showLoaded.current) {
+      const history = historyRef.current
+      const now = performance.now()
+      if (now - history.lastPushAt > 400) {
+        history.past.push(current)
+        if (history.past.length > 100) history.past.shift()
+        history.lastPushAt = now
+      }
+      history.future = []
+    }
+    applyShow(next)
+  }
+
+  function undo(): void {
+    const history = historyRef.current
+    const previous = history.past.pop()
+    const current = showRef.current
+    if (!previous || !current) return
+    history.future.push(current)
+    history.lastPushAt = 0
+    applyShow(previous)
+  }
+
+  function redo(): void {
+    const history = historyRef.current
+    const next = history.future.pop()
+    const current = showRef.current
+    if (!next || !current) return
+    history.past.push(current)
+    history.lastPushAt = 0
+    applyShow(next)
+  }
+
   const dirty = useMemo(
     () => patch !== null && JSON.stringify(patch) !== savedJson,
     [patch, savedJson],
   )
+
+  // Global shortcuts: Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y), Space = preview the
+  // selected scene, Escape = back out (preview > panel > tool).
+  const selectedSceneRef = useRef(selectedSceneId)
+  selectedSceneRef.current = selectedSceneId
+  const toolRef = useRef(tool)
+  toolRef.current = tool
+  const undoRef = useRef(undo)
+  undoRef.current = undo
+  const redoRef = useRef(redo)
+  redoRef.current = redo
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) return
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) redoRef.current()
+        else undoRef.current()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+        event.preventDefault()
+        redoRef.current()
+        return
+      }
+      if (event.key === ' ') {
+        const sceneId = selectedSceneRef.current
+        if (sceneId) {
+          event.preventDefault()
+          if (editor.playing && editor.previewSceneId === sceneId) backToLive()
+          else startPreview(sceneId)
+        }
+        return
+      }
+      if (event.key === 'Escape') {
+        if (isTimeOverridden()) backToLive()
+        else if (selectedSceneRef.current) setSelectedSceneId(null)
+        else if (toolRef.current) setTool(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const totalPps = stats
     ? Object.values(stats.perUniverse).reduce((sum, u) => sum + u.pps, 0)
@@ -131,11 +221,12 @@ export default function App() {
 
   function handleAddScene(start: number): void {
     if (!show) return
+    const slot = findFreeSlot(show.scenes, start, 60)
     const scene = {
       id: crypto.randomUUID(),
       name: `Scene ${show.scenes.length + 1}`,
-      start: round1(start),
-      end: round1(start + 60),
+      start: slot.start,
+      end: slot.end,
       tracks: [
         {
           id: crypto.randomUUID(),
@@ -237,6 +328,7 @@ export default function App() {
                 sceneId={selectedSceneId}
                 onChange={handleShowChange}
                 onClose={() => setSelectedSceneId(null)}
+                onSelect={setSelectedSceneId}
               />
             )}
             {(!connected || (totalPps === 0 && stats?.udp.listening)) && (

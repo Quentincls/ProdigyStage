@@ -1,11 +1,18 @@
 {
-  "markers": [],
+  "markers": [
+    {
+      "id": "2b8c0cc3-fa8e-4a77-812c-9eae454883f6",
+      "name": "Section 1",
+      "start": 330,
+      "end": 390
+    }
+  ],
   "scenes": [
     {
       "id": "ed6c62d4-85fc-4563-be98-f6a784b5ad71",
       "name": "Scene — Intro v2",
       "start": 130,
-      "end": 220,
+      "end": 331,
       "tracks": [
         {
           "id": "907676fb-14d6-43a1-ba2c-d9724c9effed",
@@ -15,6 +22,44 @@
             "color": "#ffb340",
             "speed": 0.6,
             "size": 3
+          },
+          "fadeIn": 0.5,
+          "fadeOut": 0.5
+        }
+      ]
+    },
+    {
+      "id": "b98f8ef7-2e5e-4c3c-ba79-a740e3f8b803",
+      "name": "Scene 2",
+      "start": 331,
+      "end": 391,
+      "tracks": [
+        {
+          "id": "56ed9be0-6201-484f-a35a-e977ed1d4a79",
+          "target": "both",
+          "effect": "wave",
+          "params": {
+            "color": "#ffb340",
+            "speed": 0.6,
+            "size": 3
+          },
+          "fadeIn": 0.5,
+          "fadeOut": 0.5
+        }
+      ]
+    },
+    {
+      "id": "6a5dbdc2-3653-4569-a665-3345128da6ae",
+      "name": "Scene 3",
+      "start": 391,
+      "end": 451,
+      "tracks": [
+        {
+          "id": "fd69c9b8-f095-4509-859a-e326730f328d",
+          "target": "both",
+          "effect": "solid",
+          "params": {
+            "color": "#2b00ff"
           },
           "fadeIn": 0.5,
           "fadeOut": 0.5
