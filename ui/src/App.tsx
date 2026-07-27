@@ -272,8 +272,10 @@ export default function App() {
           {dirty && tool === 'placement' && <span className="dirty-badge">unsaved changes</span>}
         </div>
         <div className="statusline">
-          <span className={`dot ${dotClass}`} />
-          <span>{statusText}</span>
+          <span className={`status-pill ${dotClass}`}>
+            <span className={`dot ${dotClass}`} />
+            {statusText}
+          </span>
           {outputMode !== 'off' && outputMode !== 'blackout' && (
             <button
               className="button blackout compact"

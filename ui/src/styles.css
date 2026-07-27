@@ -1307,3 +1307,142 @@ body {
   flex: 1;
   min-width: 0;
 }
+
+/* ----- Chrome: top bar, dock ---------------------------------------------
+   Three groups the eye can name: what mode am I in, what is the show doing,
+   what can I do about it. Each one gets a surface of its own. */
+
+.topbar {
+  padding: 10px 16px;
+}
+
+.brand h1 {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+/* Segmented control, Figma/Linear style: the active half is raised, the
+   inactive one recedes. */
+.tabs {
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--bg);
+}
+
+.tabs button {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 14px;
+  border-radius: 7px;
+}
+
+.tabs button.active {
+  color: var(--text);
+  background: var(--panel-3);
+  border: none;
+  padding: 5px 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px 5px 10px;
+  white-space: nowrap;
+}
+
+.status-pill.live {
+  color: var(--text);
+  border-color: rgba(229, 72, 77, 0.45);
+  background: rgba(229, 72, 77, 0.12);
+}
+
+.icon-button {
+  border-radius: 8px;
+}
+
+/* The player: timecode, what it is doing, and the transport, as one object
+   instead of three stacked strings. */
+.dock {
+  gap: 12px;
+  padding: 12px 16px;
+  height: 140px;
+}
+
+.tc-block {
+  gap: 6px;
+  min-width: 178px;
+  padding: 10px 12px;
+  border-right: none;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.tc-readout {
+  font-size: 21px;
+  line-height: 1.05;
+}
+
+.tc-sub {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.now-playing {
+  max-width: 100%;
+}
+
+.transport {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.transport-button {
+  flex: 1;
+  text-align: center;
+}
+
+/* Actions, in a column: the primary one first and full width. */
+.dock-controls {
+  display: flex;
+  flex-direction: column;
+  align-content: initial;
+  align-items: stretch;
+  justify-content: center;
+  gap: 6px;
+  min-width: 132px;
+}
+
+.dock-controls .button {
+  text-align: center;
+}
+
+.button.subtle {
+  color: var(--text-dim);
+  background: none;
+}
+
+.button.subtle:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.save-state {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  min-height: 13px;
+}
+
+.timeline-wrap {
+  border-radius: 10px;
+}

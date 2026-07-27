@@ -643,9 +643,6 @@ export default function Timeline({
       <div className="timeline-wrap" ref={wrapRef}>
         <canvas className="timeline-main" ref={canvasRef} />
         <canvas className="timeline-minimap" ref={minimapRef} />
-        <button className="fit-button" onClick={() => fitRef.current()}>
-          Fit
-        </button>
         {mode === 'edit' && selected && (
           <div className="marker-editor">
             <input
@@ -689,11 +686,20 @@ export default function Timeline({
           </button>
           {/* Returning to live is the transport's LIVE button -- one control,
               one place, rather than two buttons doing the same thing. */}
+          <button className="button subtle" onClick={() => fitRef.current()}>
+            Fit
+          </button>
           <span className={`save-state ${saveState}`}>
             {saveState === 'saving' ? 'saving…' : saveState === 'saved' ? 'saved' : saveState === 'error' ? 'save failed' : ''}
           </span>
         </div>
-      ) : null}
+      ) : (
+        <div className="dock-controls">
+          <button className="button subtle" onClick={() => fitRef.current()}>
+            Fit
+          </button>
+        </div>
+      )}
     </footer>
   )
 }
