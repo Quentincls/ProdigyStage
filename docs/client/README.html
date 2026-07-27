@@ -3,77 +3,95 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>LumenStage Previz — Getting started</title>
+<title>LumenStage — Getting started</title>
 <style>
   :root { color-scheme: light; }
   body {
     font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
     max-width: 720px; margin: 0 auto; padding: 40px 24px;
-    color: #1a1d23; line-height: 1.55; font-size: 15px;
+    color: #1a1d23; line-height: 1.6; font-size: 15px;
   }
-  h1 { font-size: 22px; letter-spacing: 0.02em; margin-bottom: 2px; }
-  .sub { color: #6b7280; margin-bottom: 26px; }
-  h2 { font-size: 15px; margin: 26px 0 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+  h1 { font-size: 24px; margin-bottom: 2px; }
+  .sub { color: #6b7280; margin-bottom: 10px; }
+  .safe {
+    background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px;
+    padding: 10px 14px; margin: 16px 0 28px; color: #065f46; font-size: 14px;
+  }
+  h2 { font-size: 17px; margin: 34px 0 4px; }
+  .part-sub { color: #6b7280; font-size: 13.5px; margin: 0 0 12px; }
   code, .file { background: #f3f4f6; border-radius: 4px; padding: 1px 6px; font-size: 13.5px; }
-  ol, ul { padding-left: 22px; } li { margin-bottom: 7px; }
-  .check { color: #047857; font-size: 13.5px; display: block; margin-top: 2px; }
-  .check::before { content: "✓ You should see: "; font-weight: 600; }
-  .note { background: #f9fafb; border-left: 3px solid #9ca3af; padding: 8px 12px; margin: 10px 0; color: #374151; }
-  .warn { border-left-color: #d97706; }
+  ol { padding-left: 24px; } li { margin-bottom: 12px; }
+  .check {
+    display: block; margin-top: 4px; color: #047857; font-size: 13.5px;
+    background: #f0fdf4; border-radius: 5px; padding: 4px 8px;
+  }
+  .check::before { content: "→ You should see: "; font-weight: 600; }
+  .note { background: #f9fafb; border-left: 3px solid #9ca3af; padding: 8px 12px; margin: 12px 0; color: #374151; font-size: 14px; border-radius: 0; }
+  .warn { border-left-color: #d97706; background: #fffbeb; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 8px 0; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  th { color: #6b7280; font-weight: 600; }
   @media print { body { padding: 0; font-size: 12px; } }
 </style>
 </head>
 <body>
-<h1>LumenStage Previz v3</h1>
-<p class="sub">Live 3D previz and DMX monitor for the Prodigy 12 show — it listens to the lighting network and shows what the console is playing. The app never transmits anything: zero risk for the show.</p>
-<p class="note"><strong>New in v3:</strong> the app opens in <strong>Watch</strong> — just the 3D room and the timecode. <strong>Edit</strong> lets you create scenes on the timeline (pick an effect, a color, done — they show in the previz only). The gear menu (top right) holds the technical tools: DMX monitor, placement, and <strong>Runs</strong> — press Record there while the show plays, replay it anytime without the console.</p>
+<h1>LumenStage</h1>
+<p class="sub">A live 3D copy of the Prodigy 12 light show, on your screen.</p>
+<div class="safe"><strong>Safe by design:</strong> this app only <em>listens</em> to the lighting network. It never sends anything to the lights. You cannot break the show with it — not even by accident.</div>
 
-<h2>Step 1 — First launch (Mac)</h2>
+<h2>Part 1 — Install and open it (5 minutes, at home)</h2>
+<p class="part-sub">You only do this once. You need a Mac and an internet browser.</p>
 <ol>
-  <li>Unzip the archive anywhere (Desktop, Documents…).
-    <span class="check">a <span class="file">LumenStage</span> folder.</span></li>
-  <li><strong>Right-click</strong> <span class="file">Start-LumenStage.command</span> → <strong>Open</strong> → <strong>Open</strong>. This right-click dance is needed the <em>first time only</em>; afterwards a normal double-click works.
-    <span class="check">a Terminal window opens with a few log lines.</span></li>
-  <li>If macOS asks whether <em>node</em> may accept incoming network connections → <strong>Allow</strong>.</li>
+  <li><strong>Unzip</strong> the file you received. Put the <span class="file">LumenStage</span> folder anywhere (Desktop is fine).
+    <span class="check">a folder containing a few files, including <span class="file">Start-LumenStage.command</span>.</span></li>
+  <li><strong>Right-click</strong> (not double-click!) on <span class="file">Start-LumenStage.command</span>, choose <strong>Open</strong>, then <strong>Open</strong> again in the warning popup. macOS asks this the first time only — afterwards a normal double-click works.
+    <span class="check">a black Terminal window opens with a few lines of text. Leave it open — it IS the app. Closing it stops everything.</span></li>
+  <li>If your Mac asks <em>“Do you want the application node to accept incoming network connections?”</em> → click <strong>Allow</strong>.</li>
   <li>Wait 2 seconds.
-    <span class="check">your browser opens on a dark screen titled “LumenStage Previz — waiting for the console”. That's the 3D room.</span></li>
+    <span class="check">your browser opens by itself on a dark screen: a 3D room with the message “Waiting for the console”. That's normal — nothing is connected yet.</span></li>
 </ol>
-<p class="note">Instead you see <strong>“Node.js 20 or newer is required”</strong>? Install the <strong>LTS</strong> version from <code>nodejs.org</code> (2 minutes, one time only), then relaunch the file from step 2.</p>
-<p class="note">On <strong>Windows</strong>: same flow with <span class="file">Start-LumenStage.bat</span>, plain double-click.</p>
+<p class="note">Instead you got a message saying <strong>“Node.js 20 or newer is required”</strong>? That's a small free program the app needs. Go to <code>nodejs.org</code>, click the big green <strong>LTS</strong> download button, install it like any app (2 minutes, once), then go back to step 2.</p>
 
-<h2>Step 2 — Play the test show (no console needed)</h2>
+<h2>Part 2 — See it working, without the console (2 minutes, at home)</h2>
+<p class="part-sub">The folder includes a fake lighting console, so you can see the app alive right away.</p>
 <ol>
-  <li>Keep the LumenStage window from step 1 running.</li>
-  <li><strong>Right-click</strong> <span class="file">Start-FakeShow.command</span> → <strong>Open</strong> → <strong>Open</strong> (first time only — it simulates the console).
-    <span class="check">a second Terminal window printing “u1 40 pkt/s | u2 40 pkt/s…” every second.</span></li>
-  <li>Go back to the browser.
-    <span class="check">the two pixel walls animate in 3D (rainbow, waves, chases) and the top bar turns green: “Listening on universes 1–4 — 160 pkt/s”.</span></li>
-  <li>Play with it: <strong>drag</strong> to orbit, <strong>wheel</strong> to zoom, keys <strong>1 / 2 / 3</strong> for Face / Top / Tribune views, <strong>Monitor</strong> tab for the raw DMX values.</li>
-  <li>To stop: close both Terminal windows.</li>
+  <li>Keep the app from Part 1 running.</li>
+  <li><strong>Right-click</strong> on <span class="file">Start-FakeShow.command</span> → <strong>Open</strong> → <strong>Open</strong> (first time only).
+    <span class="check">a second Terminal window with a line of numbers updating every second.</span></li>
+  <li>Go back to your browser.
+    <span class="check">the two light walls in the 3D room are now animating — rainbows, waves, chases — and the top bar says “Console connected” with a green dot. A time counter runs at the bottom left.</span></li>
+  <li>Play around: <strong>drag</strong> the mouse to turn around the room, <strong>scroll</strong> to zoom, press keys <strong>1, 2, 3</strong> for ready-made camera angles.</li>
+  <li>Done playing? Close both Terminal windows. That's how you quit.</li>
 </ol>
 
-<h2>Step 3 — At the venue, with the real show</h2>
-<p>Do this together with the lighting operator. Reminder: the app <em>only listens</em> — it never sends anything to the rig.</p>
+<h2>Part 3 — At the venue, with the real show</h2>
+<p class="part-sub">Do this together with the lighting operator. Allow 15 minutes the first time.</p>
 <ol>
-  <li>Connect the Mac to the lighting network with an <strong>Ethernet cable</strong>.</li>
-  <li>Ask the operator which <strong>IP address</strong> to use, and set it in System Settings → Network.</li>
-  <li>Launch <span class="file">Start-LumenStage.command</span> (step 1).</li>
-  <li>Ask the operator to make sure Art-Net <strong>universes 1–4</strong> actually reach this computer — see the note below.</li>
-  <li>Have the console play anything on the Tambora battens.
-    <span class="check">the previz animates, and the top bar shows “Listening on universes 1–4 — … pkt/s from &lt;console IP&gt;”.</span></li>
-  <li>Compare the room and the screen. If the <strong>colors don't match</strong> (e.g. red on stage shows as blue on screen), film a few seconds showing both — the fixture color map can then be fixed remotely in minutes.</li>
+  <li>Connect the Mac to the lighting network with an <strong>Ethernet cable</strong> (ask the operator which socket/switch).</li>
+  <li>Ask the operator what <strong>IP address</strong> to give the Mac, and set it in System Settings → Network → your Ethernet connection.</li>
+  <li>Start the app (<span class="file">Start-LumenStage.command</span>, like in Part 1). Show the operator the orange note below.</li>
+  <li>Ask the console to play anything on the light walls (the Tambora bars).
+    <span class="check">the 3D walls light up and move <em>exactly like the real room</em>, and the top bar turns green: “Console connected”. If the console sends its timecode, the counter bottom-left runs in sync with the show.</span></li>
+  <li><strong>The most useful thing you can do:</strong> record a full run of the show. Click the gear <strong>⚙</strong> (top right) → <strong>Runs</strong> → <strong>● Record a run</strong> before the show starts, and stop it at the end. This creates a file in the <span class="file">LumenStage/data/recordings</span> folder — <strong>send us that file</strong>: it lets us build and test everything else on the real show, without the console.</li>
+  <li>If the colors on screen don't match the room (say, red on stage but blue on screen): film 10 seconds showing both the room and the screen, and send us the video. It's a 5-minute remote fix on our side.</li>
 </ol>
-<p class="note warn"><strong>For the lighting operator:</strong> if the console outputs Art-Net as unicast to the nodes only, this computer will never see it. Either enable <strong>broadcast</strong> for universes 1–4, or add this computer's IP as an <strong>extra unicast destination</strong> on the console. Two-minute change, fully reversible, the rig keeps receiving normally.</p>
+<p class="note warn"><strong>Show this to the lighting operator:</strong> the console must actually send Art-Net for universes 1–4 <em>towards this computer</em>. If the console only sends unicast to the DMX nodes, this Mac will see nothing. Either enable <strong>broadcast</strong> for universes 1–4, or add this Mac's IP as an <strong>extra unicast destination</strong>. Two-minute change, fully reversible, the rig keeps receiving normally. This app listens only — it never replies or transmits.</p>
 
-<h2>Troubleshooting</h2>
+<h2>If something doesn't work</h2>
+<table>
+  <tr><th>What you see</th><th>What it means</th><th>What to do</th></tr>
+  <tr><td>“Waiting for the console” at the venue, while the console is playing</td><td>The signal isn't reaching this Mac</td><td>Check the cable and IP, then the orange note above with the operator. Still stuck? Tell us — it can be a one-line fix on our side.</td></tr>
+  <tr><td>The browser page never opened</td><td>Just the auto-open that failed</td><td>Open your browser yourself and go to <code>http://localhost:4480</code></td></tr>
+  <tr><td>“Art-Net port unavailable”</td><td>Another lighting app is running on this Mac</td><td>Close it and relaunch LumenStage</td></tr>
+  <tr><td>Walls animate but colors look wrong vs the room</td><td>Fixture color map to adjust</td><td>Film room + screen together, send us the video</td></tr>
+  <tr><td>Everything froze after the Mac slept</td><td>Connection went stale</td><td>It reconnects alone within seconds; otherwise reload the browser page</td></tr>
+</table>
+
+<h2>Good to know</h2>
 <ul>
-  <li><strong>“NO SIGNAL” with the fake show running</strong>: make sure both Terminal windows are still open; close everything and redo steps 1–2.</li>
-  <li><strong>“NO SIGNAL” at the venue while the console plays</strong>: check the cable and IP, then the operator note above. Still nothing? Tell us — it may be a universe numbering detail we can fix remotely.</li>
-  <li><strong>The browser page did not open</strong>: browse to <code>http://localhost:4480</code> manually.</li>
-  <li><strong>“UDP 6454 unavailable”</strong>: another Art-Net app is running on this machine — close it and relaunch.</li>
+  <li><strong>Watch / Edit</strong> (top left): Watch is just looking. Edit lets you draw scenes on the timeline and try effects — they appear <em>on screen only</em>, never on the real lights.</li>
+  <li>To quit: close the Terminal window(s). Nothing keeps running in the background.</li>
+  <li>Nothing you click anywhere in this app can affect the real show.</li>
 </ul>
-
-<h2>Stopping</h2>
-<p>Close the Terminal window(s), or press Ctrl+C inside them. Nothing keeps running in the background.</p>
 </body>
 </html>
