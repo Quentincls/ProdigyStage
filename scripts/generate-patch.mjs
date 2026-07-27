@@ -85,7 +85,10 @@ const patch = {
         reset: 13,
       },
       pixelStart: 14,
-      tiltRangeDeg: 220, // TiltMax from the fixture data; direction to calibrate on venue video
+      tiltRangeDeg: 220, // TiltMax from the fixture data
+      // Which way the yoke turns is not in any chart -- it is a physical
+      // fact of the install. Flip this on site if the previz mirrors the room.
+      tiltInvert: false,
     },
   },
   fixtures,

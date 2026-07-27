@@ -21,7 +21,8 @@
         "reset": 13
       },
       "pixelStart": 14,
-      "tiltRangeDeg": 220
+      "tiltRangeDeg": 220,
+      "tiltInvert": false
     }
   },
   "fixtures": [

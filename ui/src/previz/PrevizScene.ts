@@ -261,7 +261,8 @@ export class PrevizScene {
 
     const type = patch.fixtureTypes[this.fixtures[0]?.type ?? '']
     const pixelsPerFixture = type?.pixels ?? 16
-    this.tiltRange = ((type?.tiltRangeDeg ?? 0) * Math.PI) / 180
+    this.tiltRange =
+      (((type?.tiltRangeDeg ?? 0) * Math.PI) / 180) * (type?.tiltInvert ? -1 : 1)
 
     const bars = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1.02, 0.12, 0.06),
