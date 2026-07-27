@@ -1762,3 +1762,26 @@ body {
   flex: 1;
   min-height: 0;
 }
+
+/* Diagnostics: a report you select and paste, not a dashboard to read. */
+.diag-text {
+  flex: 1;
+  min-height: 260px;
+  width: 100%;
+  resize: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  white-space: pre;
+  overflow: auto;
+}
+
+.diag-text:focus {
+  outline: none;
+  border-color: var(--accent);
+}

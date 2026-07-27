@@ -26,6 +26,7 @@ export interface OutputStatus {
 }
 
 export interface FeedStats {
+  version?: string
   udp: { port: number; listening: boolean; error: string | null }
   perUniverse: Record<string, UniverseStat>
   otherPps: number

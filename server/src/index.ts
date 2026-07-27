@@ -64,6 +64,16 @@ function loadOutputConfig(): { targets: string[]; port: number } {
   }
 }
 
+// Which build is running: the single most asked support question, and one
+// nobody can answer from a screenshot.
+const BUILD_VERSION = (() => {
+  for (const candidate of ['../version.txt', '../../version.txt']) {
+    const url = new URL(candidate, import.meta.url)
+    if (existsSync(url)) return readFileSync(url, 'utf8').trim()
+  }
+  return 'development build'
+})()
+
 const output = new ArtnetOutput(loadOutputConfig(), patch)
 
 // Scenes are cached: the merge runs on every console frame, it must never
@@ -207,6 +217,7 @@ function encodeStats(): string {
   }
   return JSON.stringify({
     type: 'stats',
+    version: BUILD_VERSION,
     udp: { port: listener.port, listening: listener.listening, error: listener.lastError },
     perUniverse,
     otherPps: listener.otherPps,

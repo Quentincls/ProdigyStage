@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { defaultParams } from '../../core/effects'
 import { backToLive, editor, isTimeOverridden, startPreview } from './editor'
 import { feed } from './feed'
+import Diagnostics from './Diagnostics'
 import Monitor from './Monitor'
 import OutputPanel from './OutputPanel'
 import { fetchPatch, savePatch, type Patch } from './patch'
@@ -19,7 +20,7 @@ import { formatTime } from './TimeInput'
 // Technical tools (DMX monitor, placement, runs, live output) live behind the
 // gear menu.
 type Mode = 'watch' | 'edit'
-type Tool = 'monitor' | 'placement' | 'runs' | 'output' | null
+type Tool = 'monitor' | 'placement' | 'runs' | 'output' | 'diag' | null
 
 export default function App() {
   const [patch, setPatch] = useState<Patch | null>(null)
@@ -322,6 +323,10 @@ export default function App() {
                     <b>Signal monitor</b>
                     <em>Raw values coming from the console</em>
                   </button>
+                  <button className={tool === 'diag' ? 'on' : ''} onClick={() => openTool('diag')}>
+                    <b>Diagnostics</b>
+                    <em>Everything about the current state, as text to send us</em>
+                  </button>
                   <span className="menu-sep" />
                   <button
                     className={`danger-item ${tool === 'output' ? 'on' : ''}`}
@@ -374,6 +379,9 @@ export default function App() {
             )}
             {tool === 'runs' && <RunsPanel onClose={() => setTool(null)} />}
             {tool === 'output' && <OutputPanel onClose={() => setTool(null)} />}
+            {tool === 'diag' && (
+              <Diagnostics patch={patch} show={show} onClose={() => setTool(null)} />
+            )}
             {mode === 'edit' && selectedSceneId && show && (
               <SceneEditor
                 show={show}
