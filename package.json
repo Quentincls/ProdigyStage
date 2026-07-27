@@ -17,6 +17,7 @@
     "fake-show": "npm run fake-show -w server",
     "replay": "npm run replay -w server --",
     "generate-patch": "node scripts/generate-patch.mjs",
+    "test:core": "node core/selftest.ts",
     "package": "node scripts/package.mjs"
   },
   "devDependencies": {
