@@ -276,6 +276,7 @@ export default function App() {
           {dirty && tool === 'placement' && <span className="dirty-badge">unsaved changes</span>}
         </div>
         <div className="statusline">
+          <WallClock />
           <span className={`status-pill ${dotClass}`}>
             <span className={`dot ${dotClass}`} />
             {statusText}
@@ -415,5 +416,21 @@ export default function App() {
           />
         ))}
     </div>
+  )
+}
+
+// Wall clock. A control room screen that shows the show's timecode but not
+// the actual time of day is missing the one thing everyone else in the room
+// is looking at their phone for.
+function WallClock() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 10_000)
+    return () => clearInterval(id)
+  }, [])
+  return (
+    <span className="wall-clock" title="Local time">
+      {String(now.getHours()).padStart(2, '0')}:{String(now.getMinutes()).padStart(2, '0')}
+    </span>
   )
 }

@@ -1635,3 +1635,37 @@ body {
   color: var(--text-dim);
   line-height: 1.3;
 }
+
+/* Wall clock: the show's timecode is not the time of day, and a control
+   room needs both. */
+.wall-clock {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  opacity: 0.85;
+  letter-spacing: 0.02em;
+}
+
+/* Five transport buttons now: section, start, play, section, live. */
+.transport {
+  gap: 3px;
+}
+
+.transport-button {
+  padding: 6px 6px;
+  font-size: 10px;
+}
+
+.transport-button.live {
+  font-size: 10px;
+  padding: 6px 8px;
+}
+
+/* Watch: the section is the show's structure, so it leads the readout. */
+.watch-section {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  min-height: 18px;
+}

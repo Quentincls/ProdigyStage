@@ -51,6 +51,11 @@ interface PixelSlot {
   dimmerChannel: number // legacy dimmer x pixel personalities
   group: string
   wallPos: number // normalized 0-1 along the pixel's wall
+  // Same, but for the fixture's centre. When the console drives a
+  // fixture-wide colour the rig cannot do better than one colour per batten,
+  // so our scenes must be shown at that resolution too.
+  fixtureWallPos: number
+  fixturePixelIndex: number
   fixtureIndex: number
 }
 
@@ -375,6 +380,8 @@ export class PrevizScene {
           dimmerChannel,
           group: fixture.group,
           wallPos: (wallIndex * pixelsPerFixture + p + 0.5) / wallPixels,
+          fixtureWallPos: (wallIndex + 0.5) / (wallPixels / pixelsPerFixture),
+          fixturePixelIndex: wallIndex * pixelsPerFixture + Math.floor(pixelsPerFixture / 2),
           fixtureIndex,
         }
         this.pixelSlots.push(slot)
@@ -454,8 +461,18 @@ export class PrevizScene {
       let r = 0
       let g = 0
       let b = 0
+      // Honest resolution: with a fixture-wide personality the real bar shows
+      // one colour, so a scene gradient must not look finer on screen than it
+      // ever can in the room.
+      const perFixture = slot.globalRgb !== null
       const sceneColor = scene
-        ? renderScenePixel(scene, slot.group, slot.wallPos, instance, showTime!)
+        ? renderScenePixel(
+            scene,
+            slot.group,
+            perFixture ? slot.fixtureWallPos : slot.wallPos,
+            perFixture ? slot.fixturePixelIndex : instance,
+            showTime!,
+          )
         : null
       if (sceneColor) {
         r = sceneColor[0] / 255

@@ -651,7 +651,7 @@ export default function Timeline({
           no timecode
         </span>
         <span className="now-playing" ref={nowPlayingRef} />
-        <Transport />
+        <Transport markers={show.markers} />
       </div>
 
       <div className="timeline-wrap" ref={wrapRef}>
@@ -761,8 +761,10 @@ function roundedRect(
 // needs the timeline to hold still -- and to be reviewable with the console
 // stopped. Three states, always visible: following the console (Live),
 // parked, or playing on this machine's clock.
-function Transport() {
+function Transport({ markers }: { markers: Marker[] }) {
   const [state, setState] = useState(transportState())
+  const markersRef = useRef(markers)
+  markersRef.current = markers
 
   // The editor store is mutable and read at 60 fps by the canvases; polling
   // it four times a second is enough to keep three buttons honest.
@@ -774,8 +776,26 @@ function Transport() {
   const liveTime = (): number | null => (feed.timecode.receiving ? feed.timecode.total : null)
   const playing = state === 'playing' || state === 'preview'
 
+  // Sections are the show's structure, so they are how you travel through it.
+  const jumpSection = (direction: -1 | 1): void => {
+    const now = effectiveShowTime(liveTime()) ?? 0
+    const starts = markersRef.current.map((m) => m.start).sort((a, b) => a - b)
+    const target =
+      direction === 1
+        ? starts.find((s) => s > now + 0.05)
+        : [...starts].reverse().find((s) => s < now - 0.05)
+    seekTo(target ?? (direction === 1 ? now : 0))
+  }
+
   return (
     <div className="transport">
+      <button
+        className="transport-button"
+        title="Previous section"
+        onClick={() => jumpSection(-1)}
+      >
+        |◀
+      </button>
       <button
         className="transport-button"
         title="Back to the start"
@@ -789,6 +809,13 @@ function Transport() {
         onClick={() => (playing ? pauseAt(liveTime()) : playLocal(liveTime()))}
       >
         {playing ? '‖' : '▶'}
+      </button>
+      <button
+        className="transport-button"
+        title="Next section"
+        onClick={() => jumpSection(1)}
+      >
+        ▶|
       </button>
       <button
         className={`transport-button live ${state === 'live' ? 'active' : ''}`}
