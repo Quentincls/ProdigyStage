@@ -12,48 +12,67 @@
     color: #1a1d23; line-height: 1.55; font-size: 15px;
   }
   h1 { font-size: 22px; letter-spacing: 0.02em; margin-bottom: 2px; }
-  .sub { color: #6b7280; margin-bottom: 28px; }
-  h2 { font-size: 15px; margin: 24px 0 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+  .sub { color: #6b7280; margin-bottom: 26px; }
+  h2 { font-size: 15px; margin: 26px 0 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
   code, .file { background: #f3f4f6; border-radius: 4px; padding: 1px 6px; font-size: 13.5px; }
-  ol, ul { padding-left: 22px; } li { margin-bottom: 5px; }
+  ol, ul { padding-left: 22px; } li { margin-bottom: 7px; }
+  .check { color: #047857; font-size: 13.5px; display: block; margin-top: 2px; }
+  .check::before { content: "✓ You should see: "; font-weight: 600; }
   .note { background: #f9fafb; border-left: 3px solid #9ca3af; padding: 8px 12px; margin: 10px 0; color: #374151; }
+  .warn { border-left-color: #d97706; }
   @media print { body { padding: 0; font-size: 12px; } }
 </style>
 </head>
 <body>
 <h1>LumenStage Previz v1</h1>
-<p class="sub">Live 3D previz and DMX monitor for the Prodigy 12 show — it listens to the lighting network and displays what the console is playing. The app never transmits anything: zero risk for the show.</p>
+<p class="sub">Live 3D previz and DMX monitor for the Prodigy 12 show — it listens to the lighting network and shows what the console is playing. The app never transmits anything: zero risk for the show.</p>
 
-<h2>Start (Mac)</h2>
+<h2>Step 1 — First launch (Mac)</h2>
 <ol>
-  <li>Unzip the archive anywhere (Desktop, Documents…).</li>
-  <li><strong>Right-click</strong> <span class="file">Start-LumenStage.command</span> → <strong>Open</strong> → <strong>Open</strong> (needed the first time only).</li>
-  <li>If macOS asks to allow <em>node</em> to accept incoming network connections: <strong>Allow</strong>.</li>
-  <li>Your browser opens at <code>http://localhost:4480</code> — the 3D previz. Drag to orbit, keys 1/2/3 for preset views, Monitor tab for raw DMX.</li>
+  <li>Unzip the archive anywhere (Desktop, Documents…).
+    <span class="check">a <span class="file">LumenStage</span> folder.</span></li>
+  <li><strong>Right-click</strong> <span class="file">Start-LumenStage.command</span> → <strong>Open</strong> → <strong>Open</strong>. This right-click dance is needed the <em>first time only</em>; afterwards a normal double-click works.
+    <span class="check">a Terminal window opens with a few log lines.</span></li>
+  <li>If macOS asks whether <em>node</em> may accept incoming network connections → <strong>Allow</strong>.</li>
+  <li>Wait 2 seconds.
+    <span class="check">your browser opens on a dark screen titled “LumenStage Previz — waiting for the console”. That's the 3D room.</span></li>
 </ol>
-<p class="note">Seeing “Node.js 20 or newer is required”? Install the <strong>LTS</strong> version from <code>nodejs.org</code> (takes 2 minutes, once), then launch the file again.</p>
+<p class="note">Instead you see <strong>“Node.js 20 or newer is required”</strong>? Install the <strong>LTS</strong> version from <code>nodejs.org</code> (2 minutes, one time only), then relaunch the file from step 2.</p>
+<p class="note">On <strong>Windows</strong>: same flow with <span class="file">Start-LumenStage.bat</span>, plain double-click.</p>
 
-<h2>Start (Windows)</h2>
-<p>Double-click <span class="file">Start-LumenStage.bat</span>. Same flow.</p>
-
-<h2>Try it without the console</h2>
-<p>Also double-click <span class="file">Start-FakeShow.command</span> (or <span class="file">.bat</span>): it simulates the console and plays a test show. Both pixel walls animate in the 3D view.</p>
-
-<h2>With the real console</h2>
+<h2>Step 2 — Play the test show (no console needed)</h2>
 <ol>
-  <li>Connect the computer to the lighting network (Ethernet) and set its IP as instructed by the lighting operator.</li>
-  <li>As soon as Art-Net for universes 1–4 (the Tambora battens) reaches this computer, the previz animates by itself.</li>
+  <li>Keep the LumenStage window from step 1 running.</li>
+  <li><strong>Right-click</strong> <span class="file">Start-FakeShow.command</span> → <strong>Open</strong> → <strong>Open</strong> (first time only — it simulates the console).
+    <span class="check">a second Terminal window printing “u1 40 pkt/s | u2 40 pkt/s…” every second.</span></li>
+  <li>Go back to the browser.
+    <span class="check">the two pixel walls animate in 3D (rainbow, waves, chases) and the top bar turns green: “Listening on universes 1–4 — 160 pkt/s”.</span></li>
+  <li>Play with it: <strong>drag</strong> to orbit, <strong>wheel</strong> to zoom, keys <strong>1 / 2 / 3</strong> for Face / Top / Tribune views, <strong>Monitor</strong> tab for the raw DMX values.</li>
+  <li>To stop: close both Terminal windows.</li>
 </ol>
-<p class="note">Heads-up for the operator: if the console sends Art-Net as <strong>unicast to the nodes only</strong>, this computer will not see it. Either enable <strong>broadcast</strong> for universes 1–4, or add this computer's IP as an extra unicast destination on the console. The app only listens — it never replies or transmits.</p>
+
+<h2>Step 3 — At the venue, with the real show</h2>
+<p>Do this together with the lighting operator. Reminder: the app <em>only listens</em> — it never sends anything to the rig.</p>
+<ol>
+  <li>Connect the Mac to the lighting network with an <strong>Ethernet cable</strong>.</li>
+  <li>Ask the operator which <strong>IP address</strong> to use, and set it in System Settings → Network.</li>
+  <li>Launch <span class="file">Start-LumenStage.command</span> (step 1).</li>
+  <li>Ask the operator to make sure Art-Net <strong>universes 1–4</strong> actually reach this computer — see the note below.</li>
+  <li>Have the console play anything on the Tambora battens.
+    <span class="check">the previz animates, and the top bar shows “Listening on universes 1–4 — … pkt/s from &lt;console IP&gt;”.</span></li>
+  <li>Compare the room and the screen. If the <strong>colors don't match</strong> (e.g. red on stage shows as blue on screen), film a few seconds showing both — the fixture color map can then be fixed remotely in minutes.</li>
+</ol>
+<p class="note warn"><strong>For the lighting operator:</strong> if the console outputs Art-Net as unicast to the nodes only, this computer will never see it. Either enable <strong>broadcast</strong> for universes 1–4, or add this computer's IP as an <strong>extra unicast destination</strong> on the console. Two-minute change, fully reversible, the rig keeps receiving normally.</p>
 
 <h2>Troubleshooting</h2>
 <ul>
-  <li><strong>NO SIGNAL</strong>: check the network cable, the IP settings, and that the console actually outputs universes 1–4 towards this machine (see the note above).</li>
-  <li>The page does not open: browse to <code>http://localhost:4480</code> manually.</li>
-  <li>“UDP 6454 unavailable”: another Art-Net application is running on this machine — close it and relaunch.</li>
+  <li><strong>“NO SIGNAL” with the fake show running</strong>: make sure both Terminal windows are still open; close everything and redo steps 1–2.</li>
+  <li><strong>“NO SIGNAL” at the venue while the console plays</strong>: check the cable and IP, then the operator note above. Still nothing? Tell us — it may be a universe numbering detail we can fix remotely.</li>
+  <li><strong>The browser page did not open</strong>: browse to <code>http://localhost:4480</code> manually.</li>
+  <li><strong>“UDP 6454 unavailable”</strong>: another Art-Net app is running on this machine — close it and relaunch.</li>
 </ul>
 
-<h2>Stop</h2>
-<p>Close the Terminal window (or Ctrl+C inside it).</p>
+<h2>Stopping</h2>
+<p>Close the Terminal window(s), or press Ctrl+C inside them. Nothing keeps running in the background.</p>
 </body>
 </html>
