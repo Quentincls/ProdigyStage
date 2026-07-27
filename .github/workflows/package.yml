@@ -1,0 +1,30 @@
+name: Package
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm run test:core
+      - run: npm run package
+      - name: Publish to the rolling "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: LumenStage — latest build
+          body: >
+            Auto-built from the newest commit. Download the zip below,
+            then follow README.html inside it.
+          files: dist-package/*.zip
