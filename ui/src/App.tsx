@@ -3,19 +3,21 @@ import { defaultParams } from '../../core/effects'
 import { backToLive, editor, isTimeOverridden, startPreview } from './editor'
 import { feed } from './feed'
 import Monitor from './Monitor'
+import OutputPanel from './OutputPanel'
 import { fetchPatch, savePatch, type Patch } from './patch'
 import PlacementPanel from './previz/PlacementPanel'
 import Previz from './previz/Previz'
 import RunsPanel from './RunsPanel'
 import SceneEditor from './SceneEditor'
 import { findFreeSlot } from './sceneRules'
-import { fetchShow, saveShow, type ShowFile } from './show'
+import { controlOutput, fetchShow, saveShow, type ShowFile } from './show'
 import Timeline from './Timeline'
 
 // Two intents, two modes: Watch (default, safe, zero chrome) and Edit.
-// Technical tools (DMX monitor, placement, runs) live behind the gear menu.
+// Technical tools (DMX monitor, placement, runs, live output) live behind the
+// gear menu.
 type Mode = 'watch' | 'edit'
-type Tool = 'monitor' | 'placement' | 'runs' | null
+type Tool = 'monitor' | 'placement' | 'runs' | 'output' | null
 
 export default function App() {
   const [patch, setPatch] = useState<Patch | null>(null)
@@ -168,12 +170,23 @@ export default function App() {
     ? Object.values(stats.perUniverse).reduce((sum, u) => sum + u.pps, 0)
     : 0
 
-  // Status in plain words -- the metrics live in the DMX monitor.
+  // Status in plain words -- the metrics live in the DMX monitor. Whatever
+  // else is going on, if we are driving the real lights that comes first.
+  const outputMode = stats?.output?.mode ?? 'off'
   let statusText: string
   let dotClass: string
   if (!connected) {
     statusText = 'Connecting to server…'
     dotClass = 'down'
+  } else if (outputMode === 'blackout') {
+    statusText = 'BLACKOUT — the lights are forced off'
+    dotClass = 'live'
+  } else if (outputMode === 'armed') {
+    statusText = 'LIVE — your scenes are playing on the lights'
+    dotClass = 'live'
+  } else if (outputMode === 'spectator') {
+    statusText = 'Connected to the lights — the console passes through'
+    dotClass = 'ok'
   } else if (stats?.replay.replaying) {
     statusText = `Replaying ${stats.replay.file ?? ''} — nothing is sent`
     dotClass = 'ok'
@@ -261,6 +274,14 @@ export default function App() {
         <div className="statusline">
           <span className={`dot ${dotClass}`} />
           <span>{statusText}</span>
+          {outputMode !== 'off' && outputMode !== 'blackout' && (
+            <button
+              className="button blackout compact"
+              onClick={() => void controlOutput('mode', 'blackout')}
+            >
+              BLACKOUT
+            </button>
+          )}
           <div className="tools">
             <button
               className="ghost-button icon-button"
@@ -281,6 +302,9 @@ export default function App() {
                   </button>
                   <button onClick={() => openTool('runs')}>
                     Runs — record and replay {tool === 'runs' ? '·' : ''}
+                  </button>
+                  <button onClick={() => openTool('output')}>
+                    Live output {outputMode !== 'off' ? '●' : tool === 'output' ? '·' : ''}
                   </button>
                 </div>
               </>
@@ -322,6 +346,7 @@ export default function App() {
               />
             )}
             {tool === 'runs' && <RunsPanel onClose={() => setTool(null)} />}
+            {tool === 'output' && <OutputPanel onClose={() => setTool(null)} />}
             {mode === 'edit' && selectedSceneId && show && (
               <SceneEditor
                 show={show}

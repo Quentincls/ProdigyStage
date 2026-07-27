@@ -115,6 +115,53 @@ Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
   DMX monitor. La Phase 6 branchera SPECTATOR/ARMED/BLACKOUT sur ce même
   emplacement (hold 1 s pour armer, bannière watchdog).
 
+## Sortie Art-Net — man-in-the-middle (Phase 6)
+
+**Tout ce qui émet vers le rig vit dans `server/src/output.ts`, et nulle part
+ailleurs.** Le fichier est écrit pour être sûr par construction, dans cet
+ordre :
+
+1. **Démarre en `off`** : le socket UDP n'est même pas créé.
+2. **Aucune cible par défaut** : `data/output.json` absent = `targets: []`.
+   Une install non mise en service ne *peut pas* atteindre un rig, quoi que
+   clique l'utilisateur. Mettre en service = écrire l'adresse du rig dans ce
+   fichier (ou via Advanced dans le panneau Live output).
+3. **Anti-boucle** : une cible loopback sur notre propre port d'écoute est
+   refusée (elle réinjecterait dans notre listener).
+4. **`spectator`** relaie la console octet pour octet ; seul **`armed`**
+   substitue nos scènes ; **`blackout`** force des zéros.
+5. **Watchdog 250 ms** : plus de trame console = on cesse d'émettre, pour ne
+   jamais figer le rig sur notre dernière image. Exception voulue : en
+   `blackout` on continue d'émettre des zéros à 25 Hz (une sécurité doit
+   fonctionner même console morte).
+
+Émission **à la réception** (pas sur timer) : le passthrough coûte une passe
+de merge, mesurée et exposée (`passthroughUs`). Mesuré ici : **~0,2 ms au
+pire**, budget 5 ms.
+
+Merge (`mergeUniverse`, pure et testée) : base = trame console, puis pour
+chaque batten couvert par une piste de la scène active — RGB ← couleur de la
+scène, blanc ← 0, dimmer ← plein, shutter ← ouvert, le tout fondu par
+`crossfadeMix` (0,5 s en entrée et en sortie, symétrique). **Tilt et zoom
+sont délibérément laissés à la console** : le mouvement continue de tourner,
+notre scène ne fait que repeindre. Un mur non ciblé n'est jamais écrit.
+
+Résolution : **une couleur par batten** (ch 1–3 + dimmer), puisque la console
+est en mode « Standard RGB ». La previz, elle, rend 16 pixels par batten :
+sur un effet à gradient fin, l'écran est donc plus détaillé que la salle.
+À corriger le jour où la console passera en mode pixel, ou en aplatissant la
+previz quand `armed`.
+
+Le moteur `/core` est un **workspace npm** (`@prodigy-stage/core`) : le
+serveur l'importe compilé (`core/dist`), l'UI importe la source (hot reload
+Vite). Conséquence en dev : après une modif de `core/effects.ts`, relancer
+`npm run build -w core` pour que le serveur la voie (`npm run dev` le fait
+au démarrage).
+
+Tests sans rig ni console : `npm run test:output` (sécurité, fidélité du
+passthrough, merge, watchdog, latence) et le banc complet documenté dans
+`README.md` (fake-show + sink UDP + scène armée).
+
 ## Packaging v0 (`npm run package`)
 
 `dist-package/LumenStage/` : `server/` (JS compilé) + `ui/` (build Vite) +

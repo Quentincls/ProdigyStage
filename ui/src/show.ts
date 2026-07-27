@@ -68,3 +68,17 @@ export async function controlReplay(action: 'start' | 'stop', file?: string): Pr
     body: JSON.stringify({ action, file }),
   })
 }
+
+// Phase 6: the only call that can make this software transmit. Throws with
+// the server's reason so the UI can show it instead of failing silently.
+export async function controlOutput(action: 'mode' | 'targets', value: unknown): Promise<void> {
+  const response = await fetch(apiUrl('/api/output'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, value }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string }
+    throw new Error(body.error ?? 'output request failed')
+  }
+}

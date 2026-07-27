@@ -40,6 +40,13 @@ for (const file of readdirSync(join(ROOT, 'server', 'dist'))) {
 cpSync(join(ROOT, 'ui', 'dist'), join(STAGE, 'ui'), { recursive: true })
 copyFileSync(join(ROOT, 'data', 'patch.json'), join(STAGE, 'data', 'patch.json'))
 cpSync(join(ROOT, 'node_modules', 'ws'), join(STAGE, 'node_modules', 'ws'), { recursive: true })
+// The shared effect engine is a workspace package: npm links it, so the copy
+// must dereference the symlink to land real files in the client's zip.
+cpSync(
+  join(ROOT, 'node_modules', '@prodigy-stage', 'core'),
+  join(STAGE, 'node_modules', '@prodigy-stage', 'core'),
+  { recursive: true, dereference: true },
+)
 
 const launchers = join(ROOT, 'scripts', 'launchers')
 for (const file of readdirSync(launchers)) {

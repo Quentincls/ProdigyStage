@@ -77,6 +77,19 @@
 </ol>
 <p class="note warn"><strong>Show this to the lighting operator:</strong> the console must actually send Art-Net for universes 1–4 <em>towards this computer</em>. If the console only sends unicast to the DMX nodes, this Mac will see nothing. Either enable <strong>broadcast</strong> for universes 1–4, or add this Mac's IP as an <strong>extra unicast destination</strong>. Two-minute change, fully reversible, the rig keeps receiving normally. This app listens only — it never replies or transmits.</p>
 
+<h2>Part 4 — Playing your scenes on the real lights</h2>
+<p class="part-sub">This is the one part you never do alone. Read this, then wait for us.</p>
+<p>The app can now do more than watch: it can put the scenes you draw onto the real light walls, while the console keeps running the rest of the show. It lives under the gear <strong>⚙</strong> → <strong>Live output</strong>.</p>
+<p class="note warn"><strong>Not yet.</strong> This only works once the lighting network has been rewired so the console feeds this computer, and the computer feeds the lights. That is a change to make together with the lighting operator, in a rehearsal — never during a show, never remotely. Until that day the panel will tell you <em>“Not connected to the lights”</em> and the app physically cannot send anything: no address is configured, so there is nowhere for it to go.</p>
+<p>When that day comes, here is the whole thing, in order:</p>
+<ol>
+  <li><strong>Connect to the lights.</strong> The console passes through the computer untouched. The room must look <em>exactly</em> as before — if anything changes, stop and tell us.</li>
+  <li><strong>Hold to go live.</strong> You have to press and hold for a second: going live is never one careless click. Now, wherever you placed a scene on the timeline, your scene plays on the real walls, fading in and out over half a second. Everywhere else the console keeps control.</li>
+  <li><strong>BLACKOUT</strong> is always one click away, at the top of the screen. It forces every light off, immediately.</li>
+  <li><strong>Stop playing my scenes</strong> gives the show back to the console. <strong>Disconnect</strong> takes the computer out of the loop entirely.</li>
+</ol>
+<p class="note">Two things are true whatever you click: your scenes only ever repaint colour and brightness — the movements the console programmed keep running underneath — and if this computer ever freezes or is unplugged, it stops sending within a quarter of a second rather than leaving the lights stuck.</p>
+
 <h2>Updating (10 seconds, whenever we tell you)</h2>
 <p class="part-sub">We improve the app remotely. When we say "there's a new version", do this:</p>
 <ol>

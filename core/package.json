@@ -1,0 +1,24 @@
+{
+  "name": "@prodigy-stage/core",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Shared deterministic effect engine (browser previz + server output)",
+  "type": "module",
+  "main": "./dist/effects.js",
+  "types": "./dist/effects.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/effects.d.ts",
+      "default": "./dist/effects.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
+}

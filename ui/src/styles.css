@@ -965,3 +965,91 @@ body {
 .universe-body[data-active='false'] .no-signal {
   display: flex;
 }
+
+/* ----- Phase 6: live output ---------------------------------------------
+   Visual weight matches consequence: armed and blackout are impossible to
+   miss, everything else stays as quiet as the rest of the chrome. */
+
+.dot.live {
+  background: var(--down);
+  box-shadow: 0 0 8px rgba(229, 72, 77, 0.8);
+  animation: live-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  50% { opacity: 0.35; }
+}
+
+.output-state {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.output-state.spectator {
+  border-left-color: var(--ok);
+}
+
+.output-state.armed {
+  border-left-color: var(--down);
+  background: rgba(229, 72, 77, 0.12);
+}
+
+.output-state.blackout {
+  border-left-color: var(--warn);
+  background: rgba(245, 166, 35, 0.12);
+}
+
+.output-warning {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--warn);
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+/* Press and hold: the fill is the feedback, so no separate progress bar. */
+.hold-button {
+  position: relative;
+  overflow: hidden;
+  padding: 11px 14px;
+  font-weight: 600;
+  border-color: rgba(229, 72, 77, 0.5);
+  user-select: none;
+  touch-action: none;
+}
+
+.hold-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(229, 72, 77, 0.45);
+  pointer-events: none;
+}
+
+.hold-label {
+  position: relative;
+}
+
+.button.blackout {
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  background: rgba(229, 72, 77, 0.22);
+  border-color: var(--down);
+}
+
+.button.blackout:hover:not(:disabled) {
+  background: var(--down);
+}
+
+.button.blackout.compact {
+  padding: 4px 10px;
+  font-size: 11px;
+}
