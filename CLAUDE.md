@@ -29,10 +29,11 @@ Monitor DMX, mode Placement, timecode Art-Net + timeline (manipulation
 directe, mini-map, undo Ctrl+Z), enregistreur/replay de runs, éditeur de
 scènes (5 effets, presets, préécoute), modes Watch/Edit + menu Tools.
 Testé chez le client (Mac) le 2026-07-27. Channel-map et univers **validés
-sur le premier enregistrement console réel** (2026-07-27) : Tambora pilotés
-par RGB global ch 1–3 (pas dimmer/strobe — voir docs/architecture.md), la
-previz suit la console. Reste : enregistrement d'un run timecodé du vrai
-show (comportement pixels + timecode), puis **Phase 6** :
+sur le premier enregistrement console réel** (2026-07-27) : mode Tambora
+« Standard RGB » 61 ch identifié (RGBW global ch 1–4, dimmer 7–8, tilt
+mécanique 9–10 — voir docs/architecture.md). La previz suit couleur,
+intensité et tilt. Reste : calibrer le sens du tilt sur vidéo salle,
+enregistrement d'un run timecodé du vrai show, puis **Phase 6** :
 émission Art-Net (passthrough < 5 ms, SPECTATOR/ARMED avec hold 1 s,
 BLACKOUT, watchdog 250 ms, crossfade 0,5 s) — la phase la plus sensible.
 

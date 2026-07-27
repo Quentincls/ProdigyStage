@@ -34,6 +34,7 @@ const PARKED_PIXEL: [number, number, number] = [105, 255, 255]
 // position (0-1) along its wall (fixture-level resolution, like the console).
 interface RgbSlot {
   universe: number
+  base: number // 0-based fixture start in the universe buffer
   channels: [number, number, number] // 0-based fixture-wide R, G, B channels
   wallPos: number
 }
@@ -49,6 +50,7 @@ for (const group of patch.groups) {
     const base = fixture.address - 1
     rgbSlots.push({
       universe: fixture.universe,
+      base,
       channels: [
         base + tamboraType.standardMap.red - 1,
         base + tamboraType.standardMap.green - 1,
@@ -135,12 +137,23 @@ function tick() {
     buf[slot.channel + 1] = PARKED_PIXEL[1]
     buf[slot.channel + 2] = PARKED_PIXEL[2]
   }
+  const S = tamboraType.standardMap
   for (const slot of rgbSlots) {
     const [r, g, b] = pattern.at(slot.wallPos, t)
     const buf = buffers.get(slot.universe)!
     buf[slot.channels[0]] = r
     buf[slot.channels[1]] = g
     buf[slot.channels[2]] = b
+    // Rest of the Standard block, like the real console: shutter open,
+    // dimmer at full (16 bit), and a slow tilt wave along the wall.
+    if (S.strobe !== undefined) buf[slot.base + S.strobe - 1] = 255
+    if (S.dimmer !== undefined) buf[slot.base + S.dimmer - 1] = 255
+    if (S.dimmerFine !== undefined) buf[slot.base + S.dimmerFine - 1] = 255
+    if (S.tilt !== undefined) {
+      const tilt = 128 + Math.round(28 * Math.sin(2 * Math.PI * (slot.wallPos - t * 0.08)))
+      buf[slot.base + S.tilt - 1] = tilt
+      if (S.tiltFine !== undefined) buf[slot.base + S.tiltFine - 1] = 0
+    }
   }
 
   for (const universe of UNIVERSES) {

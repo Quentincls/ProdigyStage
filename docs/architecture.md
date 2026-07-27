@@ -144,27 +144,35 @@ Vérifié le 2026-07-26 contre la PATCH LIJST officielle
 001/062/123/184/245/306/367/428, PixelRGB = Standard + 13, heads 1–16 (L)
 sur univers 1–2, heads 101–116 (R) sur univers 3–4.
 
-**Validé sur le premier enregistrement réel (run du 2026-07-27, 147 s de
-looks manuels à la console)** — l'hypothèse initiale (dimmer=1, strobe=2)
-était fausse :
+**Mode identifié : Tambora Batten « Standard RGB », 61 canaux** — croisement
+du chart DMX officiel (08.2021, corroboré par la définition QLC+) et du
+premier enregistrement réel (run du 2026-07-27, 147 s de looks manuels).
+L'hypothèse initiale (dimmer=1, strobe=2) était fausse. Bloc Standard :
 
-- Standard ch 1–3 = **RGB global de la machine**. C'est ce que l'opérateur
-  pilote (couleurs de picker limpides dans les données : 255,105,180 hot
-  pink, 0,255,0, 255,0,255…) et ce que la salle voit. La previz et le
-  Monitor affichent donc ce RGB global (`standardMap: {red, green, blue}`).
-- Standard ch 5–10 = moteur d'effets **interne** de la machine (valeurs qui
-  balaient en continu). Non émulé par la previz — limitation connue : un
-  chase interne machine ne s'anime pas à l'écran, la couleur reste juste.
-- Zone pixel (14–61) : présente sur le fil mais **parquée** (105,255,255
-  constant) par la programmation console actuelle — jamais animée.
+| ch | fonction | previz |
+|----|----------|--------|
+| 1–3 | Rouge, Vert, Bleu (machine entière) | affiché |
+| 4 | Blanc | additionné au RGB |
+| 5 | CTO | ignoré (à faire si besoin) |
+| 6 | Strobe (0–3 = noir, sinon ouvert/flash) | gate noir/ouvert, flashs non simulés |
+| 7–8 | Dimmer + fin (16 bits) | appliqué |
+| 9–10 | Tilt + fin (16 bits, mécanique, 220° de course) | barres animées en 3D |
+| 11 | Zoom | ignoré |
+| 12–13 | Function / Reset | ignorés |
+| 14–61 | 16 pixels RGB (Pixel Engine) | ignorés (parqués par la console) |
 
-Points encore ouverts : sémantique exacte des ch 4–13 (à confronter au
-chart DMX officiel du mode utilisé sur la console), et comportement de la
-zone pixel pendant le show timecodé (à revérifier sur un enregistrement du
-vrai show — le run du 27/07 ne contenait ni timecode ni cues). Implication
-Phase 6 : pour être visibles sur les vraies machines, nos scènes devront
-sans doute émettre sur les ch 1–3 par machine (résolution = 1 couleur par
-batten) plutôt que sur la zone pixel, tant que le mode console est celui-ci.
+Preuves dans l'enregistrement : couleurs de picker limpides sur ch 1–3
+(255,105,180 hot pink…), dimmer 7/8 monté 0→255 à t=9 s et redescendu à
+t=134 s (début/fin de session), tilt 9/10 balayant en continu (FX de tilt
+console — les « mouvements » vus en salle sont mécaniques).
+
+Points encore ouverts : sens et zéro du tilt (calibrer sur une vidéo salle
++ enregistrement synchrones), simulation des flashs de strobe, CTO, et
+comportement de la zone pixel pendant le show timecodé (le run du 27/07 ne
+contenait ni timecode ni cues — à revérifier sur un enregistrement du vrai
+show). Implication Phase 6 : pour être visibles sur les vraies machines,
+nos scènes devront sans doute émettre sur les ch 1–3 + dimmer par machine
+(résolution = 1 couleur par batten) tant que la console reste dans ce mode.
 
 ## Géométrie
 

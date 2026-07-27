@@ -35,10 +35,28 @@ interface PixelSlot {
   // 0-based channels of the fixture-wide RGB when the personality has one
   // (the real console drives this, not the pixel zone), else null.
   globalRgb: [number, number, number] | null
+  // Fixture-wide channels of the Standard block (Tambora chart), all 0-based
+  // absolute, null when the personality does not declare them.
+  white: number | null
+  masterDimmer: number | null
+  masterDimmerFine: number | null
+  strobe: number | null
   dimmerChannel: number // legacy dimmer x pixel personalities
   group: string
   wallPos: number // normalized 0-1 along the pixel's wall
   fixtureIndex: number
+}
+
+// Motorized tilt: per fixture, the bar and its pixels are re-posed when the
+// tilt channels move (the Tambora Batten physically tilts around its length).
+interface TiltSlot {
+  fixtureIndex: number
+  universe: number
+  tilt: number // 0-based absolute coarse channel
+  tiltFine: number | null
+  baseMatrix: THREE.Matrix4
+  pixelOffsets: THREE.Matrix4[]
+  lastValue: number
 }
 
 export class PrevizScene {
@@ -57,10 +75,13 @@ export class PrevizScene {
   private glows: THREE.InstancedMesh | null = null
   private fixtures: Fixture[] = []
   private pixelSlots: PixelSlot[] = []
+  private tiltSlots: TiltSlot[] = []
+  private tiltRange = 0 // radians of full travel
   private selected = new Set<string>()
 
   private lastVersion = -1
   private lastEditorVersion = -1
+  private lastTiltVersion = -1
   private glowSums = new Float32Array(0)
   private raf = 0
   private disposed = false
@@ -202,10 +223,13 @@ export class PrevizScene {
       this.fixtureGroup.remove(child)
     }
     this.pixelSlots = []
+    this.tiltSlots = []
+    this.lastTiltVersion = -1
     this.fixtures = patch.fixtures
 
     const type = patch.fixtureTypes[this.fixtures[0]?.type ?? '']
     const pixelsPerFixture = type?.pixels ?? 16
+    this.tiltRange = ((type?.tiltRangeDeg ?? 0) * Math.PI) / 180
 
     const bars = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1.02, 0.12, 0.06),
@@ -262,11 +286,19 @@ export class PrevizScene {
         map && map.red !== undefined && map.green !== undefined && map.blue !== undefined
           ? [base + map.red - 1, base + map.green - 1, base + map.blue - 1]
           : null
+      const abs = (key: string): number | null =>
+        map && map[key] !== undefined ? base + map[key] - 1 : null
+      const white = abs('white')
+      const masterDimmer = globalRgb ? abs('dimmer') : null
+      const masterDimmerFine = globalRgb ? abs('dimmerFine') : null
+      const strobe = globalRgb ? abs('strobe') : null
       const dimmerChannel = base + (map?.dimmer ?? 1) - 1
+      const pixelOffsets: THREE.Matrix4[] = []
 
       for (let p = 0; p < pixelsPerFixture; p++) {
         const localX = -0.5 + (p + 0.5) / pixelsPerFixture
         offset.makeTranslation(localX, 0, 0.036)
+        pixelOffsets.push(offset.clone())
         pixelMatrix.multiplyMatrices(dummy.matrix, offset)
         const instance = fixtureIndex * pixelsPerFixture + p
         pixels.setMatrixAt(instance, pixelMatrix)
@@ -277,12 +309,29 @@ export class PrevizScene {
           universe: fixture.universe,
           colorChannel: base + (type?.pixelStart ?? 14) - 1 + p * 3,
           globalRgb,
+          white,
+          masterDimmer,
+          masterDimmerFine,
+          strobe,
           dimmerChannel,
           group: fixture.group,
           wallPos: (wallIndex * pixelsPerFixture + p + 0.5) / wallPixels,
           fixtureIndex,
         }
         this.pixelSlots.push(slot)
+      }
+
+      const tiltChannel = this.tiltRange > 0 ? abs('tilt') : null
+      if (tiltChannel !== null) {
+        this.tiltSlots.push({
+          fixtureIndex,
+          universe: fixture.universe,
+          tilt: tiltChannel,
+          tiltFine: abs('tiltFine'),
+          baseMatrix: dummy.matrix.clone(),
+          pixelOffsets,
+          lastValue: -1,
+        })
       }
 
       // Glow pool sits on the floor, pushed towards the room center.
@@ -344,11 +393,23 @@ export class PrevizScene {
         if (buffer) {
           if (slot.globalRgb) {
             // What the real fixture displays under the console's programming
-            // (validated on the venue recording): the fixture-wide RGB. The
+            // (validated on the venue recording): the fixture-wide RGBW of
+            // the Standard block, through its master dimmer and shutter. The
             // parked pixel zone is not what the eye sees in the room.
-            r = buffer[slot.globalRgb[0]] / 255
-            g = buffer[slot.globalRgb[1]] / 255
-            b = buffer[slot.globalRgb[2]] / 255
+            let intensity = 1
+            if (slot.masterDimmer !== null) {
+              intensity =
+                slot.masterDimmerFine !== null
+                  ? (buffer[slot.masterDimmer] * 256 + buffer[slot.masterDimmerFine]) / 65535
+                  : buffer[slot.masterDimmer] / 255
+            }
+            // Tambora strobe channel: 0-3 = light off; strobing/pulsation
+            // ranges render as lit (flashes are not simulated yet).
+            if (slot.strobe !== null && buffer[slot.strobe] <= 3) intensity = 0
+            const w = slot.white !== null ? buffer[slot.white] / 255 : 0
+            r = Math.min(1, buffer[slot.globalRgb[0]] / 255 + w) * intensity
+            g = Math.min(1, buffer[slot.globalRgb[1]] / 255 + w) * intensity
+            b = Math.min(1, buffer[slot.globalRgb[2]] / 255 + w) * intensity
           } else {
             const dimmer = buffer[slot.dimmerChannel] / 255
             r = (buffer[slot.colorChannel] / 255) * dimmer
@@ -378,6 +439,42 @@ export class PrevizScene {
       this.glows!.setColorAt(f, color)
     }
     this.glows.instanceColor!.needsUpdate = true
+  }
+
+  // Re-pose bars and their pixels when the motorized tilt moves. DMX is the
+  // truth: 0-65535 spans the full mechanical travel, mid-course = level.
+  private updateTilt(): void {
+    if (!this.bars || !this.pixels || this.tiltSlots.length === 0) return
+    if (feed.version === this.lastTiltVersion) return
+    this.lastTiltVersion = feed.version
+
+    const posed = new THREE.Matrix4()
+    const rotation = new THREE.Matrix4()
+    const pixelMatrix = new THREE.Matrix4()
+    let dirty = false
+    for (const slot of this.tiltSlots) {
+      const buffer = feed.universes.get(slot.universe)
+      if (!buffer) continue
+      const raw =
+        slot.tiltFine !== null
+          ? buffer[slot.tilt] * 256 + buffer[slot.tiltFine]
+          : buffer[slot.tilt] * 257
+      if (raw === slot.lastValue) continue
+      slot.lastValue = raw
+      dirty = true
+      const angle = (raw / 65535 - 0.5) * this.tiltRange
+      rotation.makeRotationX(angle)
+      posed.multiplyMatrices(slot.baseMatrix, rotation)
+      this.bars.setMatrixAt(slot.fixtureIndex, posed)
+      slot.pixelOffsets.forEach((offset, p) => {
+        pixelMatrix.multiplyMatrices(posed, offset)
+        this.pixels!.setMatrixAt(slot.fixtureIndex * slot.pixelOffsets.length + p, pixelMatrix)
+      })
+    }
+    if (dirty) {
+      this.bars.instanceMatrix.needsUpdate = true
+      this.pixels.instanceMatrix.needsUpdate = true
+    }
   }
 
   setView(view: number): void {
@@ -416,6 +513,7 @@ export class PrevizScene {
     this.updateTween()
     this.controls.update()
     this.updateColors()
+    this.updateTilt()
     this.composer.render()
   }
 
