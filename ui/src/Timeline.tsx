@@ -4,21 +4,16 @@
 // The canvas is drawn in a rAF loop reading feed.timecode directly; React only
 // renders the chrome (buttons, selected-marker editor) at interaction rate.
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { SceneSpec } from '../../core/effects'
 import { backToLive, editor, effectiveShowTime, isTimeOverridden } from './editor'
 import { feed } from './feed'
-import {
-  controlRecord,
-  controlReplay,
-  fetchRecordings,
-  type Marker,
-  type RecordingInfo,
-  type ShowFile,
-} from './show'
+import { type Marker, type ShowFile } from './show'
 import { formatTime, pad, round1, TimeInput } from './TimeInput'
 
 interface TimelineProps {
   show: ShowFile
+  mode: 'watch' | 'edit'
   onChange: (show: ShowFile) => void
   saveState: 'idle' | 'saving' | 'saved' | 'error'
   selectedSceneId: string | null
@@ -34,6 +29,7 @@ const SCENE_TOP = 42
 
 export default function Timeline({
   show,
+  mode,
   onChange,
   saveState,
   selectedSceneId,
@@ -46,17 +42,20 @@ export default function Timeline({
   const tcSubRef = useRef<HTMLSpanElement>(null)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [recordings, setRecordings] = useState<RecordingInfo[]>([])
-  const [replayFile, setReplayFile] = useState('')
   const [overridden, setOverridden] = useState(false)
-  const { stats } = useSyncExternalStore(feed.subscribe, feed.getSnapshot)
 
-  // Mutable view state read by the draw loop.
+  // Mutable state read by the draw loop and the pointer handlers.
   const view = useRef({ start: -5, pxPerSec: 6, followPausedUntil: 0 })
   const markersRef = useRef(show.markers)
   markersRef.current = show.markers
   const scenesRef = useRef(show.scenes)
   scenesRef.current = show.scenes
+  const showRef = useRef(show)
+  showRef.current = show
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
   const selectedRef = useRef(selectedId)
   selectedRef.current = selectedId
   const selectedSceneRef = useRef(selectedSceneId)
@@ -64,31 +63,22 @@ export default function Timeline({
   const onSelectSceneRef = useRef(onSelectScene)
   onSelectSceneRef.current = onSelectScene
   const replayingRef = useRef(false)
-  replayingRef.current = stats?.replay.replaying ?? false
+  replayingRef.current = feed.stats?.replay.replaying ?? false
 
   useEffect(() => {
     const poll = setInterval(() => setOverridden(isTimeOverridden()), 400)
     return () => clearInterval(poll)
   }, [])
 
+  // Leaving edit mode clears marker selection.
+  useEffect(() => {
+    if (mode === 'watch') setSelectedId(null)
+  }, [mode])
+
   const selected = useMemo(
     () => show.markers.find((marker) => marker.id === selectedId) ?? null,
     [show, selectedId],
   )
-
-  const recording = stats?.record.recording ?? false
-  const replaying = stats?.replay.replaying ?? false
-
-  useEffect(() => {
-    void fetchRecordings().then(setRecordings)
-  }, [])
-
-  // Refresh the recordings list when a recording finishes.
-  const wasRecording = useRef(false)
-  useEffect(() => {
-    if (wasRecording.current && !recording) void fetchRecordings().then(setRecordings)
-    wasRecording.current = recording
-  }, [recording])
 
   useEffect(() => {
     const canvas = canvasRef.current!
@@ -155,6 +145,8 @@ export default function Timeline({
         stroke: 'rgba(167,139,250,0.5)',
         strokeSelected: '#a78bfa',
       })
+
+      replayingRef.current = feed.stats?.replay.replaying ?? false
 
       // Playhead: green live, orange replay, violet preview/scrub.
       if (showTime !== null) {
@@ -224,63 +216,167 @@ export default function Timeline({
       }
     }
 
-    // Interactions: scrub on the ruler, drag to pan elsewhere, wheel to zoom,
-    // click to select a marker (top band) or a scene (main band).
-    let down: { x: number; y: number; start: number; moved: boolean; scrubbing: boolean } | null =
-      null
+    // Interactions, borrowed from simple video editors (iMovie / Cut page):
+    // direct manipulation. In Edit: drag a scene block to move it, drag its
+    // edges to trim, click empty space or the ruler to scrub, shift+drag to
+    // pan. In Watch: drag pans, nothing else. Wheel zooms, horizontal wheel
+    // pans, everywhere.
+    type Drag =
+      | { type: 'pan'; x: number; viewStart: number }
+      | { type: 'scrub' }
+      | { type: 'pending-scene'; x: number; sceneId: string; start: number; end: number }
+      | { type: 'move' | 'trim-l' | 'trim-r'; x: number; sceneId: string; start: number; end: number }
+    let drag: Drag | null = null
+    const EDGE_PX = 6
+
+    const sceneHit = (t: number, y: number): SceneSpec | null => {
+      if (y < SCENE_TOP) return null
+      const tolerance = EDGE_PX / view.current.pxPerSec
+      return (
+        [...scenesRef.current]
+          .reverse()
+          .find((scene) => t >= scene.start - tolerance && t <= scene.end + tolerance) ?? null
+      )
+    }
+    const edgeOf = (scene: SceneSpec, t: number): 'trim-l' | 'trim-r' | null => {
+      const tolerance = EDGE_PX / view.current.pxPerSec
+      if (Math.abs(t - scene.start) <= tolerance) return 'trim-l'
+      if (Math.abs(t - scene.end) <= tolerance) return 'trim-r'
+      return null
+    }
+    const snap = (t: number): number => {
+      const grid = view.current.pxPerSec >= 40 ? 0.1 : 1
+      return Math.max(0, Math.round(t / grid) * grid)
+    }
+    const updateScene = (sceneId: string, update: Partial<SceneSpec>): void => {
+      const current = showRef.current
+      onChangeRef.current({
+        ...current,
+        scenes: current.scenes.map((scene) =>
+          scene.id === sceneId ? { ...scene, ...update } : scene,
+        ),
+      })
+    }
+    const scrubTo = (clientX: number): void => {
+      const rect = canvas.getBoundingClientRect()
+      editor.playing = false
+      editor.scrub = Math.max(0, timeAt(clientX - rect.left))
+      editor.version++
+      setOverridden(true)
+    }
 
     const onPointerDown = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect()
+      const x = event.clientX - rect.left
       const y = event.clientY - rect.top
-      const scrubbing = y < RULER_H
-      down = { x: event.clientX, y: event.clientY, start: view.current.start, moved: false, scrubbing }
+      const t = timeAt(x)
       canvas.setPointerCapture(event.pointerId)
-      if (scrubbing) {
-        editor.playing = false
-        editor.scrub = Math.max(0, timeAt(event.clientX - rect.left))
-        editor.version++
-        setOverridden(true)
-      }
-    }
-    const onPointerMove = (event: PointerEvent) => {
-      if (!down) return
-      if (down.scrubbing) {
-        const rect = canvas.getBoundingClientRect()
-        editor.scrub = Math.max(0, timeAt(event.clientX - rect.left))
-        editor.version++
+
+      if (modeRef.current === 'watch') {
+        drag = { type: 'pan', x: event.clientX, viewStart: view.current.start }
         return
       }
-      const dx = event.clientX - down.x
-      if (Math.abs(dx) > 4) down.moved = true
-      if (down.moved) {
-        view.current.start = down.start - dx / view.current.pxPerSec
-        view.current.followPausedUntil = performance.now() + 4000
+      if (event.shiftKey) {
+        drag = { type: 'pan', x: event.clientX, viewStart: view.current.start }
+        return
       }
+      if (y < RULER_H) {
+        drag = { type: 'scrub' }
+        scrubTo(event.clientX)
+        return
+      }
+      if (y >= MARKER_TOP && y <= MARKER_BOTTOM) {
+        const hit = [...markersRef.current]
+          .reverse()
+          .find((marker) => t >= marker.start && t <= marker.end)
+        setSelectedId(hit?.id ?? null)
+        return
+      }
+      const scene = sceneHit(t, y)
+      if (scene) {
+        const edge = edgeOf(scene, t)
+        drag = edge
+          ? { type: edge, x: event.clientX, sceneId: scene.id, start: scene.start, end: scene.end }
+          : {
+              type: 'pending-scene',
+              x: event.clientX,
+              sceneId: scene.id,
+              start: scene.start,
+              end: scene.end,
+            }
+        return
+      }
+      // Empty area: scrub there and deselect, like clicking an editor's timeline.
+      onSelectSceneRef.current(null)
+      setSelectedId(null)
+      drag = { type: 'scrub' }
+      scrubTo(event.clientX)
     }
-    const onPointerUp = (event: PointerEvent) => {
-      if (!down) return
-      if (!down.moved && !down.scrubbing) {
-        const rect = canvas.getBoundingClientRect()
-        const t = timeAt(event.clientX - rect.left)
-        const y = event.clientY - rect.top
-        if (y >= MARKER_TOP && y <= MARKER_BOTTOM) {
-          const hit = [...markersRef.current]
-            .reverse()
-            .find((marker) => t >= marker.start && t <= marker.end)
-          setSelectedId(hit?.id ?? null)
-        } else if (y >= SCENE_TOP) {
-          const hit = [...scenesRef.current]
-            .reverse()
-            .find((scene) => t >= scene.start && t <= scene.end)
-          onSelectSceneRef.current(hit?.id ?? null)
-          if (hit) setSelectedId(null)
+
+    const onPointerMove = (event: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      if (!drag) {
+        // Hover feedback in edit mode: trim cursor on scene edges.
+        if (modeRef.current === 'edit') {
+          const t = timeAt(event.clientX - rect.left)
+          const y = event.clientY - rect.top
+          const scene = sceneHit(t, y)
+          canvas.style.cursor =
+            scene && edgeOf(scene, t) ? 'ew-resize' : scene ? 'pointer' : 'grab'
+        } else {
+          canvas.style.cursor = 'grab'
+        }
+        return
+      }
+      const dt = (event.clientX - ('x' in drag ? drag.x : event.clientX)) / view.current.pxPerSec
+      switch (drag.type) {
+        case 'pan':
+          view.current.start = drag.viewStart - (event.clientX - drag.x) / view.current.pxPerSec
+          view.current.followPausedUntil = performance.now() + 4000
+          break
+        case 'scrub':
+          scrubTo(event.clientX)
+          break
+        case 'pending-scene':
+          if (Math.abs(event.clientX - drag.x) > 4) {
+            drag = { ...drag, type: 'move' }
+          }
+          break
+        case 'move': {
+          const duration = drag.end - drag.start
+          const start = snap(drag.start + dt)
+          updateScene(drag.sceneId, { start: round1(start), end: round1(start + duration) })
+          break
+        }
+        case 'trim-l': {
+          const start = Math.min(snap(drag.start + dt), drag.end - 1)
+          updateScene(drag.sceneId, { start: round1(start) })
+          break
+        }
+        case 'trim-r': {
+          const end = Math.max(snap(drag.end + dt), drag.start + 1)
+          updateScene(drag.sceneId, { end: round1(end) })
+          break
         }
       }
-      down = null
     }
+
+    const onPointerUp = () => {
+      if (drag?.type === 'pending-scene') {
+        onSelectSceneRef.current(drag.sceneId)
+        setSelectedId(null)
+      }
+      drag = null
+    }
+
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
       const rect = canvas.getBoundingClientRect()
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+        view.current.start += event.deltaX / view.current.pxPerSec
+        view.current.followPausedUntil = performance.now() + 4000
+        return
+      }
       const cursorX = event.clientX - rect.left
       const cursorTime = timeAt(cursorX)
       const factor = Math.pow(1.0015, -event.deltaY)
@@ -352,7 +448,7 @@ export default function Timeline({
 
       <div className="timeline-wrap" ref={wrapRef}>
         <canvas ref={canvasRef} />
-        {selected && (
+        {mode === 'edit' && selected && (
           <div className="marker-editor">
             <input
               className="marker-name"
@@ -377,63 +473,52 @@ export default function Timeline({
         )}
       </div>
 
-      <div className="dock-controls">
-        <button className="button" onClick={addSection}>
-          Add section
-        </button>
-        <button
-          className="button"
-          onClick={() => {
-            const canvas = canvasRef.current!
-            const tc = feed.timecode
-            const center = view.current.start + canvas.clientWidth / 2 / view.current.pxPerSec
-            onAddScene(Math.max(0, round1(tc.receiving ? tc.total : center)))
-          }}
-        >
-          Add scene
-        </button>
-        {overridden && (
+      {mode === 'edit' ? (
+        <div className="dock-controls">
           <button
-            className="button live-button"
+            className="button primary"
             onClick={() => {
-              backToLive()
-              setOverridden(false)
+              const canvas = canvasRef.current!
+              const tc = feed.timecode
+              const center = view.current.start + canvas.clientWidth / 2 / view.current.pxPerSec
+              onAddScene(Math.max(0, round1(tc.receiving ? tc.total : center)))
             }}
           >
-            ⏺ Back to live
+            + Scene
           </button>
-        )}
-        <button
-          className={`button record ${recording ? 'on' : ''}`}
-          onClick={() => void controlRecord(recording ? 'stop' : 'start')}
-        >
-          {recording ? `■ REC ${formatTime(stats?.record.seconds ?? 0)}` : '● Record'}
-        </button>
-        <select
-          className="recording-select"
-          value={replayFile}
-          onChange={(e) => setReplayFile(e.target.value)}
-          onFocus={() => void fetchRecordings().then(setRecordings)}
-        >
-          <option value="">— recordings —</option>
-          {recordings.map((entry) => (
-            <option key={entry.file} value={entry.file}>
-              {entry.file}
-              {entry.durationMs ? ` (${formatTime(Math.round(entry.durationMs / 1000))})` : ''}
-            </option>
-          ))}
-        </select>
-        <button
-          className="button"
-          disabled={!replaying && replayFile === ''}
-          onClick={() => void controlReplay(replaying ? 'stop' : 'start', replayFile)}
-        >
-          {replaying ? '■ Stop' : '▶ Replay'}
-        </button>
-        <span className={`save-state ${saveState}`}>
-          {saveState === 'saving' ? 'saving…' : saveState === 'saved' ? 'saved' : saveState === 'error' ? 'save failed' : ''}
-        </span>
-      </div>
+          <button className="button" onClick={addSection}>
+            + Section
+          </button>
+          {overridden && (
+            <button
+              className="button live-button"
+              onClick={() => {
+                backToLive()
+                setOverridden(false)
+              }}
+            >
+              Back to live
+            </button>
+          )}
+          <span className={`save-state ${saveState}`}>
+            {saveState === 'saving' ? 'saving…' : saveState === 'saved' ? 'saved' : saveState === 'error' ? 'save failed' : ''}
+          </span>
+        </div>
+      ) : (
+        overridden && (
+          <div className="dock-controls">
+            <button
+              className="button live-button"
+              onClick={() => {
+                backToLive()
+                setOverridden(false)
+              }}
+            >
+              Back to live
+            </button>
+          </div>
+        )
+      )}
     </footer>
   )
 }

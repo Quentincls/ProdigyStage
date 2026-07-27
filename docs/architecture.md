@@ -76,6 +76,26 @@ Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
   auto-sauvé (même debounce que les marqueurs). Aucune notion DMX visible.
 - Toujours AUCUNE émission réseau : les scènes ne se voient que dans la previz.
 
+## UX (Phase 5.5) — deux modes, un tiroir
+
+- **Watch** (défaut) : previz plein écran + timecode + timeline lecture seule.
+  Zéro bouton d'édition — l'écran qu'on laisse tourner en régie.
+- **Edit** : timeline interactive avec **manipulation directe** (référence
+  iMovie/FCP) : drag d'un bloc scène = déplacer, drag de ses bords = trim
+  (curseur ew-resize au survol), clic sur zone vide ou la règle = scrub,
+  shift+drag = pan, molette = zoom, molette horizontale = pan. Snap 1 s
+  (0,1 s zoomé). `+ Scene` est LA action primaire.
+- **Tools (⚙)** : DMX monitor (page overlay), Placement, Runs (record/replay)
+  — sortis du chrome principal, usage occasionnel.
+- **SceneEditor simplifié** : presets d'abord (« Start from a preset »), UN
+  look visible (murs + effet + ≤4 réglages), tout le reste sous « Advanced »
+  (fades, looks superposés, gestion des presets, delete). Vocabulaire
+  « Look », plus de « Track » visible.
+- **Statut en phrases** : « Console connected — nothing is sent » /
+  « Waiting for the console… ». Les métriques (pkt/s, IP) vivent dans le
+  DMX monitor. La Phase 6 branchera SPECTATOR/ARMED/BLACKOUT sur ce même
+  emplacement (hold 1 s pour armer, bannière watchdog).
+
 ## Packaging v0 (`npm run package`)
 
 `dist-package/LumenStage/` : `server/` (JS compilé) + `ui/` (build Vite) +

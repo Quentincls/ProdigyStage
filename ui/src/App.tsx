@@ -1,29 +1,34 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { defaultParams } from '../../core/effects'
-import { editor } from './editor'
+import { backToLive, editor } from './editor'
 import { feed } from './feed'
 import Monitor from './Monitor'
 import { fetchPatch, savePatch, type Patch } from './patch'
 import PlacementPanel from './previz/PlacementPanel'
 import Previz from './previz/Previz'
+import RunsPanel from './RunsPanel'
 import SceneEditor from './SceneEditor'
 import { fetchShow, saveShow, type ShowFile } from './show'
 import Timeline from './Timeline'
 import { round1 } from './TimeInput'
 
-type View = 'previz' | 'monitor'
+// Two intents, two modes: Watch (default, safe, zero chrome) and Edit.
+// Technical tools (DMX monitor, placement, runs) live behind the gear menu.
+type Mode = 'watch' | 'edit'
+type Tool = 'monitor' | 'placement' | 'runs' | null
 
 export default function App() {
   const [patch, setPatch] = useState<Patch | null>(null)
   const [savedJson, setSavedJson] = useState('')
-  const [view, setView] = useState<View>('previz')
-  const [placement, setPlacement] = useState(false)
+  const [mode, setMode] = useState<Mode>('watch')
+  const [tool, setTool] = useState<Tool>(null)
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [selection, setSelection] = useState<string[]>([])
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const { connected, stats } = useSyncExternalStore(feed.subscribe, feed.getSnapshot)
 
   const [show, setShow] = useState<ShowFile | null>(null)
   const [showSaveState, setShowSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const showSaveTimer = useRef<number | null>(null)
   const showLoaded = useRef(false)
 
@@ -72,21 +77,56 @@ export default function App() {
   const totalPps = stats
     ? Object.values(stats.perUniverse).reduce((sum, u) => sum + u.pps, 0)
     : 0
-  const sources = stats
-    ? [...new Set(Object.values(stats.perUniverse).map((u) => u.from).filter(Boolean))]
-    : []
 
+  // Status in plain words -- the metrics live in the DMX monitor.
   let statusText: string
-  if (!connected) statusText = 'Connecting to server…'
-  else if (!stats?.udp.listening) statusText = `Server up — UDP ${stats?.udp.port ?? 6454} unavailable`
-  else if (totalPps > 0)
-    statusText = `Listening on universes 1–4 — ${totalPps} pkt/s${sources.length ? ` from ${sources.join(', ')}` : ''}`
-  else statusText = 'Listening on universes 1–4 — no Art-Net traffic'
+  let dotClass: string
+  if (!connected) {
+    statusText = 'Connecting to server…'
+    dotClass = 'down'
+  } else if (stats?.replay.replaying) {
+    statusText = `Replaying ${stats.replay.file ?? ''} — nothing is sent`
+    dotClass = 'ok'
+  } else if (!stats?.udp.listening) {
+    statusText = 'Art-Net port unavailable — open the DMX monitor'
+    dotClass = 'down'
+  } else if (totalPps > 0) {
+    statusText = 'Console connected — nothing is sent'
+    dotClass = 'ok'
+  } else {
+    statusText = 'Waiting for the console — nothing is sent'
+    dotClass = 'idle'
+  }
 
-  async function handleSave(): Promise<void> {
+  function switchMode(next: Mode): void {
+    setMode(next)
+    setToolsOpen(false)
+    if (next === 'watch') {
+      setSelectedSceneId(null)
+      setTool((current) => (current === 'monitor' ? current : null))
+      backToLive()
+    }
+  }
+
+  function openTool(next: Tool): void {
+    setToolsOpen(false)
+    setTool((current) => (current === next ? null : next))
+    if (next === 'placement' || next === 'runs') setSelectedSceneId(null)
+  }
+
+  function handleSelectScene(id: string | null): void {
+    setSelectedSceneId(id)
+    if (id && tool !== 'monitor') setTool(null)
+  }
+
+  async function handleSavePatch(): Promise<void> {
     if (!patch) return
     await savePatch(patch)
     setSavedJson(JSON.stringify(patch))
+  }
+
+  function handleRevertPatch(): void {
+    if (savedJson) setPatch(JSON.parse(savedJson) as Patch)
   }
 
   function handleAddScene(start: number): void {
@@ -109,20 +149,7 @@ export default function App() {
     }
     handleShowChange({ ...show, scenes: [...show.scenes, scene] })
     setSelectedSceneId(scene.id)
-    setPlacement(false)
-    setView('previz')
-  }
-
-  function handleSelectScene(id: string | null): void {
-    setSelectedSceneId(id)
-    if (id) {
-      setPlacement(false)
-      setView('previz')
-    }
-  }
-
-  function handleRevert(): void {
-    if (savedJson) setPatch(JSON.parse(savedJson) as Patch)
+    setTool((current) => (current === 'monitor' ? current : null))
   }
 
   return (
@@ -131,56 +158,80 @@ export default function App() {
         <div className="brand">
           <h1>PRODIGY STAGE</h1>
           <nav className="tabs">
-            <button className={view === 'previz' ? 'active' : ''} onClick={() => setView('previz')}>
-              Previz
+            <button className={mode === 'watch' ? 'active' : ''} onClick={() => switchMode('watch')}>
+              Watch
             </button>
-            <button
-              className={view === 'monitor' ? 'active' : ''}
-              onClick={() => setView('monitor')}
-            >
-              Monitor
+            <button className={mode === 'edit' ? 'active' : ''} onClick={() => switchMode('edit')}>
+              Edit
             </button>
           </nav>
-          {view === 'previz' && (
-            <button
-              className={`ghost-button ${placement ? 'active' : ''}`}
-              onClick={() => setPlacement(!placement)}
-            >
-              Placement
-            </button>
-          )}
-          {dirty && <span className="dirty-badge">unsaved changes</span>}
+          {dirty && tool === 'placement' && <span className="dirty-badge">unsaved changes</span>}
         </div>
         <div className="statusline">
-          <span className={`dot ${connected && totalPps > 0 ? 'ok' : connected ? 'idle' : 'down'}`} />
+          <span className={`dot ${dotClass}`} />
           <span>{statusText}</span>
-          {stats && stats.otherPps > 0 && (
-            <span className="muted">+{stats.otherPps} pkt/s on other universes</span>
-          )}
+          <div className="tools">
+            <button
+              className="ghost-button icon-button"
+              aria-label="Tools"
+              onClick={() => setToolsOpen(!toolsOpen)}
+            >
+              ⚙
+            </button>
+            {toolsOpen && (
+              <>
+                <div className="menu-backdrop" onClick={() => setToolsOpen(false)} />
+                <div className="tools-menu">
+                  <button onClick={() => openTool('monitor')}>
+                    DMX monitor {tool === 'monitor' ? '·' : ''}
+                  </button>
+                  <button onClick={() => openTool('placement')}>
+                    Placement {tool === 'placement' ? '·' : ''}
+                  </button>
+                  <button onClick={() => openTool('runs')}>
+                    Runs — record and replay {tool === 'runs' ? '·' : ''}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
       <main className="content">
         {!patch ? (
           <p className="loading">Waiting for server…</p>
-        ) : view === 'previz' ? (
+        ) : tool === 'monitor' ? (
+          <div className="monitor-wrap">
+            <div className="monitor-header">
+              <h2>DMX monitor</h2>
+              <button className="button" onClick={() => setTool(null)}>
+                Close
+              </button>
+            </div>
+            <Monitor patch={patch} />
+          </div>
+        ) : (
           <>
             <Previz
               patch={patch}
-              selection={selection}
-              onPick={(id) => setSelection(id ? [id] : [])}
+              selection={tool === 'placement' ? selection : []}
+              onPick={(id) => {
+                if (tool === 'placement') setSelection(id ? [id] : [])
+              }}
             />
-            {placement && !selectedSceneId && (
+            {tool === 'placement' && (
               <PlacementPanel
                 patch={patch}
                 selection={selection}
                 dirty={dirty}
                 onSelect={setSelection}
                 onChange={setPatch}
-                onSave={handleSave}
-                onRevert={handleRevert}
+                onSave={handleSavePatch}
+                onRevert={handleRevertPatch}
               />
             )}
-            {selectedSceneId && show && (
+            {tool === 'runs' && <RunsPanel onClose={() => setTool(null)} />}
+            {mode === 'edit' && selectedSceneId && show && (
               <SceneEditor
                 show={show}
                 sceneId={selectedSceneId}
@@ -188,33 +239,26 @@ export default function App() {
                 onClose={() => setSelectedSceneId(null)}
               />
             )}
-            {(!connected || totalPps === 0) && (
+            {(!connected || (totalPps === 0 && stats?.udp.listening)) && (
               <div className="welcome">
-                <h2>LumenStage Previz</h2>
+                <h2>LumenStage</h2>
                 <div className="welcome-row">
                   <span className={`dot ${connected ? 'idle' : 'down'}`} />
                   <span>{connected ? 'Server connected' : 'Connecting to server…'}</span>
                 </div>
                 <div className="welcome-row">
-                  <span className={`dot ${connected && stats?.udp.listening ? 'idle' : 'down'}`} />
-                  <span>
-                    {stats?.udp.listening
-                      ? 'Listening for Art-Net on universes 1–4 — waiting for the console or the fake show'
-                      : `UDP ${stats?.udp.port ?? 6454} unavailable`}
-                  </span>
+                  <span className="dot idle" />
+                  <span>Waiting for the console or a test show — nothing is ever sent.</span>
                 </div>
               </div>
             )}
           </>
-        ) : (
-          <div className="monitor-wrap">
-            <Monitor patch={patch} />
-          </div>
         )}
       </main>
       {show && (
         <Timeline
           show={show}
+          mode={mode}
           onChange={handleShowChange}
           saveState={showSaveState}
           selectedSceneId={selectedSceneId}

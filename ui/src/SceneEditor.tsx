@@ -1,8 +1,8 @@
-// Scene editor panel (brief Phase 5B). Radically simple on purpose: a scene
-// is a time range plus a list of tracks; a track is target + effect + at most
-// four controls + fades. No DMX concept anywhere.
+// Scene editor panel, radically simple (brief + Phase 5.5 UX pass):
+// presets first, then ONE visible look (walls + effect + a few controls).
+// Fades and extra layered looks live behind Advanced. No DMX anywhere.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   defaultParams,
   EFFECTS,
@@ -31,6 +31,7 @@ const TARGETS: { value: TrackTarget; label: string }[] = [
 
 export default function SceneEditor({ show, sceneId, onChange, onClose }: SceneEditorProps) {
   const scene = show.scenes.find((s) => s.id === sceneId)
+  const [advanced, setAdvanced] = useState(false)
   const previewing = editor.playing && editor.previewSceneId === sceneId
 
   useEffect(() => {
@@ -55,25 +56,33 @@ export default function SceneEditor({ show, sceneId, onChange, onClose }: SceneE
     })
   }
 
-  function addTrack(from?: PresetSpec): void {
-    const track: TrackSpec = from
-      ? {
-          id: crypto.randomUUID(),
-          target: from.target,
-          effect: from.effect,
-          params: { ...from.params },
-          fadeIn: from.fadeIn,
-          fadeOut: from.fadeOut,
-        }
-      : {
+  function applyPreset(preset: PresetSpec): void {
+    const main = scene!.tracks[0]
+    const applied: TrackSpec = {
+      id: main?.id ?? crypto.randomUUID(),
+      target: preset.target,
+      effect: preset.effect,
+      params: { ...preset.params },
+      fadeIn: preset.fadeIn,
+      fadeOut: preset.fadeOut,
+    }
+    updateScene({ tracks: [applied, ...scene!.tracks.slice(1)] })
+  }
+
+  function addLook(): void {
+    updateScene({
+      tracks: [
+        ...scene!.tracks,
+        {
           id: crypto.randomUUID(),
           target: 'both',
-          effect: 'wave',
-          params: defaultParams('wave'),
+          effect: 'solid',
+          params: defaultParams('solid'),
           fadeIn: 0.5,
           fadeOut: 0.5,
-        }
-    updateScene({ tracks: [...scene!.tracks, track] })
+        },
+      ],
+    })
   }
 
   function saveAsPreset(track: TrackSpec): void {
@@ -90,22 +99,14 @@ export default function SceneEditor({ show, sceneId, onChange, onClose }: SceneE
     onChange({ ...show, presets: [...show.presets, preset] })
   }
 
-  function updatePreset(presetId: string, update: Partial<PresetSpec>): void {
-    onChange({
-      ...show,
-      presets: show.presets.map((p) => (p.id === presetId ? { ...p, ...update } : p)),
-    })
-  }
-
-  function deletePreset(presetId: string): void {
-    onChange({ ...show, presets: show.presets.filter((p) => p.id !== presetId) })
-  }
-
   function deleteScene(): void {
     if (editor.previewSceneId === sceneId) backToLive()
     onChange({ ...show, scenes: show.scenes.filter((s) => s.id !== sceneId) })
     onClose()
   }
+
+  const mainLook = scene.tracks[0]
+  const extraLooks = scene.tracks.slice(1)
 
   return (
     <aside className="panel panel-wide">
@@ -136,148 +137,221 @@ export default function SceneEditor({ show, sceneId, onChange, onClose }: SceneE
               className={`button ${previewing ? '' : 'primary'}`}
               onClick={() => (previewing ? backToLive() : startPreview(scene.id))}
             >
-              {previewing ? '■ Stop' : '▶ Preview loop'}
+              {previewing ? '■ Stop' : '▶ Preview'}
             </button>
           </div>
         </div>
       </div>
 
-      {scene.tracks.map((track, index) => (
-        <div className="panel-section track" key={track.id}>
-          <div className="track-head">
-            <span className="panel-label">Track {index + 1}</span>
-            <div className="track-actions">
-              <button className="chip" title="Save as preset" onClick={() => saveAsPreset(track)}>
-                Save preset
+      {show.presets.length > 0 && (
+        <div className="panel-section">
+          <span className="panel-label">Start from a preset</span>
+          <div className="chip-row">
+            {show.presets.map((preset) => (
+              <button key={preset.id} className="chip" onClick={() => applyPreset(preset)}>
+                {preset.name}
               </button>
-              <button
-                className="chip"
-                onClick={() => updateScene({ tracks: scene.tracks.filter((t) => t.id !== track.id) })}
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-
-          <select
-            className="recording-select"
-            value={track.target}
-            onChange={(e) => updateTrack(track.id, { target: e.target.value as TrackTarget })}
-          >
-            {TARGETS.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-
-          <div className="effect-picker">
-            {EFFECTS.map((def) => (
-              <EffectChip
-                key={def.type}
-                type={def.type}
-                label={def.label}
-                active={track.effect === def.type}
-                onClick={() =>
-                  updateTrack(track.id, { effect: def.type, params: defaultParams(def.type) })
-                }
-              />
             ))}
           </div>
+        </div>
+      )}
 
-          {EFFECTS.find((e) => e.type === track.effect)?.params.map((param) => (
-            <label className="param-row" key={param.key}>
-              <span>{param.label}</span>
-              {param.type === 'color' ? (
-                <input
-                  type="color"
-                  value={String(track.params[param.key] ?? param.default)}
-                  onChange={(e) =>
-                    updateTrack(track.id, { params: { ...track.params, [param.key]: e.target.value } })
-                  }
-                />
-              ) : (
-                <>
+      {mainLook && (
+        <LookControls
+          look={mainLook}
+          onUpdate={(update) => updateTrack(mainLook.id, update)}
+          onSavePreset={() => saveAsPreset(mainLook)}
+        />
+      )}
+
+      <button className="ghost-button advanced-toggle" onClick={() => setAdvanced(!advanced)}>
+        {advanced ? '▾ Advanced' : '▸ Advanced'}
+      </button>
+
+      {advanced && (
+        <>
+          {mainLook && (
+            <div className="panel-section">
+              <span className="panel-label">Fades (s)</span>
+              <div className="field-row">
+                <label className="field">
+                  <span>Fade in</span>
                   <input
-                    type="range"
-                    min={param.min}
-                    max={param.max}
-                    step={param.step}
-                    value={Number(track.params[param.key] ?? param.default)}
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={mainLook.fadeIn}
                     onChange={(e) =>
-                      updateTrack(track.id, {
-                        params: { ...track.params, [param.key]: e.target.valueAsNumber },
+                      updateTrack(mainLook.id, {
+                        fadeIn: round1(Math.max(0, e.target.valueAsNumber || 0)),
                       })
                     }
                   />
-                  <span className="param-value">
-                    {Number(track.params[param.key] ?? param.default)}
-                  </span>
-                </>
-              )}
-            </label>
+                </label>
+                <label className="field">
+                  <span>Fade out</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={mainLook.fadeOut}
+                    onChange={(e) =>
+                      updateTrack(mainLook.id, {
+                        fadeOut: round1(Math.max(0, e.target.valueAsNumber || 0)),
+                      })
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {extraLooks.map((look, index) => (
+            <div className="panel-section track" key={look.id}>
+              <div className="track-head">
+                <span className="panel-label">Look {index + 2}</span>
+                <div className="track-actions">
+                  <button className="chip" onClick={() => saveAsPreset(look)}>
+                    Save preset
+                  </button>
+                  <button
+                    className="chip"
+                    onClick={() =>
+                      updateScene({ tracks: scene.tracks.filter((t) => t.id !== look.id) })
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+              <LookControls look={look} onUpdate={(update) => updateTrack(look.id, update)} />
+            </div>
           ))}
 
-          <div className="field-row">
-            <label className="field">
-              <span>Fade in (s)</span>
-              <input
-                type="number"
-                min={0}
-                step={0.1}
-                value={track.fadeIn}
-                onChange={(e) =>
-                  updateTrack(track.id, { fadeIn: round1(Math.max(0, e.target.valueAsNumber || 0)) })
-                }
-              />
-            </label>
-            <label className="field">
-              <span>Fade out (s)</span>
-              <input
-                type="number"
-                min={0}
-                step={0.1}
-                value={track.fadeOut}
-                onChange={(e) =>
-                  updateTrack(track.id, { fadeOut: round1(Math.max(0, e.target.valueAsNumber || 0)) })
-                }
-              />
-            </label>
-          </div>
-        </div>
-      ))}
+          <button className="button" onClick={addLook}>
+            + Add another look
+          </button>
 
-      <button className="button" onClick={() => addTrack()}>
-        + Add track
-      </button>
+          <ManagePresets show={show} onChange={onChange} />
 
-      <div className="panel-section">
-        <span className="panel-label">Presets</span>
-        {show.presets.length === 0 && (
-          <span className="muted-note">Save a configured track to reuse it anywhere.</span>
-        )}
-        {show.presets.map((preset) => (
-          <div className="preset-row" key={preset.id}>
-            <input
-              value={preset.name}
-              onChange={(e) => updatePreset(preset.id, { name: e.target.value })}
-            />
-            <button className="chip" onClick={() => addTrack(preset)}>
-              Use
+          <footer className="panel-footer">
+            <button className="button danger" onClick={deleteScene}>
+              Delete scene
             </button>
-            <button className="chip" onClick={() => deletePreset(preset.id)}>
-              ×
-            </button>
-          </div>
+          </footer>
+        </>
+      )}
+    </aside>
+  )
+}
+
+// Target + effect + its few parameters. The whole vocabulary a user needs.
+function LookControls({
+  look,
+  onUpdate,
+  onSavePreset,
+}: {
+  look: TrackSpec
+  onUpdate: (update: Partial<TrackSpec>) => void
+  onSavePreset?: () => void
+}) {
+  return (
+    <div className="panel-section">
+      <select
+        className="recording-select"
+        value={look.target}
+        onChange={(e) => onUpdate({ target: e.target.value as TrackTarget })}
+      >
+        {TARGETS.map((t) => (
+          <option key={t.value} value={t.value}>
+            {t.label}
+          </option>
+        ))}
+      </select>
+
+      <div className="effect-picker">
+        {EFFECTS.map((def) => (
+          <EffectChip
+            key={def.type}
+            type={def.type}
+            label={def.label}
+            active={look.effect === def.type}
+            onClick={() => onUpdate({ effect: def.type, params: defaultParams(def.type) })}
+          />
         ))}
       </div>
 
-      <footer className="panel-footer">
-        <button className="button danger" onClick={deleteScene}>
-          Delete scene
+      {EFFECTS.find((e) => e.type === look.effect)?.params.map((param) => (
+        <label className="param-row" key={param.key}>
+          <span>{param.label}</span>
+          {param.type === 'color' ? (
+            <input
+              type="color"
+              value={String(look.params[param.key] ?? param.default)}
+              onChange={(e) => onUpdate({ params: { ...look.params, [param.key]: e.target.value } })}
+            />
+          ) : (
+            <>
+              <input
+                type="range"
+                min={param.min}
+                max={param.max}
+                step={param.step}
+                value={Number(look.params[param.key] ?? param.default)}
+                onChange={(e) =>
+                  onUpdate({ params: { ...look.params, [param.key]: e.target.valueAsNumber } })
+                }
+              />
+              <span className="param-value">{Number(look.params[param.key] ?? param.default)}</span>
+            </>
+          )}
+        </label>
+      ))}
+
+      {onSavePreset && (
+        <button className="ghost-button save-preset" onClick={onSavePreset}>
+          Save this look as a preset
         </button>
-      </footer>
-    </aside>
+      )}
+    </div>
+  )
+}
+
+function ManagePresets({
+  show,
+  onChange,
+}: {
+  show: ShowFile
+  onChange: (show: ShowFile) => void
+}) {
+  if (show.presets.length === 0) return null
+  return (
+    <div className="panel-section">
+      <span className="panel-label">Manage presets</span>
+      {show.presets.map((preset) => (
+        <div className="preset-row" key={preset.id}>
+          <input
+            value={preset.name}
+            onChange={(e) =>
+              onChange({
+                ...show,
+                presets: show.presets.map((p) =>
+                  p.id === preset.id ? { ...p, name: e.target.value } : p,
+                ),
+              })
+            }
+          />
+          <button
+            className="chip"
+            onClick={() =>
+              onChange({ ...show, presets: show.presets.filter((p) => p.id !== preset.id) })
+            }
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
   )
 }
 

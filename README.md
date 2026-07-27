@@ -17,6 +17,10 @@ synchronisée au timecode et édition de scènes en man-in-the-middle.
       (solid/gradient/wave/chase/sparkle), scènes+tracks dans show.json, panneau
       d'édition (groupe + effet + ≤4 réglages + fades), préécoute en boucle, scrub,
       presets. Visible en previz uniquement.
+- [x] **Phase 5.5** — passe simplicité : modes Watch/Edit, menu Tools (monitor,
+      placement, runs), manipulation directe sur la timeline (drag = déplacer,
+      bords = trim, clic = scrub), éditeur à un look + Advanced replié, statut
+      en phrases humaines.
 
 **Le soft n'émet toujours RIEN vers le rig** — pur spectateur jusqu'à la Phase 6.
 
