@@ -742,31 +742,63 @@ export default function Timeline({
       </div>
 
       <div className="timeline-wrap" ref={wrapRef}>
-        <canvas className="timeline-main" ref={canvasRef} />
-        <canvas className="timeline-minimap" ref={minimapRef} />
-        {mode === 'edit' && selected && (
-          <div className="marker-editor">
-            <input
-              className="marker-name"
-              value={selected.name}
-              onChange={(e) => updateSelected({ name: e.target.value })}
-            />
-            <label>
-              <span>Start</span>
-              <TimeInput value={selected.start} onCommit={(v) => updateSelected({ start: v })} />
-            </label>
-            <label>
-              <span>End</span>
-              <TimeInput value={selected.end} onCommit={(v) => updateSelected({ end: v })} />
-            </label>
-            <button className="button" onClick={deleteSelected}>
-              Delete
-            </button>
-            <button className="button" onClick={() => setSelectedId(null)}>
-              Close
-            </button>
+        {/* The show's table of contents, above the timeline: every section in
+            order, click to travel there. Editing happens here too instead of
+            floating over the lanes it is meant to line up with. */}
+        {mode === 'edit' && (
+          <div className="section-bar">
+            <div className="section-chips">
+              {show.markers.length === 0 && (
+                <span className="section-empty">
+                  No sections yet — add one to split the show into parts
+                </span>
+              )}
+              {[...show.markers]
+                .sort((a, b) => a.start - b.start)
+                .map((marker) => (
+                  <button
+                    key={marker.id}
+                    className={`section-chip ${selectedId === marker.id ? 'active' : ''}`}
+                    title={`Go to ${formatTime(marker.start)}`}
+                    onClick={() => {
+                      setSelectedId(marker.id)
+                      onSelectScene(null)
+                      seekTo(marker.start)
+                      setOverridden(true)
+                    }}
+                  >
+                    <span className="section-chip-time">{formatTime(marker.start)}</span>
+                    {marker.name}
+                  </button>
+                ))}
+            </div>
+            {selected && (
+              <div className="marker-editor">
+                <input
+                  className="marker-name"
+                  value={selected.name}
+                  onChange={(e) => updateSelected({ name: e.target.value })}
+                />
+                <label>
+                  <span>Start</span>
+                  <TimeInput value={selected.start} onCommit={(v) => updateSelected({ start: v })} />
+                </label>
+                <label>
+                  <span>End</span>
+                  <TimeInput value={selected.end} onCommit={(v) => updateSelected({ end: v })} />
+                </label>
+                <button className="button" onClick={deleteSelected}>
+                  Delete
+                </button>
+                <button className="button" onClick={() => setSelectedId(null)}>
+                  Close
+                </button>
+              </div>
+            )}
           </div>
         )}
+        <canvas className="timeline-main" ref={canvasRef} />
+        <canvas className="timeline-minimap" ref={minimapRef} />
       </div>
 
       {mode === 'edit' ? (
