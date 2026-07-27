@@ -5,9 +5,34 @@ Place De Brouckère). Le soft écoute l'Art-Net émis par la console ChamSys et
 affiche le show en 3D temps réel — puis, dans les phases futures, timeline
 synchronisée au timecode et édition de scènes en man-in-the-middle.
 
-**État : Phase 3 — previz 3D + mode Placement + package v1.** Le soft écoute
-l'Art-Net (UDP 6454), affiche le show en 3D temps réel (et en moniteur DMX),
-et permet de replacer les machines (sauvé dans patch.json). Il n'émet rien.
+## Où on en est (2026-07-27)
+
+- [x] **Phase 0** — socle : monorepo, patch.json vérifié contre la doc lumière officielle, fake-show
+- [x] **Phase 1** — écoute Art-Net (UDP 6454), Monitor DMX, package double-clic v0
+- [x] **Phase 2** — previz 3D (32 Tamboras instanciées, bloom, 60 fps, vues 1/2/3)
+- [x] **Phase 3** — mode Placement (picking 3D + champs, save patch.json), résilience, package v1
+- [x] **Phase 4** — timecode Art-Net, timeline (règle/tête de lecture/marqueurs → show.json), enregistreur + replay de runs
+- [x] Passe UX/UI (hover/focus/transitions, reduced-motion, layout dock fixe) — package v2
+
+**Le soft n'émet toujours RIEN vers le rig** — pur spectateur jusqu'à la Phase 6.
+
+## Prochaines étapes
+
+1. **Tests réels en attente** : lancement du zip sur le Mac du client (Gatekeeper/Node),
+   premier branchement au flux console (validera le channel-map Tambora et la
+   numérotation d'univers), tête de lecture calée sur MagicQ au timecode.
+   Enregistrer un run complet du show sur site (bouton Record) pour développer la suite dessus.
+2. **Phase 5A** — modèle de scènes (show.json : scènes → tracks → effets) + moteur
+   d'effets pixel-map déterministe partagé serveur/UI (`/core`) : solid, gradient,
+   wave, chase, sparkle.
+3. **Phase 5B** — interface d'édition : créer une scène sur la timeline, choisir
+   groupe + effet + 3-4 paramètres, préécoute en boucle dans la previz, presets.
+   Zéro notion DMX visible.
+4. **Phase 6** — sortie Art-Net man-in-the-middle : passthrough < 5 ms, override par
+   scène avec crossfade 0,5 s, blackout safe, watchdog 250 ms, mode ARMED explicite.
+   La phase la plus sensible du projet.
+5. **Phase 7** — confort prod : headless multi-poste, undo/redo, univers 5-8,
+   volumétrique beams, shadow mode.
 
 ## Prérequis
 
