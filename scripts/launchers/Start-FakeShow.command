@@ -1,12 +1,12 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js 20 ou plus récent est requis : https://nodejs.org"
+  echo "Node.js 20 or newer is required: https://nodejs.org"
   open "https://nodejs.org"
-  read -n 1 -s -r -p "Appuyez sur une touche pour fermer."
+  read -n 1 -s -r -p "Press any key to close."
   exit 1
 fi
-echo "Simulateur de console : envoie un show de test sur les univers 1-4."
-echo "Lancez aussi Start-LumenStage pour le voir dans le Monitor."
+echo "Console simulator: plays a test show on universes 1-4."
+echo "Also launch Start-LumenStage to watch it in the previz."
 echo ""
 node server/fake-show.js

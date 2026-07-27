@@ -44,7 +44,7 @@ const launchers = join(ROOT, 'scripts', 'launchers')
 for (const file of readdirSync(launchers)) {
   copyFileSync(join(launchers, file), join(STAGE, file))
 }
-copyFileSync(join(ROOT, 'docs', 'client', 'LISEZMOI.html'), join(STAGE, 'LISEZMOI.html'))
+copyFileSync(join(ROOT, 'docs', 'client', 'README.html'), join(STAGE, 'README.html'))
 
 console.log('package: zipping...')
 const zipPath = join(OUT_DIR, ZIP_NAME)

@@ -43,7 +43,7 @@ Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
 
 `dist-package/LumenStage/` : `server/` (JS compilé) + `ui/` (build Vite) +
 `data/patch.json` + `node_modules/ws` + lanceurs `Start-LumenStage.bat/.command`
-et `Start-FakeShow.bat/.command` + `LISEZMOI.html` (doc client 1 page).
+et `Start-FakeShow.bat/.command` + `README.html` (doc client 1 page, anglais).
 Zip écrit avec mode 0755 sur les `.command` (double-clic macOS préservé).
 Les lanceurs vérifient Node ≥ 20 (sinon ouvrent nodejs.org). `LUMENSTAGE_OPEN=1`
 fait ouvrir le navigateur par le serveur une fois le port 4480 prêt.
