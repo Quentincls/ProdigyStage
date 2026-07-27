@@ -19,12 +19,21 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run package
+      # The release object is created once and its asset replaced on every
+      # build, so GitHub keeps showing the date it was born -- which reads as
+      # a stale download. Stamping the build time into the name and body is
+      # the only place the real date can surface.
+      - name: Stamp the build
+        id: stamp
+        run: echo "when=$(date -u +'%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
+
       - name: Publish to the rolling "latest" release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: LumenStage — latest build
+          name: LumenStage — build ${{ steps.stamp.outputs.when }}
           body: >
-            Auto-built from the newest commit. Download the zip below,
-            then follow README.html inside it.
+            Built ${{ steps.stamp.outputs.when }} from ${{ github.sha }}.
+            Always the newest version: download the zip below, then follow
+            README.html inside it.
           files: dist-package/*.zip

@@ -1,104 +1,120 @@
 # PRODIGY STAGE
 
-Previz, timeline et éditeur de scènes pour le show "Prodigy 12" (Bruxelles,
-Place De Brouckère). Le soft écoute l'Art-Net émis par la console ChamSys et
-affiche le show en 3D temps réel — puis, dans les phases futures, timeline
-synchronisée au timecode et édition de scènes en man-in-the-middle.
+Previz, timeline and scene editor for the "Prodigy 12" show (Brussels, Place
+De Brouckère). The software listens to the Art-Net a ChamSys console sends to
+the rig, shows the room in real-time 3D, lets a team without a lighting
+designer draw their own scenes on the show's timeline, and — once commissioned
+on site — plays those scenes on the real fixtures as a man-in-the-middle.
 
-## Où on en est (2026-07-27)
+## Where it stands (2026-07-27)
 
-- [x] **Phase 0** — socle : monorepo, patch.json vérifié contre la doc lumière officielle, fake-show
-- [x] **Phase 1** — écoute Art-Net (UDP 6454), Monitor DMX, package double-clic v0
-- [x] **Phase 2** — previz 3D (32 Tamboras instanciées, bloom, 60 fps, vues 1/2/3)
-- [x] **Phase 3** — mode Placement (picking 3D + champs, save patch.json), résilience, package v1
-- [x] **Phase 4** — timecode Art-Net, timeline (règle/tête de lecture/marqueurs → show.json), enregistreur + replay de runs
-- [x] Passe UX/UI (hover/focus/transitions, reduced-motion, layout dock fixe) — package v2
-- [x] **Phase 5** — éditeur de scènes : moteur d'effets déterministe partagé `/core`
-      (solid/gradient/wave/chase/sparkle), scènes+tracks dans show.json, panneau
-      d'édition (groupe + effet + ≤4 réglages + fades), préécoute en boucle, scrub,
-      presets. Visible en previz uniquement.
-- [x] **Phase 5.5** — passe simplicité : modes Watch/Edit, menu Tools (monitor,
-      placement, runs), manipulation directe sur la timeline (drag = déplacer,
-      bords = trim, clic = scrub), éditeur à un look + Advanced replié, statut
-      en phrases humaines.
-- [x] **Passe UX profonde** — non-chevauchement aimanté (pas de multi-pistes),
-      undo/redo Ctrl+Z, mini-map + Fit, blocs teintés couleur du look, poignées
-      de trim, Now playing, dupliquer, raccourcis Espace/Échap.
-- [x] **Validation sur le flux console réel** (enregistrement venue 2026-07-27) :
-      univers confirmés, mode Tambora « Standard RGB » 61 ch identifié
-      (RGBW global 1–4, dimmer 16 bits 7–8, tilt mécanique 9–10). La previz
-      suit couleur, intensité et mouvement.
-- [x] **Phase 6** — sortie Art-Net man-in-the-middle : passthrough mesuré
-      ~0,2 ms, substitution de scène avec crossfade 0,5 s (moteur `/core`
-      côté serveur), blackout, watchdog 250 ms, armement par appui long.
-      **Développée et testée hors site — pas encore mise en service.**
+- [x] **Phase 0** — foundation: monorepo, patch.json checked against the official lighting documentation, fake-show
+- [x] **Phase 1** — Art-Net listening (UDP 6454), DMX monitor, double-click package v0
+- [x] **Phase 2** — 3D previz (32 instanced Tamboras, bloom, 60 fps, camera views 1/2/3)
+- [x] **Phase 3** — Placement mode (3D picking + fields, saves patch.json), resilience, package v1
+- [x] **Phase 4** — Art-Net timecode, timeline (ruler / playhead / markers → show.json), run recorder and replay
+- [x] UX/UI pass (hover/focus/transitions, reduced-motion, fixed dock layout) — package v2
+- [x] **Phase 5** — scene editor: deterministic shared effect engine in `/core`
+      (solid/gradient/wave/chase/sparkle), scenes and tracks in show.json,
+      editing panel (group + effect + ≤4 controls + fades), looping preview,
+      scrub, presets. Visible in the previz only.
+- [x] **Phase 5.5** — simplicity pass: Watch/Edit modes, Tools menu (monitor,
+      placement, runs), direct manipulation on the timeline (drag to move,
+      edges to trim, click to scrub), single-look editor with Advanced folded
+      away, status written as sentences.
+- [x] **Deep UX pass** — magnetic no-overlap rule (no multi-track), undo/redo
+      with Ctrl+Z, mini-map and Fit, scene blocks tinted with their look's
+      colour, trim handles, now playing, duplicate, Space/Escape shortcuts.
+- [x] **Validated against the real console feed** (venue recording, 2026-07-27):
+      universes confirmed, Tambora "Standard RGB" 61-channel mode identified
+      (fixture-wide RGBW on 1–4, 16-bit dimmer on 7–8, motorised tilt on 9–10).
+      The previz follows colour, intensity and movement.
+- [x] **Phase 6** — Art-Net man-in-the-middle output: passthrough measured at
+      ~0.2 ms, scene substitution with a 0.5 s crossfade (the `/core` engine
+      runs server-side too), blackout, 250 ms watchdog, press-and-hold to arm.
+      **Built and tested off site — commissioning at the venue is next.**
+- [x] **UX/UI passes (evening of 2026-07-27)** — previz framed on the rig with
+      haze sheets and halos, transport controls (pause / local playback /
+      LIVE), 31 built-in looks, a real hierarchy in the scene panel, Watch
+      turned into a control-room monitor (timecode, progress, what is playing
+      and what comes next), sections turned into the show's table of contents
+      (movable, resizable, click to travel there), previz honest about the
+      rig's real resolution, and a commissioning guide for the client.
 
-**Une install sans `data/output.json` n'émet RIEN et ne peut pas émettre** :
-pas de cible = rien ne sort de la machine. C'est l'état livré au client.
+**An install without `data/output.json` sends NOTHING and cannot send**: no
+target means nothing leaves the machine. That is the state the client receives.
 
-## Prochaines étapes
+## Next steps
 
-1. **Mise en service de la Phase 6, en répétition sur site uniquement**, avec
-   l'opérateur : rerouter la console vers le PC, écrire l'adresse du rig dans
-   `data/output.json`, puis dérouler `spectator` → vérifier que la salle est
-   identique → `armed` sur une scène de test → blackout → coupure console.
-   Rien d'irréversible : `off` rend la main immédiatement.
-2. **Finitions previz** : sens/zéro du tilt à calibrer sur vidéo salle
-   synchronisée, flashs de strobe, CTO. Enregistrement d'un run du vrai show
-   timecodé pour confirmer le comportement de la zone pixel.
-3. **Phase 7** — confort prod : headless multi-poste, univers 5-8,
-   volumétrique beams, shadow mode.
+1. **Commission Phase 6, in a rehearsal on site only**, with the lighting
+   operator: reroute the console to the computer, put the rig's address in
+   `data/output.json`, then walk through `spectator` → check the room is
+   identical → `armed` on a test scene → blackout → kill the console. Nothing
+   is irreversible: `off` hands control straight back.
+2. **Previz finishing touches**: tilt direction and zero to calibrate on site
+   (`tiltInvert` in the patch), strobe flashes, CTO. A recording of the real
+   timecoded show to confirm what the pixel zone does during the performance.
+3. **Phase 7** — production comfort: headless multi-station, universes 5–8,
+   volumetric beams, shadow mode.
 
-## Banc d'essai Phase 6 (sans rig, sans console)
-
-```
-npm test                                  # core + sortie (sécurité, passthrough, merge, watchdog)
-```
-
-Bout en bout local : écrire `data/output.json` avec `{"targets":["127.0.0.1"],"port":6455}`
-(un port qui n'est PAS le nôtre), lancer un sink UDP sur 6455, `npm run fake-show`
-comme console, puis piloter `/api/output` (`spectator` → `armed` → `blackout`).
-Vérifié ainsi : rien n'est émis en `off`, passthrough octet pour octet, scène
-substituée pile au timecode, retour console en fin de scène, blackout maintenu
-console morte, watchdog qui coupe l'émission en 250 ms.
-
-## Prérequis
-
-- Node.js ≥ 20 (testé avec Node 26)
-
-## Commandes
+## Phase 6 test bench (no rig, no console)
 
 ```
-npm install            # installe server + ui (workspaces)
-npm run dev            # serveur (watch, web sur 4480) + UI Vite sur http://localhost:3019
-npm run fake-show      # générateur Art-Net de test -> 127.0.0.1:6454, univers 1-4 + timecode 25 fps
-npm run replay -- data/recordings/run-XXX.artrec  # rejoue un run enregistré
-npm run generate-patch # régénère data/patch.json depuis scripts/generate-patch.mjs
-npm test               # self-test moteur /core + self-test de la sortie Phase 6
-npm run build          # build core + serveur (tsc) + UI (vite)
-npm run package        # produit dist-package/LumenStage-Previz-v1.zip (Win+Mac)
+npm test    # core engine + output (safety, passthrough, merge, watchdog)
+```
+
+End to end locally: write `data/output.json` with
+`{"targets":["127.0.0.1"],"port":6455}` (a port that is NOT ours), run a UDP
+sink on 6455, use `npm run fake-show` as the console, then drive `/api/output`
+(`spectator` → `armed` → `blackout`). Verified this way: nothing is sent while
+`off`, byte-exact passthrough, the scene substituted exactly on its timecode,
+the console taking back over at the end, blackout holding with the console
+killed, and the watchdog cutting output within 250 ms.
+
+## Requirements
+
+- Node.js ≥ 20 (tested with Node 26)
+
+## Commands
+
+```
+npm install            # installs core + server + ui (workspaces)
+npm run dev            # server (watch, web on 4480) + Vite UI on http://localhost:3019
+npm run fake-show      # Art-Net test generator -> 127.0.0.1:6454, universes 1-4 + 25 fps timecode
+npm run replay -- data/recordings/run-XXX.artrec  # replays a recorded run
+npm run generate-patch # regenerates data/patch.json from scripts/generate-patch.mjs
+npm test               # /core engine self-test + Phase 6 output self-test
+npm run build          # builds core + server (tsc) + UI (vite)
+npm run package        # produces dist-package/LumenStage-Previz-v3.zip (Windows + Mac)
 ```
 
 ## Architecture
 
 ```
-console ChamSys ──Art-Net UDP 6454──> /server (Node TS)
-                                        │  état DMX 4x512 + stats
-                                        └──WebSocket :4480 (~40 fps)──> /ui Monitor
+ChamSys console ──Art-Net UDP 6454──> /server (Node TS)
+                                        │  4x512 DMX state + stats
+                                        ├──WebSocket :4480 (~40 fps)──> /ui previz
+                                        └──Art-Net out (Phase 6, off by default)──> rig
 
-npm run fake-show : émule la console sur 127.0.0.1 pour développer sans MagicQ.
-Packagé : le serveur sert aussi l'UI buildée sur http://localhost:4480.
+npm run fake-show emulates the console on 127.0.0.1 so the app can be developed
+without MagicQ. Packaged, the server also serves the built UI on
+http://localhost:4480.
 ```
 
-- `/server` — réception Art-Net (parser ArtDMX maison), état, pont WebSocket.
-- `/ui` — moniteur DMX puis previz 3D.
-- `/data/patch.json` — tout le rig en données, rechargeable à chaud. Généré
-  depuis la patch list officielle (vérifiée contre le PDF lumière, p. 28-29).
-- `/scripts` — générateur du patch ; lanceurs double-clic à partir de la Phase 1.
-- `/docs` — conventions et architecture ([docs/architecture.md](docs/architecture.md)).
+- `/core` — shared deterministic effect engine, an npm workspace consumed by
+  both the browser previz and the server output. Pure TS, zero dependencies.
+- `/server` — Art-Net reception (hand-rolled ArtDMX parser), state, WebSocket
+  bridge, and `output.ts`: the one and only module that transmits to the rig.
+- `/ui` — 3D previz, timeline, scene editor, DMX monitor.
+- `/data/patch.json` — the whole rig as data, hot-reloadable. Generated from
+  the official patch list (checked against the lighting PDF, pp. 28–29).
+- `/scripts` — patch generator, double-click launchers, packaging.
+- `/docs` — conventions and architecture
+  ([docs/architecture.md](docs/architecture.md), in French), plus the client
+  guide shipped inside the zip (`docs/client/README.html`, in English).
 
 ## Roadmap
 
-Phases 0→7 décrites dans le brief maître : 0 socle · 1 écoute + monitor +
-package v0 · 2 previz 3D · 3 polish + placement · 4 timecode + timeline ·
-5 éditeur de scènes · 6 sortie Art-Net (man-in-the-middle) · 7 confort prod.
+Phases 0→7 from the master brief: 0 foundation · 1 listening + monitor +
+package v0 · 2 3D previz · 3 polish + placement · 4 timecode + timeline ·
+5 scene editor · 6 Art-Net output (man-in-the-middle) · 7 production comfort.
