@@ -40,11 +40,12 @@
 <div class="safe"><strong>Safe by design:</strong> this app only <em>listens</em> to the lighting network. It never sends anything to the lights. You cannot break the show with it — not even by accident.</div>
 
 <h2>Part 1 — Install and open it (5 minutes, at home)</h2>
-<p class="part-sub">You only do this once. You need a Mac and an internet browser.</p>
+<p class="part-sub">You only do this once. You need a computer and an internet browser.</p>
+<p class="note"><strong>Mac or Windows?</strong> The folder contains both. Every file starting with <span class="file">Mac-</span> is for macOS, every file starting with <span class="file">Windows-</span> is for Windows. Use your half and ignore the other. The steps below are written for Mac; on Windows it is the same but simpler — a plain double-click on <span class="file">Windows-Start-LumenStage</span>, no right-click needed.</p>
 <ol>
   <li><strong>Unzip</strong> the file you received. Put the <span class="file">LumenStage</span> folder anywhere (Desktop is fine).
-    <span class="check">a folder containing a few files, including <span class="file">Start-LumenStage.command</span>.</span></li>
-  <li><strong>Right-click</strong> (not double-click!) on <span class="file">Start-LumenStage.command</span>, choose <strong>Open</strong>, then <strong>Open</strong> again in the warning popup. macOS asks this the first time only — afterwards a normal double-click works.
+    <span class="check">a folder containing a few files, including <span class="file">Mac-Start-LumenStage</span>.</span></li>
+  <li><strong>Right-click</strong> (not double-click!) on <span class="file">Mac-Start-LumenStage</span>, choose <strong>Open</strong>, then <strong>Open</strong> again in the warning popup. macOS asks this the first time only — afterwards a normal double-click works.
     <span class="check">a black Terminal window opens with a few lines of text. Leave it open — it IS the app. Closing it stops everything.</span></li>
   <li>If your Mac asks <em>“Do you want the application node to accept incoming network connections?”</em> → click <strong>Allow</strong>.</li>
   <li>Wait 2 seconds.
@@ -56,7 +57,7 @@
 <p class="part-sub">The folder includes a fake lighting console, so you can see the app alive right away.</p>
 <ol>
   <li>Keep the app from Part 1 running.</li>
-  <li><strong>Right-click</strong> on <span class="file">Start-FakeShow.command</span> → <strong>Open</strong> → <strong>Open</strong> (first time only).
+  <li><strong>Right-click</strong> on <span class="file">Mac-Start-FakeShow</span> → <strong>Open</strong> → <strong>Open</strong> (first time only).
     <span class="check">a second Terminal window with a line of numbers updating every second.</span></li>
   <li>Go back to your browser.
     <span class="check">the two light walls in the 3D room are now animating — rainbows, waves, chases — and the top bar says “Console connected” with a green dot. A time counter runs at the bottom left.</span></li>
@@ -69,7 +70,7 @@
 <ol>
   <li>Connect the Mac to the lighting network with an <strong>Ethernet cable</strong> (ask the operator which socket/switch).</li>
   <li>Ask the operator what <strong>IP address</strong> to give the Mac, and set it in System Settings → Network → your Ethernet connection.</li>
-  <li>Start the app (<span class="file">Start-LumenStage.command</span>, like in Part 1). Show the operator the orange note below.</li>
+  <li>Start the app (<span class="file">Mac-Start-LumenStage</span>, like in Part 1). Show the operator the orange note below.</li>
   <li>Ask the console to play anything on the light walls (the Tambora bars).
     <span class="check">the 3D walls light up and move <em>exactly like the real room</em>, and the top bar turns green: “Console connected”. If the console sends its timecode, the counter bottom-left runs in sync with the show.</span></li>
   <li><strong>The most useful thing you can do:</strong> record a full run of the show. Click the gear <strong>⚙</strong> (top right) → <strong>Runs</strong> → <strong>● Record a run</strong> before the show starts, and stop it at the end. This creates a file in the <span class="file">LumenStage/data/recordings</span> folder — <strong>send us that file</strong>: it lets us build and test everything else on the real show, without the console.</li>
@@ -94,7 +95,7 @@
 <p class="part-sub">We improve the app remotely. When we say "there's a new version", do this:</p>
 <ol>
   <li>Close LumenStage if it's running (close the Terminal windows).</li>
-  <li>Double-click <span class="file">Update-LumenStage.command</span> (right-click → <strong>Open</strong> the first time, like in Part 1).
+  <li>Double-click <span class="file">Mac-Update-LumenStage</span> (right-click → <strong>Open</strong> the first time, like in Part 1).
     <span class="check">a Terminal window downloads the new version, then prints "Update complete." with the build date.</span></li>
   <li>Start the app again. That's it.</li>
 </ol>

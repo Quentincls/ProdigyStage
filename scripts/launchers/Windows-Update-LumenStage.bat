@@ -48,6 +48,13 @@ if exist "%TMP_DIR%\LumenStage\version.txt" copy /y "%TMP_DIR%\LumenStage\versio
 if not exist data mkdir data
 for %%f in ("%TMP_DIR%\LumenStage\data\*") do if not exist "data\%%~nxf" copy "%%f" data\ >nul
 
+rem Launchers gained a Mac-/Windows- prefix: drop the old unprefixed names so
+rem Explorer never shows two files with the same visible name. Never delete
+rem the file we are running from -- cmd still needs to read it.
+for %%f in (Start-LumenStage.command Start-FakeShow.command Update-LumenStage.command Start-LumenStage.bat Start-FakeShow.bat Update-LumenStage.bat) do (
+  if /i not "%%f"=="%~nx0" if exist "%%f" del /q "%%f"
+)
+
 rem The block below overwrites this very .bat file, so it is parsed as a
 rem single unit and ends with exit /b: cmd never reads the file again.
 (

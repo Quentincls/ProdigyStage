@@ -48,6 +48,11 @@ main() {
   for f in "$tmp/new/LumenStage/data/"*; do
     [ -e "data/$(basename "$f")" ] || cp "$f" data/
   done
+  # Launchers gained a Mac-/Windows- prefix: drop the old unprefixed names so
+  # the folder never shows two files with the same visible name. Deleting the
+  # script we are running from is safe on macOS -- it is already open.
+  rm -f Start-LumenStage.command Start-FakeShow.command Update-LumenStage.command \
+    Start-LumenStage.bat Start-FakeShow.bat Update-LumenStage.bat
   for f in "$tmp/new/LumenStage/"*.command "$tmp/new/LumenStage/"*.bat; do
     [ -e "$f" ] && cp "$f" .
   done

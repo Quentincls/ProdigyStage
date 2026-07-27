@@ -165,8 +165,8 @@ passthrough, merge, watchdog, latence) et le banc complet documenté dans
 ## Packaging v0 (`npm run package`)
 
 `dist-package/LumenStage/` : `server/` (JS compilé) + `ui/` (build Vite) +
-`data/patch.json` + `node_modules/ws` + lanceurs `Start-LumenStage.bat/.command`
-et `Start-FakeShow.bat/.command` + `README.html` (doc client 1 page, anglais).
+`data/patch.json` + `node_modules/ws` + lanceurs `Windows-*.bat` / `Mac-*.command`
+(Start/FakeShow/Update) + `README.html` (doc client 1 page, anglais).
 Zip écrit avec mode 0755 sur les `.command` (double-clic macOS préservé).
 Les lanceurs vérifient Node ≥ 20 (sinon ouvrent nodejs.org). `LUMENSTAGE_OPEN=1`
 fait ouvrir le navigateur par le serveur une fois le port 4480 prêt.
