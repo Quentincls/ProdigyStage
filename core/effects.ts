@@ -40,7 +40,8 @@ export const EFFECTS: EffectDef[] = [
     params: [
       { key: 'colorA', label: 'Color A', type: 'color', default: '#ff2d78' },
       { key: 'colorB', label: 'Color B', type: 'color', default: '#2d8cff' },
-      { key: 'speed', label: 'Speed', type: 'range', min: 0, max: 2, step: 0.05, default: 0.2 },
+      // Negative speed runs the effect backwards; 0 freezes it.
+      { key: 'speed', label: 'Speed', type: 'range', min: -2, max: 2, step: 0.05, default: 0.2 },
     ],
   },
   {
@@ -48,7 +49,7 @@ export const EFFECTS: EffectDef[] = [
     label: 'Wave',
     params: [
       { key: 'color', label: 'Color', type: 'color', default: '#ffb340' },
-      { key: 'speed', label: 'Speed', type: 'range', min: 0, max: 3, step: 0.05, default: 0.6 },
+      { key: 'speed', label: 'Speed', type: 'range', min: -3, max: 3, step: 0.05, default: 0.6 },
       { key: 'size', label: 'Size', type: 'range', min: 0.5, max: 8, step: 0.5, default: 3 },
     ],
   },
@@ -57,7 +58,7 @@ export const EFFECTS: EffectDef[] = [
     label: 'Chase',
     params: [
       { key: 'color', label: 'Color', type: 'color', default: '#b4dcff' },
-      { key: 'speed', label: 'Speed', type: 'range', min: 0, max: 3, step: 0.05, default: 1 },
+      { key: 'speed', label: 'Speed', type: 'range', min: -3, max: 3, step: 0.05, default: 1 },
       { key: 'count', label: 'Runners', type: 'range', min: 1, max: 8, step: 1, default: 3 },
     ],
   },

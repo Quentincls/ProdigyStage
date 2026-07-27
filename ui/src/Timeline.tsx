@@ -135,7 +135,9 @@ export default function Timeline({
       const first = Math.floor(state.start / step) * step
       for (let t = first; xOf(t) < width; t += step) {
         const x = Math.round(xOf(t)) + 0.5
-        if (x < 0) continue
+        // The show starts at 0: formatTime clamps negatives, so ticks before
+        // the start all read "0:00" and stack up on the left.
+        if (x < 0 || t < 0) continue
         ctx.strokeStyle = '#262a31'
         ctx.beginPath()
         ctx.moveTo(x, RULER_H)
@@ -169,6 +171,17 @@ export default function Timeline({
         (item) => sceneTint(item as SceneSpec),
         true,
       )
+
+      // Name the two lanes. Sections and scenes looked like the same object
+      // in two colours; only a label says one is a bookmark and the other
+      // actually takes the lights over.
+      ctx.font = '9px Inter, sans-serif'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = 'rgba(138,143,152,0.5)'
+      ctx.fillText('SECTIONS', 6, (MARKER_TOP + MARKER_BOTTOM) / 2)
+      ctx.fillStyle = 'rgba(167,139,250,0.5)'
+      ctx.fillText('SCENES', 6, SCENE_TOP + 9)
+      ctx.textBaseline = 'top'
 
       // First-time hint in edit mode.
       if (modeRef.current === 'edit' && scenesRef.current.length === 0) {
@@ -230,7 +243,8 @@ export default function Timeline({
       }
       if (nowPlayingRef.current) {
         const playing = showTime !== null ? activeScene(editor.scenes, showTime) : null
-        const label = playing ? `▶ ${playing.name}` : ''
+        // "Scene 1" on its own read as a stray control; say what it is.
+        const label = playing ? `Now: ${playing.name}` : ''
         if (nowPlayingRef.current.textContent !== label) nowPlayingRef.current.textContent = label
       }
 
@@ -678,10 +692,15 @@ export default function Timeline({
               const center = view.current.start + canvas.clientWidth / 2 / view.current.pxPerSec
               onAddScene(Math.max(0, round1(tc.receiving ? tc.total : center)))
             }}
+            title="A scene takes the lights over for a moment of the show"
           >
             + Scene
           </button>
-          <button className="button" onClick={addSection}>
+          <button
+            className="button"
+            onClick={addSection}
+            title="A section is just a bookmark on the timeline. It never changes the lights."
+          >
             + Section
           </button>
           {/* Returning to live is the transport's LIVE button -- one control,

@@ -34,6 +34,7 @@ export const VIEWS: Record<number, { name: string; dir: [number, number, number]
 
 const DEFAULT_VIEW = 1
 const FRAME_MARGIN = 1.18
+const BEAM_LENGTH = 7
 
 interface PixelSlot {
   universe: number
@@ -82,6 +83,7 @@ export class PrevizScene {
   // Camera-facing halo per fixture: the light you see *in the air*, which a
   // flat emissive plane alone never suggests.
   private halos: THREE.InstancedMesh | null = null
+  private beams: THREE.InstancedMesh | null = null
   private fixtures: Fixture[] = []
   private pixelSlots: PixelSlot[] = []
   private tiltSlots: TiltSlot[] = []
@@ -132,11 +134,13 @@ export class PrevizScene {
     // Filmic tone mapping keeps saturated LEDs from clipping to flat white,
     // and a wider bloom sells the light rather than the emitter.
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.35
+    this.renderer.toneMappingExposure = 1.15
 
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 1.45, 0.75, 0.12))
+    // Restrained: the haze below carries the light now, so the bloom only has
+    // to soften the emitters instead of blowing them out.
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.85, 0.55, 0.2))
     this.composer.addPass(new OutputPass())
 
     canvas.addEventListener('pointerdown', this.onPointerDown)
@@ -282,11 +286,28 @@ export class PrevizScene {
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        opacity: 0.55,
+        opacity: 0.34,
       }),
       this.fixtures.length,
     )
     halos.frustumCulled = false
+
+    // Light in the air: a soft sheet leaning from each batten towards the
+    // room, brightest at the fixture and fading with distance. Cheap stand-in
+    // for haze, and the thing that makes a wash read as a wash.
+    const beams = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(1.5, BEAM_LENGTH).translate(0, -BEAM_LENGTH / 2, 0),
+      new THREE.MeshBasicMaterial({
+        map: makeBeamTexture(),
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        opacity: 0.5,
+      }),
+      this.fixtures.length,
+    )
+    beams.frustumCulled = false
 
     const dummy = new THREE.Object3D()
     const pixelMatrix = new THREE.Matrix4()
@@ -378,13 +399,22 @@ export class PrevizScene {
       glows.setMatrixAt(fixtureIndex, dummy.matrix)
       glows.setColorAt(fixtureIndex, black)
       halos.setColorAt(fixtureIndex, black)
+
+      // The sheet hangs from the batten, leaning towards the room centre.
+      const lean = fixture.group === 'wall-left' ? 0.62 : -0.62
+      dummy.position.set(fixture.position[0], fixture.position[1], fixture.position[2])
+      dummy.rotation.set(lean, 0, 0)
+      dummy.updateMatrix()
+      beams.setMatrixAt(fixtureIndex, dummy.matrix)
+      beams.setColorAt(fixtureIndex, black)
     })
 
     this.bars = bars
     this.pixels = pixels
     this.glows = glows
     this.halos = halos
-    this.fixtureGroup.add(bars, pixels, glows, halos)
+    this.beams = beams
+    this.fixtureGroup.add(bars, pixels, glows, halos, beams)
     this.applySelectionTint()
     this.lastVersion = -1 // force a recolor on the next frame
   }
@@ -476,9 +506,11 @@ export class PrevizScene {
       )
       this.glows!.setColorAt(f, color)
       this.halos?.setColorAt(f, color)
+      this.beams?.setColorAt(f, color)
     }
     this.glows.instanceColor!.needsUpdate = true
     if (this.halos?.instanceColor) this.halos.instanceColor.needsUpdate = true
+    if (this.beams?.instanceColor) this.beams.instanceColor.needsUpdate = true
   }
 
   // Halos are billboards: rebuilt each frame so they always face the camera
@@ -665,4 +697,35 @@ function makeGlowTexture(): THREE.Texture {
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
+}
+
+// Vertical falloff for the haze sheet: bright where it leaves the fixture,
+// gone by the time it reaches the floor, and soft on the sides so the sheet
+// never shows an edge.
+function makeBeamTexture(): THREE.Texture {
+  const w = 32
+  const h = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  const image = ctx.createImageData(w, h)
+  for (let y = 0; y < h; y++) {
+    const along = 1 - y / h
+    const fall = Math.pow(along, 2.2)
+    for (let x = 0; x < w; x++) {
+      const across = Math.abs((x + 0.5) / w - 0.5) * 2
+      const sides = Math.pow(1 - across, 1.6)
+      const a = Math.max(0, Math.min(1, fall * sides))
+      const o = (y * w + x) * 4
+      image.data[o] = 255
+      image.data[o + 1] = 255
+      image.data[o + 2] = 255
+      image.data[o + 3] = a * 255
+    }
+  }
+  ctx.putImageData(image, 0, 0)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
 }
