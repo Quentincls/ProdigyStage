@@ -149,12 +149,23 @@ export default function Timeline({
 
       // Section markers (slim band) then scenes (main band, tinted by their
       // main look's color so the timeline reads at a glance).
-      drawBand(ctx, markersRef.current, selectedRef.current, MARKER_TOP, MARKER_BOTTOM, width, {
-        fill: 'rgba(91,140,255,0.16)',
-        fillSelected: 'rgba(91,140,255,0.34)',
-        stroke: 'rgba(91,140,255,0.45)',
-        strokeSelected: '#5b8cff',
-      })
+      // Sections carry trim handles too, now that they move and resize.
+      drawBand(
+        ctx,
+        markersRef.current,
+        selectedRef.current,
+        MARKER_TOP,
+        MARKER_BOTTOM,
+        width,
+        {
+          fill: 'rgba(91,140,255,0.16)',
+          fillSelected: 'rgba(91,140,255,0.34)',
+          stroke: 'rgba(91,140,255,0.45)',
+          strokeSelected: '#5b8cff',
+        },
+        undefined,
+        true,
+      )
       drawBand(
         ctx,
         scenesRef.current,
@@ -363,6 +374,14 @@ export default function Timeline({
       | { type: 'scrub' }
       | { type: 'pending-scene'; x: number; sceneId: string; start: number; end: number }
       | { type: 'move' | 'trim-l' | 'trim-r'; x: number; sceneId: string; start: number; end: number }
+      | { type: 'pending-marker'; x: number; markerId: string; start: number; end: number }
+      | {
+          type: 'marker-move' | 'marker-trim-l' | 'marker-trim-r'
+          x: number
+          markerId: string
+          start: number
+          end: number
+        }
     let drag: Drag | null = null
     const EDGE_PX = 6
 
@@ -391,6 +410,15 @@ export default function Timeline({
         ...current,
         scenes: current.scenes.map((scene) =>
           scene.id === sceneId ? { ...scene, ...update } : scene,
+        ),
+      })
+    }
+    const updateMarker = (markerId: string, update: Partial<Marker>): void => {
+      const current = showRef.current
+      onChangeRef.current({
+        ...current,
+        markers: current.markers.map((marker) =>
+          marker.id === markerId ? { ...marker, ...update } : marker,
         ),
       })
     }
@@ -426,11 +454,32 @@ export default function Timeline({
         scrubTo(event.clientX)
         return
       }
+      // Sections are the table of contents: they move and trim like scenes,
+      // and a plain click on one travels to it.
       if (y >= MARKER_TOP && y <= MARKER_BOTTOM) {
+        const tolerance = EDGE_PX / view.current.pxPerSec
         const hit = [...markersRef.current]
           .reverse()
-          .find((marker) => t >= marker.start && t <= marker.end)
-        setSelectedId(hit?.id ?? null)
+          .find((marker) => t >= marker.start - tolerance && t <= marker.end + tolerance)
+        if (!hit) {
+          setSelectedId(null)
+          return
+        }
+        const edge =
+          Math.abs(t - hit.start) <= tolerance
+            ? 'marker-trim-l'
+            : Math.abs(t - hit.end) <= tolerance
+              ? 'marker-trim-r'
+              : null
+        drag = edge
+          ? { type: edge, x: event.clientX, markerId: hit.id, start: hit.start, end: hit.end }
+          : {
+              type: 'pending-marker',
+              x: event.clientX,
+              markerId: hit.id,
+              start: hit.start,
+              end: hit.end,
+            }
         return
       }
       const scene = sceneHit(t, y)
@@ -460,14 +509,25 @@ export default function Timeline({
           const t = timeAt(event.clientX - rect.left)
           const y = event.clientY - rect.top
           const scene = sceneHit(t, y)
+          const tolerance = EDGE_PX / view.current.pxPerSec
+          const marker =
+            y >= MARKER_TOP && y <= MARKER_BOTTOM
+              ? [...markersRef.current]
+                  .reverse()
+                  .find((m) => t >= m.start - tolerance && t <= m.end + tolerance)
+              : undefined
           canvas.style.cursor =
             y < RULER_H
               ? 'crosshair'
-              : scene && edgeOf(scene, t)
-                ? 'ew-resize'
-                : scene
-                  ? 'pointer'
-                  : 'grab'
+              : marker
+                ? Math.abs(t - marker.start) <= tolerance || Math.abs(t - marker.end) <= tolerance
+                  ? 'ew-resize'
+                  : 'pointer'
+                : scene && edgeOf(scene, t)
+                  ? 'ew-resize'
+                  : scene
+                    ? 'pointer'
+                    : 'grab'
         } else {
           canvas.style.cursor = 'grab'
         }
@@ -490,6 +550,26 @@ export default function Timeline({
             drag = { ...drag, type: 'move' }
           }
           break
+        case 'pending-marker':
+          if (Math.abs(event.clientX - drag.x) > 4) {
+            drag = { ...drag, type: 'marker-move' }
+          }
+          break
+        case 'marker-move': {
+          const duration = drag.end - drag.start
+          const start = Math.max(0, snap(drag.start + dt))
+          updateMarker(drag.markerId, { start, end: start + duration })
+          break
+        }
+        case 'marker-trim-l': {
+          const start = Math.min(snap(drag.start + dt), drag.end - 1)
+          updateMarker(drag.markerId, { start: Math.max(0, start) })
+          break
+        }
+        case 'marker-trim-r': {
+          updateMarker(drag.markerId, { end: Math.max(snap(drag.end + dt), drag.start + 1) })
+          break
+        }
         case 'move': {
           const duration = drag.end - drag.start
           const start = clampMove(
@@ -533,6 +613,13 @@ export default function Timeline({
       if (drag?.type === 'pending-scene') {
         onSelectSceneRef.current(drag.sceneId)
         setSelectedId(null)
+      } else if (drag?.type === 'pending-marker') {
+        // Clicking a section is how you get to it -- that is what makes the
+        // lane a table of contents rather than a row of labels.
+        setSelectedId(drag.markerId)
+        onSelectSceneRef.current(null)
+        seekTo(drag.start)
+        setOverridden(true)
       } else if (drag?.type === 'pan' && drag.deselect && !drag.moved) {
         onSelectSceneRef.current(null)
         setSelectedId(null)

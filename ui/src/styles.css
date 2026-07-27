@@ -1669,3 +1669,45 @@ body {
   color: var(--text);
   min-height: 18px;
 }
+
+/* The section editor used to sit in the middle of the lanes, covering the
+   scenes you were trying to line it up with. Pinned to the top-right corner
+   and made compact, it stops fighting the content it edits. */
+.marker-editor {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  left: auto;
+  bottom: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  background: rgba(22, 24, 29, 0.97);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  z-index: 5;
+}
+
+.marker-editor .marker-name {
+  width: 132px;
+}
+
+.marker-editor label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.marker-editor input {
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
+.marker-editor .button {
+  padding: 4px 9px;
+  font-size: 11px;
+}
