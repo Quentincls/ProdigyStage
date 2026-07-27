@@ -296,7 +296,9 @@ export class PrevizScene {
     // room, brightest at the fixture and fading with distance. Cheap stand-in
     // for haze, and the thing that makes a wash read as a wash.
     const beams = new THREE.InstancedMesh(
-      new THREE.PlaneGeometry(1.5, BEAM_LENGTH).translate(0, -BEAM_LENGTH / 2, 0),
+      // Wider than a batten so neighbouring sheets overlap into one wash
+      // instead of reading as separate streaks.
+      new THREE.PlaneGeometry(2.4, BEAM_LENGTH).translate(0, -BEAM_LENGTH / 2, 0),
       new THREE.MeshBasicMaterial({
         map: makeBeamTexture(),
         transparent: true,
@@ -401,8 +403,11 @@ export class PrevizScene {
       halos.setColorAt(fixtureIndex, black)
 
       // The sheet hangs from the batten, leaning towards the room centre.
-      const lean = fixture.group === 'wall-left' ? 0.62 : -0.62
-      dummy.position.set(fixture.position[0], fixture.position[1], fixture.position[2])
+      // Rotating by +x sends local -Y towards -Z, so the left wall (at -Z,
+      // throwing towards +Z) needs the negative angle -- same convention as
+      // the floor pool above, which offsets +Z for wall-left.
+      const lean = beamLean(fixture.group)
+      dummy.position.fromArray(fixture.position)
       dummy.rotation.set(lean, 0, 0)
       dummy.updateMatrix()
       beams.setMatrixAt(fixtureIndex, dummy.matrix)
@@ -546,6 +551,11 @@ export class PrevizScene {
     const posed = new THREE.Matrix4()
     const rotation = new THREE.Matrix4()
     const pixelMatrix = new THREE.Matrix4()
+    const beamMatrix = new THREE.Matrix4()
+    const beamPosition = new THREE.Vector3()
+    const beamEuler = new THREE.Euler()
+    const beamQuaternion = new THREE.Quaternion()
+    const beamScale = new THREE.Vector3(1, 1, 1)
     let dirty = false
     for (const slot of this.tiltSlots) {
       const buffer = feed.universes.get(slot.universe)
@@ -565,10 +575,21 @@ export class PrevizScene {
         pixelMatrix.multiplyMatrices(posed, offset)
         this.pixels!.setMatrixAt(slot.fixtureIndex * slot.pixelOffsets.length + p, pixelMatrix)
       })
+      // The haze must follow where the fixture is actually pointing, or the
+      // light lands somewhere the beam never went.
+      const fixture = this.fixtures[slot.fixtureIndex]
+      if (this.beams && fixture) {
+        beamPosition.fromArray(fixture.position)
+        beamEuler.set(beamLean(fixture.group) + angle, 0, 0)
+        beamQuaternion.setFromEuler(beamEuler)
+        beamMatrix.compose(beamPosition, beamQuaternion, beamScale)
+        this.beams.setMatrixAt(slot.fixtureIndex, beamMatrix)
+      }
     }
     if (dirty) {
       this.bars.instanceMatrix.needsUpdate = true
       this.pixels.instanceMatrix.needsUpdate = true
+      if (this.beams) this.beams.instanceMatrix.needsUpdate = true
     }
   }
 
@@ -728,4 +749,11 @@ function makeBeamTexture(): THREE.Texture {
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   return texture
+}
+
+// Lean of a fixture's haze sheet, in radians about X. A +x rotation sends
+// local -Y towards -Z, so the wall sitting at -Z (throwing towards the room
+// centre at +Z) takes the negative angle.
+function beamLean(group: string): number {
+  return group === 'wall-left' ? -0.62 : 0.62
 }

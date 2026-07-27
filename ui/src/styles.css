@@ -1516,3 +1516,122 @@ body {
   opacity: 0.6;
   font-weight: 500;
 }
+
+/* ----- Watch mode -------------------------------------------------------
+   A show monitor: where we are, what is on the walls, what comes next.
+   Sized to be read from across a control room, not from a chair. */
+
+.watchbar {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex: none;
+}
+
+.watch-time {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 236px;
+}
+
+.watch-clock {
+  font-family: var(--mono);
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.watch-state {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.watch-track {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.watch-progress {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.watch-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(62, 207, 142, 0.28);
+}
+
+.watch-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(167, 139, 250, 0.75);
+}
+
+.watch-section {
+  font-size: 12px;
+  color: var(--text-dim);
+  min-height: 15px;
+}
+
+.watch-cues {
+  display: flex;
+  gap: 26px;
+  align-items: center;
+  padding-left: 20px;
+  border-left: 1px solid var(--border);
+}
+
+.watch-cue {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 150px;
+}
+
+.watch-cue-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.watch-now-value {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.watch-now-value.console {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.watch-now-value.scene {
+  color: #a78bfa;
+}
+
+.watch-next-value {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.3;
+}

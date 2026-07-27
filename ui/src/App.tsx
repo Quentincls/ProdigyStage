@@ -12,6 +12,7 @@ import SceneEditor from './SceneEditor'
 import { findFreeSlot } from './sceneRules'
 import { controlOutput, fetchShow, saveShow, type ShowFile } from './show'
 import Timeline from './Timeline'
+import WatchBar from './WatchBar'
 import { formatTime } from './TimeInput'
 
 // Two intents, two modes: Watch (default, safe, zero chrome) and Edit.
@@ -397,17 +398,22 @@ export default function App() {
           </>
         )}
       </main>
-      {show && (
-        <Timeline
-          show={show}
-          mode={mode}
-          onChange={handleShowChange}
-          saveState={showSaveState}
-          selectedSceneId={selectedSceneId}
-          onSelectScene={handleSelectScene}
-          onAddScene={handleAddScene}
-        />
-      )}
+      {/* Watch is a show monitor, not an editor with its buttons hidden: it
+          answers where we are, what is on the walls and what comes next. */}
+      {show &&
+        (mode === 'watch' ? (
+          <WatchBar show={show} />
+        ) : (
+          <Timeline
+            show={show}
+            mode={mode}
+            onChange={handleShowChange}
+            saveState={showSaveState}
+            selectedSceneId={selectedSceneId}
+            onSelectScene={handleSelectScene}
+            onAddScene={handleAddScene}
+          />
+        ))}
     </div>
   )
 }
