@@ -6,8 +6,9 @@
       "pixels": 16,
       "pixelOrder": "RGB",
       "standardMap": {
-        "dimmer": 1,
-        "strobe": 2
+        "red": 1,
+        "green": 2,
+        "blue": 3
       },
       "pixelStart": 14
     }

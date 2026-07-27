@@ -94,19 +94,28 @@ function UniverseCard({ view, patch }: { view: UniverseView; patch: Patch }) {
       heatCtx.imageSmoothingEnabled = false
       heatCtx.drawImage(cellCanvas, 0, 0, heatCanvas.width, heatCanvas.height)
 
-      // Pixel bars in true RGB, modulated by the Standard dimmer.
+      // Pixel bars show what each fixture displays. With the validated
+      // console flow that is the fixture-wide RGB (ch 1-3); the raw pixel
+      // zone stays visible in the heatmap above. Legacy dimmer x pixel
+      // personalities keep the old rendering.
       barsCtx.clearRect(0, 0, barsCanvas.width, barsCanvas.height)
       barsCtx.font = '10px Inter, sans-serif'
       barsCtx.textBaseline = 'middle'
+      const map = type?.standardMap
+      const globalRgb = map && map.red !== undefined && map.green !== undefined && map.blue !== undefined
       view.fixtures.forEach((fixture, row) => {
         const y = row * (BAR_CELL_H + BAR_GAP)
         const base = fixture.address - 1
-        const dimmer = type ? buffer[base + type.standardMap.dimmer - 1] / 255 : 1
+        const dimmer = !globalRgb && map ? buffer[base + (map.dimmer ?? 1) - 1] / 255 : 1
         barsCtx.fillStyle = '#8a8f98'
         barsCtx.fillText(fixture.id, 0, y + BAR_CELL_H / 2 + 1)
         for (let p = 0; p < (type?.pixels ?? 16); p++) {
-          const o = base + (type?.pixelStart ?? 14) - 1 + p * 3
-          barsCtx.fillStyle = `rgb(${buffer[o] * dimmer},${buffer[o + 1] * dimmer},${buffer[o + 2] * dimmer})`
+          if (globalRgb && map) {
+            barsCtx.fillStyle = `rgb(${buffer[base + map.red - 1]},${buffer[base + map.green - 1]},${buffer[base + map.blue - 1]})`
+          } else {
+            const o = base + (type?.pixelStart ?? 14) - 1 + p * 3
+            barsCtx.fillStyle = `rgb(${buffer[o] * dimmer},${buffer[o + 1] * dimmer},${buffer[o + 2] * dimmer})`
+          }
           barsCtx.fillRect(BAR_LABEL_W + p * BAR_CELL_W, y, BAR_CELL_W - 2, BAR_CELL_H)
         }
       })

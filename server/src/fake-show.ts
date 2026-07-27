@@ -1,8 +1,10 @@
 // Art-Net test generator (brief section 3): emits animated patterns on show
 // universes 1-4 towards 127.0.0.1:6454 at 40 fps, so the previz can be built
-// and demoed without MagicQ. Data-driven from data/patch.json: every Tambora
-// gets its Standard dimmer at full and its 16 RGB pixels animated as a
-// position along its wall.
+// and demoed without MagicQ. Data-driven from data/patch.json, and shaped
+// like the REAL console flow (venue recording 2026-07-27): every Tambora is
+// driven through its fixture-wide RGB (standardMap red/green/blue), animated
+// as a position along its wall, while the per-pixel zone stays parked at the
+// venue's default -- exactly what the ChamSys does.
 //
 //   npm run fake-show          (from the repo root)
 //   FAKE_SHOW_TARGET=x.x.x.x   optional override of the destination IP
@@ -25,31 +27,39 @@ const patch = loadPatch()
 const tamboraType = patch.fixtureTypes['tambora-std-pixel']
 const UNIVERSES = [1, 2, 3, 4]
 
-// Every pixel of every fixture, with its normalized position (0-1) along its wall.
-interface PixelSlot {
+// The venue's parked pixel-zone value, as observed in the real recording.
+const PARKED_PIXEL: [number, number, number] = [105, 255, 255]
+
+// One slot per fixture: its fixture-wide RGB channels and its normalized
+// position (0-1) along its wall (fixture-level resolution, like the console).
+interface RgbSlot {
   universe: number
-  channel: number // 0-based index of the R channel in the universe buffer
+  channels: [number, number, number] // 0-based fixture-wide R, G, B channels
   wallPos: number
 }
 
-const pixelSlots: PixelSlot[] = []
-const dimmerSlots: { universe: number; channel: number }[] = []
+const rgbSlots: RgbSlot[] = []
+const parkedSlots: { universe: number; channel: number }[] = []
 
 for (const group of patch.groups) {
   const wall = patch.fixtures
     .filter((f) => f.group === group)
     .sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10))
-  const wallPixels = wall.length * tamboraType.pixels
   wall.forEach((fixture, fixtureIndex) => {
-    dimmerSlots.push({
+    const base = fixture.address - 1
+    rgbSlots.push({
       universe: fixture.universe,
-      channel: fixture.address - 1 + (tamboraType.standardMap.dimmer - 1),
+      channels: [
+        base + tamboraType.standardMap.red - 1,
+        base + tamboraType.standardMap.green - 1,
+        base + tamboraType.standardMap.blue - 1,
+      ],
+      wallPos: (fixtureIndex + 0.5) / wall.length,
     })
     for (let p = 0; p < tamboraType.pixels; p++) {
-      pixelSlots.push({
+      parkedSlots.push({
         universe: fixture.universe,
         channel: fixture.address - 1 + (tamboraType.pixelStart - 1) + p * 3,
-        wallPos: (fixtureIndex * tamboraType.pixels + p + 0.5) / wallPixels,
       })
     }
   })
@@ -119,13 +129,18 @@ function tick() {
   currentPatternName = pattern.name
 
   for (const buf of buffers.values()) buf.fill(0)
-  for (const slot of dimmerSlots) buffers.get(slot.universe)![slot.channel] = 255
-  for (const slot of pixelSlots) {
+  for (const slot of parkedSlots) {
+    const buf = buffers.get(slot.universe)!
+    buf[slot.channel] = PARKED_PIXEL[0]
+    buf[slot.channel + 1] = PARKED_PIXEL[1]
+    buf[slot.channel + 2] = PARKED_PIXEL[2]
+  }
+  for (const slot of rgbSlots) {
     const [r, g, b] = pattern.at(slot.wallPos, t)
     const buf = buffers.get(slot.universe)!
-    buf[slot.channel] = r
-    buf[slot.channel + 1] = g
-    buf[slot.channel + 2] = b
+    buf[slot.channels[0]] = r
+    buf[slot.channels[1]] = g
+    buf[slot.channels[2]] = b
   }
 
   for (const universe of UNIVERSES) {
@@ -164,7 +179,7 @@ function sendTimecode(t: number): void {
 }
 
 console.log(`fake-show: emitting universes 1-4 to ${TARGET}:${ARTNET_PORT} at ${FPS} fps`)
-console.log(`fake-show: ${patch.fixtures.length} fixtures, ${pixelSlots.length} pixels, patterns: ${patterns.map((p) => p.name).join(' / ')}`)
+console.log(`fake-show: ${patch.fixtures.length} fixtures driven via fixture-wide RGB, patterns: ${patterns.map((p) => p.name).join(' / ')}`)
 
 // Drift-compensated scheduler: Windows timers only have ~15.6 ms granularity,
 // so a plain setInterval(25) would run at ~30 fps. We catch up (max 2 frames

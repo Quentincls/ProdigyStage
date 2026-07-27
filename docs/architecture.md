@@ -132,7 +132,9 @@ Copie automatique du zip vers `Desktop\Livrables`.
 - Sur le réseau, l'adresse de port Art-Net commence à 0 : univers show N
   = univers Art-Net N-1 (convention MagicQ par défaut). Réglable en un seul
   point : `SHOW_TO_ARTNET_OFFSET` dans `server/src/artnet.ts`.
-  **À confirmer sur le vrai flux console (Phase 3/4bis).**
+  **Confirmé sur le vrai flux console (enregistrement venue du 2026-07-27)** :
+  les Tambora sortent sur les port-addresses 0–3 (= show 1–4). La console
+  émet aussi les port-addresses 4–15 (reste du rig) — ignorées, conforme.
 
 ## Patch (data/patch.json)
 
@@ -142,9 +144,27 @@ Vérifié le 2026-07-26 contre la PATCH LIJST officielle
 001/062/123/184/245/306/367/428, PixelRGB = Standard + 13, heads 1–16 (L)
 sur univers 1–2, heads 101–116 (R) sur univers 3–4.
 
-Reste une hypothèse (Phase 3/4bis, sur vraies données) : l'ordre interne des
-13 canaux Standard et l'ordre RGB des pixels. Corrigeable en data via
-`fixtureTypes.*.standardMap` / `pixelOrder` sans toucher au code.
+**Validé sur le premier enregistrement réel (run du 2026-07-27, 147 s de
+looks manuels à la console)** — l'hypothèse initiale (dimmer=1, strobe=2)
+était fausse :
+
+- Standard ch 1–3 = **RGB global de la machine**. C'est ce que l'opérateur
+  pilote (couleurs de picker limpides dans les données : 255,105,180 hot
+  pink, 0,255,0, 255,0,255…) et ce que la salle voit. La previz et le
+  Monitor affichent donc ce RGB global (`standardMap: {red, green, blue}`).
+- Standard ch 5–10 = moteur d'effets **interne** de la machine (valeurs qui
+  balaient en continu). Non émulé par la previz — limitation connue : un
+  chase interne machine ne s'anime pas à l'écran, la couleur reste juste.
+- Zone pixel (14–61) : présente sur le fil mais **parquée** (105,255,255
+  constant) par la programmation console actuelle — jamais animée.
+
+Points encore ouverts : sémantique exacte des ch 4–13 (à confronter au
+chart DMX officiel du mode utilisé sur la console), et comportement de la
+zone pixel pendant le show timecodé (à revérifier sur un enregistrement du
+vrai show — le run du 27/07 ne contenait ni timecode ni cues). Implication
+Phase 6 : pour être visibles sur les vraies machines, nos scènes devront
+sans doute émettre sur les ch 1–3 par machine (résolution = 1 couleur par
+batten) plutôt que sur la zone pixel, tant que le mode console est celui-ci.
 
 ## Géométrie
 

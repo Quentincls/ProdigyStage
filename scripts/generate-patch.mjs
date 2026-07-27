@@ -64,7 +64,10 @@ const patch = {
       footprint: 61,
       pixels: 16,
       pixelOrder: 'RGB',
-      standardMap: { dimmer: 1, strobe: 2 },
+      // Validated against the real console flow (venue recording 2026-07-27):
+      // ch1-3 drive a fixture-wide RGB, ch5-10 feed the fixture's internal FX
+      // engine, and the per-pixel zone (14-61) is left parked by the console.
+      standardMap: { red: 1, green: 2, blue: 3 },
       pixelStart: 14,
     },
   },

@@ -31,8 +31,11 @@ const DEFAULT_VIEW = { position: [19, 12, 14], target: [0, 4, 0] }
 
 interface PixelSlot {
   universe: number
-  colorChannel: number // 0-based index of R in the DMX buffer
-  dimmerChannel: number
+  colorChannel: number // 0-based index of R in the DMX buffer (pixel zone)
+  // 0-based channels of the fixture-wide RGB when the personality has one
+  // (the real console drives this, not the pixel zone), else null.
+  globalRgb: [number, number, number] | null
+  dimmerChannel: number // legacy dimmer x pixel personalities
   group: string
   wallPos: number // normalized 0-1 along the pixel's wall
   fixtureIndex: number
@@ -254,7 +257,12 @@ export class PrevizScene {
       bars.setMatrixAt(fixtureIndex, dummy.matrix)
 
       const base = fixture.address - 1
-      const dimmerChannel = base + (type?.standardMap.dimmer ?? 1) - 1
+      const map = type?.standardMap
+      const globalRgb: [number, number, number] | null =
+        map && map.red !== undefined && map.green !== undefined && map.blue !== undefined
+          ? [base + map.red - 1, base + map.green - 1, base + map.blue - 1]
+          : null
+      const dimmerChannel = base + (map?.dimmer ?? 1) - 1
 
       for (let p = 0; p < pixelsPerFixture; p++) {
         const localX = -0.5 + (p + 0.5) / pixelsPerFixture
@@ -268,6 +276,7 @@ export class PrevizScene {
         const slot = {
           universe: fixture.universe,
           colorChannel: base + (type?.pixelStart ?? 14) - 1 + p * 3,
+          globalRgb,
           dimmerChannel,
           group: fixture.group,
           wallPos: (wallIndex * pixelsPerFixture + p + 0.5) / wallPixels,
@@ -333,10 +342,19 @@ export class PrevizScene {
       } else {
         const buffer = feed.universes.get(slot.universe)
         if (buffer) {
-          const dimmer = buffer[slot.dimmerChannel] / 255
-          r = (buffer[slot.colorChannel] / 255) * dimmer
-          g = (buffer[slot.colorChannel + 1] / 255) * dimmer
-          b = (buffer[slot.colorChannel + 2] / 255) * dimmer
+          if (slot.globalRgb) {
+            // What the real fixture displays under the console's programming
+            // (validated on the venue recording): the fixture-wide RGB. The
+            // parked pixel zone is not what the eye sees in the room.
+            r = buffer[slot.globalRgb[0]] / 255
+            g = buffer[slot.globalRgb[1]] / 255
+            b = buffer[slot.globalRgb[2]] / 255
+          } else {
+            const dimmer = buffer[slot.dimmerChannel] / 255
+            r = (buffer[slot.colorChannel] / 255) * dimmer
+            g = (buffer[slot.colorChannel + 1] / 255) * dimmer
+            b = (buffer[slot.colorChannel + 2] / 255) * dimmer
+          }
         }
       }
       color.setRGB(r, g, b, THREE.SRGBColorSpace)
