@@ -18,16 +18,22 @@ import type { Fixture, Patch } from '../patch'
 // Room dimensions from the brief: ~40 x 15 m, 10 m high. Stage/arch at -X.
 const ROOM = { length: 40, width: 15, height: 10 }
 
-const BAR_BASE_COLOR = new THREE.Color('#101216')
+// Unlit battens must still read as physical objects: a rig that disappears
+// whenever the console goes dark looks broken, not dark.
+const BAR_BASE_COLOR = new THREE.Color('#2b313b')
 const BAR_SELECTED_COLOR = new THREE.Color('#3f6fe0')
 
-export const VIEWS: Record<number, { position: number[]; target: number[]; name: string }> = {
-  1: { position: [0, 4.5, 6], target: [0, 6, -6], name: 'Face' },
-  2: { position: [0.01, 36, 0], target: [0, 0, 0], name: 'Top' },
-  3: { position: [10, 4.5, 0], target: [-16, 5, 0], name: 'Tribune' },
+// Views are directions, not positions: the distance is computed from the
+// actual rig bounding box and the viewport aspect, so the installation is
+// always framed whatever the patch or the window size.
+export const VIEWS: Record<number, { name: string; dir: [number, number, number] }> = {
+  1: { name: 'Room', dir: [0.72, 0.5, 1] },
+  2: { name: 'Front', dir: [0, 0.16, 1] },
+  3: { name: 'Top', dir: [0, 1, 0.02] },
 }
 
-const DEFAULT_VIEW = { position: [19, 12, 14], target: [0, 4, 0] }
+const DEFAULT_VIEW = 1
+const FRAME_MARGIN = 1.18
 
 interface PixelSlot {
   universe: number
@@ -82,6 +88,12 @@ export class PrevizScene {
   private lastVersion = -1
   private lastEditorVersion = -1
   private lastTiltVersion = -1
+  // Bounding sphere of the rig, used to frame every view.
+  private rigCenter = new THREE.Vector3(0, 6, 0)
+  private rigRadius = 12
+  private currentView = DEFAULT_VIEW
+  // Set as soon as the operator orbits, so a resize never yanks their camera.
+  private userMoved = false
   private glowSums = new Float32Array(0)
   private raf = 0
   private disposed = false
@@ -100,17 +112,19 @@ export class PrevizScene {
     this.scene.background = new THREE.Color('#0b0c0f')
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 300)
-    this.camera.position.fromArray(DEFAULT_VIEW.position)
 
     this.controls = new OrbitControls(this.camera, canvas)
-    this.controls.target.fromArray(DEFAULT_VIEW.target)
     this.controls.enableDamping = true
     this.controls.dampingFactor = 0.08
-    this.controls.maxDistance = 90
+    this.controls.maxDistance = 120
+    this.controls.addEventListener('start', () => {
+      this.userMoved = true
+    })
 
     this.buildRoom()
     this.scene.add(this.fixtureGroup)
     this.applyPatch(patch)
+    this.applyView(DEFAULT_VIEW, false)
 
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
@@ -226,6 +240,7 @@ export class PrevizScene {
     this.tiltSlots = []
     this.lastTiltVersion = -1
     this.fixtures = patch.fixtures
+    this.measureRig()
 
     const type = patch.fixtureTypes[this.fixtures[0]?.type ?? '']
     const pixelsPerFixture = type?.pixels ?? 16
@@ -477,16 +492,57 @@ export class PrevizScene {
     }
   }
 
-  setView(view: number): void {
+  // ----- framing ----------------------------------------------------------
+
+  // The rig, not the room, is the subject: every view frames the battens.
+  private measureRig(): void {
+    const box = new THREE.Box3()
+    const point = new THREE.Vector3()
+    for (const fixture of this.fixtures) box.expandByPoint(point.fromArray(fixture.position))
+    if (this.fixtures.length === 0) {
+      box.set(new THREE.Vector3(-8, 5, -6), new THREE.Vector3(8, 7, 6))
+    }
+    box.expandByScalar(0.8) // batten length and its glow
+    box.getCenter(this.rigCenter)
+    const sphere = new THREE.Sphere()
+    box.getBoundingSphere(sphere)
+    this.rigRadius = Math.max(2, sphere.radius)
+  }
+
+  // Distance at which the rig's bounding sphere fits the *narrower* of the
+  // two field of views, so a wide window and a tall one both frame it.
+  private frameDistance(): number {
+    const vFov = (this.camera.fov * Math.PI) / 180
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Math.max(0.2, this.camera.aspect))
+    return (this.rigRadius * FRAME_MARGIN) / Math.sin(Math.min(vFov, hFov) / 2)
+  }
+
+  private applyView(view: number, animate: boolean): void {
     const preset = VIEWS[view]
     if (!preset) return
+    this.currentView = view
+    this.userMoved = false
+    const target = this.rigCenter.clone()
+    const position = target
+      .clone()
+      .addScaledVector(new THREE.Vector3(...preset.dir).normalize(), this.frameDistance())
+    if (!animate) {
+      this.camera.position.copy(position)
+      this.controls.target.copy(target)
+      this.controls.update()
+      return
+    }
     this.tween = {
       fromPosition: this.camera.position.clone(),
       fromTarget: this.controls.target.clone(),
-      toPosition: new THREE.Vector3().fromArray(preset.position),
-      toTarget: new THREE.Vector3().fromArray(preset.target),
+      toPosition: position,
+      toTarget: target,
       startedAt: performance.now(),
     }
+  }
+
+  setView(view: number): void {
+    this.applyView(view, true)
   }
 
   private updateTween(): void {
@@ -505,6 +561,9 @@ export class PrevizScene {
     this.composer.setSize(width, height)
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
+    // Keep the rig framed as the window changes -- unless the operator has
+    // taken the camera themselves, in which case we never move it.
+    if (!this.userMoved && !this.tween) this.applyView(this.currentView, false)
   }
 
   private loop = (): void => {

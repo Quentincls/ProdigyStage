@@ -8,11 +8,13 @@ import {
   EFFECTS,
   renderEffect,
   type EffectType,
+  type ParamValue,
   type SceneSpec,
   type TrackSpec,
   type TrackTarget,
 } from '../../core/effects'
 import { backToLive, editor, startPreview } from './editor'
+import { BUILTIN_PRESETS } from './presets'
 import { clampTrimEnd, clampTrimStart, findFreeSlot } from './sceneRules'
 import { type PresetSpec, type ShowFile } from './show'
 import { round1, TimeInput } from './TimeInput'
@@ -170,18 +172,25 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
         </div>
       </div>
 
-      {show.presets.length > 0 && (
-        <div className="panel-section">
-          <span className="panel-label">Start from a preset</span>
-          <div className="chip-row">
-            {show.presets.map((preset) => (
-              <button key={preset.id} className="chip" onClick={() => applyPreset(preset)}>
-                {preset.name}
-              </button>
-            ))}
-          </div>
+      <div className="panel-section">
+        <span className="panel-label">Start from a look</span>
+        <div className="preset-grid">
+          {[...BUILTIN_PRESETS, ...show.presets].map((preset) => (
+            <button
+              key={preset.id}
+              className={`preset-card ${
+                mainLook && mainLook.effect === preset.effect && sameParams(mainLook.params, preset.params)
+                  ? 'active'
+                  : ''
+              }`}
+              onClick={() => applyPreset(preset)}
+            >
+              <LookThumb type={preset.effect} params={preset.params} />
+              <span>{preset.name}</span>
+            </button>
+          ))}
         </div>
-      )}
+      </div>
 
       {mainLook && (
         <LookControls
@@ -385,7 +394,41 @@ function ManagePresets({
   )
 }
 
-// Small animated strip previewing an effect with its default parameters.
+// Animated strip rendered by the real engine, so a look is chosen by seeing
+// it rather than by reading parameter names.
+export function LookThumb({
+  type,
+  params,
+  width = 56,
+  height = 10,
+}: {
+  type: EffectType
+  params: Record<string, ParamValue>
+  width?: number
+  height?: number
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const paramsKey = JSON.stringify(params)
+
+  useEffect(() => {
+    const canvas = canvasRef.current!
+    const ctx = canvas.getContext('2d')!
+    const rendered = JSON.parse(paramsKey) as Record<string, ParamValue>
+    const interval = setInterval(() => {
+      const t = performance.now() / 1000
+      for (let x = 0; x < width; x++) {
+        const [r, g, b] = renderEffect(type, rendered, x / width, x, t)
+        ctx.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`
+        ctx.fillRect(x, 0, 1, height)
+      }
+    }, 120)
+    return () => clearInterval(interval)
+  }, [type, paramsKey, width, height])
+
+  return <canvas ref={canvasRef} width={width} height={height} />
+}
+
+// Same effect strip, with the effect's default parameters.
 function EffectChip({
   type,
   label,
@@ -397,28 +440,17 @@ function EffectChip({
   active: boolean
   onClick: () => void
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current!
-    const ctx = canvas.getContext('2d')!
-    const params = defaultParams(type)
-    const width = canvas.width
-    const interval = setInterval(() => {
-      const t = performance.now() / 1000
-      for (let x = 0; x < width; x++) {
-        const [r, g, b] = renderEffect(type, params, x / width, x, t)
-        ctx.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`
-        ctx.fillRect(x, 0, 1, canvas.height)
-      }
-    }, 120)
-    return () => clearInterval(interval)
-  }, [type])
-
   return (
     <button className={`effect-chip ${active ? 'active' : ''}`} onClick={onClick}>
-      <canvas ref={canvasRef} width={56} height={10} />
+      <LookThumb type={type} params={defaultParams(type)} />
       <span>{label}</span>
     </button>
   )
+}
+
+// Two looks match when the engine would render them identically.
+function sameParams(a: Record<string, ParamValue>, b: Record<string, ParamValue>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+  for (const key of keys) if (a[key] !== b[key]) return false
+  return true
 }

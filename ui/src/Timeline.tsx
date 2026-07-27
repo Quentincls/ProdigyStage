@@ -6,7 +6,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { activeScene, hexToRgb, type SceneSpec } from '../../core/effects'
-import { backToLive, editor, effectiveShowTime, isTimeOverridden } from './editor'
+import {
+  backToLive,
+  editor,
+  effectiveShowTime,
+  isTimeOverridden,
+  pauseAt,
+  playLocal,
+  seekTo,
+  transportState,
+} from './editor'
 import { feed } from './feed'
 import { clampMove, clampTrimEnd, clampTrimStart } from './sceneRules'
 import { type Marker, type ShowFile } from './show'
@@ -205,13 +214,19 @@ export default function Timeline({
         }
       }
       if (tcSubRef.current) {
-        tcSubRef.current.textContent = timeOverridden
-          ? editor.playing
+        // Same words as the transport buttons, so the readout never invents
+        // vocabulary of its own.
+        const state = transportState()
+        tcSubRef.current.textContent =
+          state === 'preview'
             ? 'PREVIEW LOOP'
-            : 'SCRUB'
-          : tc.receiving
-            ? `${tc.fps} fps · ${replayingRef.current ? 'REPLAY' : 'LIVE'}`
-            : 'no timecode'
+            : state === 'playing'
+              ? 'PLAYING'
+              : state === 'paused'
+                ? 'PAUSED'
+                : tc.receiving
+                  ? `${tc.fps} fps · ${replayingRef.current ? 'REPLAY' : 'LIVE'}`
+                  : 'no timecode'
       }
       if (nowPlayingRef.current) {
         const playing = showTime !== null ? activeScene(editor.scenes, showTime) : null
@@ -365,9 +380,13 @@ export default function Timeline({
         ),
       })
     }
+    // Grabbing the playhead always parks time under the pointer, whether we
+    // were following the console or playing locally.
     const scrubTo = (clientX: number): void => {
       const rect = canvas.getBoundingClientRect()
       editor.playing = false
+      editor.previewSceneId = null
+      editor.localFrom = null
       editor.scrub = Math.max(0, timeAt(clientX - rect.left))
       editor.version++
       setOverridden(true)
@@ -618,6 +637,7 @@ export default function Timeline({
           no timecode
         </span>
         <span className="now-playing" ref={nowPlayingRef} />
+        <Transport />
       </div>
 
       <div className="timeline-wrap" ref={wrapRef}>
@@ -733,4 +753,48 @@ function roundedRect(
   ctx.arcTo(x, y + h, x, y, r)
   ctx.arcTo(x, y, x + w, y, r)
   ctx.closePath()
+}
+
+// Transport. The show normally runs on the console's timecode, but editing
+// needs the timeline to hold still -- and to be reviewable with the console
+// stopped. Three states, always visible: following the console (Live),
+// parked, or playing on this machine's clock.
+function Transport() {
+  const [state, setState] = useState(transportState())
+
+  // The editor store is mutable and read at 60 fps by the canvases; polling
+  // it four times a second is enough to keep three buttons honest.
+  useEffect(() => {
+    const id = setInterval(() => setState(transportState()), 250)
+    return () => clearInterval(id)
+  }, [])
+
+  const liveTime = (): number | null => (feed.timecode.receiving ? feed.timecode.total : null)
+  const playing = state === 'playing' || state === 'preview'
+
+  return (
+    <div className="transport">
+      <button
+        className="transport-button"
+        title="Back to the start"
+        onClick={() => seekTo(0)}
+      >
+        ◀◀
+      </button>
+      <button
+        className="transport-button play"
+        title={playing ? 'Pause' : 'Play the timeline'}
+        onClick={() => (playing ? pauseAt(liveTime()) : playLocal(liveTime()))}
+      >
+        {playing ? '‖' : '▶'}
+      </button>
+      <button
+        className={`transport-button live ${state === 'live' ? 'active' : ''}`}
+        title="Follow the console again"
+        onClick={() => backToLive()}
+      >
+        LIVE
+      </button>
+    </div>
+  )
 }
