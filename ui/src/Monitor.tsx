@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useRef } from 'react'
 import { feed } from './feed'
+import { theme } from './theme'
 import type { Fixture, Patch } from './patch'
 
 const HEAT_COLS = 32
@@ -107,7 +108,7 @@ function UniverseCard({ view, patch }: { view: UniverseView; patch: Patch }) {
         const y = row * (BAR_CELL_H + BAR_GAP)
         const base = fixture.address - 1
         const dimmer = !globalRgb && map ? buffer[base + (map.dimmer ?? 1) - 1] / 255 : 1
-        barsCtx.fillStyle = '#8a8f98'
+        barsCtx.fillStyle = theme.textDim
         barsCtx.fillText(fixture.id, 0, y + BAR_CELL_H / 2 + 1)
         let live = ''
         if (globalRgb && map) {

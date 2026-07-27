@@ -1,19 +1,43 @@
+/* Drawn for the room it runs in: a screen in a dark venue, most of it OLED.
+   The background is true black so unlit pixels stay off; surfaces separate
+   with hairlines rather than with lightness, and the only saturated colour on
+   screen is the primary action -- plus the four states that mean something.
+
+   Every colour lives here. Canvas painters read these same variables through
+   theme.ts, so the palette has exactly one definition. */
 :root {
   color-scheme: dark;
-  --bg: #0e0f12;
-  --panel: #16181d;
-  --panel-2: #1b1e24;
-  --panel-3: #22262e;
-  --text: #e8eaed;
-  --text-dim: #8a8f98;
-  --accent: #5b8cff;
-  --accent-hover: #729cff;
+
+  --bg: #000000;
+  --panel: #08090b;
+  --panel-2: #101217;
+  --panel-3: #191c23;
+  /* Channels, so translucent surfaces can be derived instead of re-typed. */
+  --surface-rgb: 8, 9, 11;
+
+  --text: #f4f5f7;
+  --text-dim: #858b96;
+
+  --accent: #2563ff;
+  --accent-hover: #3d78ff;
+  /* Accent as text or a hairline on black: lifted, or it sinks into it. */
+  --accent-bright: #7aa2ff;
+  --accent-rgb: 37, 99, 255;
+
   --ok: #3ecf8e;
+  --ok-rgb: 62, 207, 142;
   --warn: #f5a623;
+  --warn-rgb: 245, 166, 35;
   --down: #e5484d;
-  --border: #262a31;
-  --border-strong: #333945;
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+  --down-rgb: 229, 72, 77;
+  /* Anything the operator is overriding by hand. */
+  --edit: #a78bfa;
+  --edit-rgb: 167, 139, 250;
+
+  --border: #1c1f26;
+  --border-strong: #2c313b;
+  --shadow: 0 14px 44px rgba(0, 0, 0, 0.8);
+  --accent-glow: 0 4px 20px rgba(37, 99, 255, 0.3);
   --mono: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;
 }
 
@@ -161,14 +185,14 @@ body {
 }
 
 .ghost-button.active {
-  color: var(--accent);
+  color: var(--accent-bright);
   border-color: var(--accent);
 }
 
 .dirty-badge {
   font-size: 11px;
   color: var(--warn);
-  border: 1px solid rgba(245, 166, 35, 0.35);
+  border: 1px solid rgba(var(--warn-rgb), 0.35);
   border-radius: 999px;
   padding: 3px 10px;
 }
@@ -196,7 +220,7 @@ body {
 
 .dot.ok {
   background: var(--ok);
-  box-shadow: 0 0 6px rgba(62, 207, 142, 0.6);
+  box-shadow: 0 0 6px rgba(var(--ok-rgb), 0.6);
 }
 
 .dot.idle {
@@ -236,7 +260,7 @@ body {
   gap: 16px;
   font-size: 12px;
   color: var(--text-dim);
-  background: rgba(22, 24, 29, 0.85);
+  background: rgba(var(--surface-rgb), 0.85);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px 14px;
@@ -260,7 +284,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: rgba(22, 24, 29, 0.92);
+  background: rgba(var(--surface-rgb), 0.92);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 18px 24px;
@@ -291,7 +315,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: rgba(22, 24, 29, 0.96);
+  background: rgba(var(--surface-rgb), 0.96);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
@@ -355,7 +379,7 @@ body {
 
 .chip.active {
   color: #fff;
-  background: rgba(91, 140, 255, 0.25);
+  background: rgba(var(--accent-rgb), 0.25);
   border-color: var(--accent);
 }
 
@@ -416,15 +440,24 @@ body {
   border-color: var(--border-strong);
 }
 
+/* The primary action is the only lit surface on a black screen: it should
+   read as the thing to press from across the room. */
 .button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+  font-weight: 600;
+  box-shadow: var(--accent-glow);
 }
 
 .button.primary:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+  box-shadow: 0 6px 24px rgba(var(--accent-rgb), 0.42);
+}
+
+.button.primary:disabled {
+  box-shadow: none;
 }
 
 .button:disabled {
@@ -514,7 +547,7 @@ body {
   font: inherit;
   font-size: 10px;
   color: var(--text-dim);
-  background: rgba(22, 24, 29, 0.85);
+  background: rgba(var(--surface-rgb), 0.85);
   border: 1px solid var(--border);
   border-radius: 5px;
   padding: 2px 8px;
@@ -528,7 +561,7 @@ body {
 
 .now-playing {
   font-size: 11px;
-  color: #a78bfa;
+  color: var(--edit);
   min-height: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -586,13 +619,13 @@ body {
 
 .button.record.on {
   color: #fff;
-  background: rgba(229, 72, 77, 0.25);
+  background: rgba(var(--down-rgb), 0.25);
   border-color: var(--down);
   animation: rec-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes rec-pulse {
-  50% { border-color: rgba(229, 72, 77, 0.35); }
+  50% { border-color: rgba(var(--down-rgb), 0.35); }
 }
 
 .recording-select {
@@ -652,7 +685,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px;
-  background: rgba(27, 30, 36, 0.5);
+  background: rgba(var(--surface-rgb), 0.5);
 }
 
 .track-head {
@@ -695,7 +728,7 @@ body {
 .effect-chip.active {
   color: #fff;
   border-color: var(--accent);
-  background: rgba(91, 140, 255, 0.14);
+  background: rgba(var(--accent-rgb), 0.14);
 }
 
 .effect-chip canvas {
@@ -765,17 +798,17 @@ body {
 
 .button.danger {
   color: var(--down);
-  border-color: rgba(229, 72, 77, 0.4);
+  border-color: rgba(var(--down-rgb), 0.4);
 }
 
 .button.danger:hover:not(:disabled) {
-  background: rgba(229, 72, 77, 0.12);
+  background: rgba(var(--down-rgb), 0.12);
   border-color: var(--down);
 }
 
 .live-button {
   color: var(--ok);
-  border-color: rgba(62, 207, 142, 0.4);
+  border-color: rgba(var(--ok-rgb), 0.4);
 }
 
 /* ----- tools menu + phase 5.5 chrome ----- */
@@ -851,7 +884,7 @@ body {
   border: none;
   padding: 2px 0;
   font-size: 11px;
-  color: var(--accent);
+  color: var(--accent-bright);
 }
 
 .run-name {
@@ -946,7 +979,7 @@ body {
   font-size: 12px;
   letter-spacing: 0.3em;
   color: var(--text-dim);
-  background: rgba(14, 15, 18, 0.72);
+  background: rgba(0, 0, 0, 0.72);
 }
 
 .universe-body[data-active='false'] .no-signal {
@@ -959,7 +992,7 @@ body {
 
 .dot.live {
   background: var(--down);
-  box-shadow: 0 0 8px rgba(229, 72, 77, 0.8);
+  box-shadow: 0 0 8px rgba(var(--down-rgb), 0.8);
   animation: live-pulse 1.2s ease-in-out infinite;
 }
 
@@ -984,20 +1017,20 @@ body {
 
 .output-state.armed {
   border-left-color: var(--down);
-  background: rgba(229, 72, 77, 0.12);
+  background: rgba(var(--down-rgb), 0.12);
 }
 
 .output-state.blackout {
   border-left-color: var(--warn);
-  background: rgba(245, 166, 35, 0.12);
+  background: rgba(var(--warn-rgb), 0.12);
 }
 
 .output-warning {
   font-size: 12px;
   line-height: 1.45;
   color: var(--warn);
-  background: rgba(245, 166, 35, 0.1);
-  border: 1px solid rgba(245, 166, 35, 0.35);
+  background: rgba(var(--warn-rgb), 0.1);
+  border: 1px solid rgba(var(--warn-rgb), 0.35);
   border-radius: 8px;
   padding: 8px 10px;
 }
@@ -1008,7 +1041,7 @@ body {
   overflow: hidden;
   padding: 11px 14px;
   font-weight: 600;
-  border-color: rgba(229, 72, 77, 0.5);
+  border-color: rgba(var(--down-rgb), 0.5);
   user-select: none;
   touch-action: none;
 }
@@ -1016,7 +1049,7 @@ body {
 .hold-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: rgba(229, 72, 77, 0.45);
+  background: rgba(var(--down-rgb), 0.45);
   pointer-events: none;
 }
 
@@ -1028,7 +1061,7 @@ body {
   color: #fff;
   font-weight: 600;
   letter-spacing: 0.06em;
-  background: rgba(229, 72, 77, 0.22);
+  background: rgba(var(--down-rgb), 0.22);
   border-color: var(--down);
 }
 
@@ -1082,8 +1115,8 @@ body {
 
 .transport-button.live.active {
   color: var(--ok);
-  border-color: rgba(62, 207, 142, 0.45);
-  background: rgba(62, 207, 142, 0.12);
+  border-color: rgba(var(--ok-rgb), 0.45);
+  background: rgba(var(--ok-rgb), 0.12);
 }
 
 /* ----- Look library -----------------------------------------------------
@@ -1120,7 +1153,7 @@ body {
 .preset-card.active {
   color: var(--text);
   border-color: var(--accent);
-  background: rgba(91, 140, 255, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 .preset-card canvas {
@@ -1346,8 +1379,8 @@ body {
 
 .status-pill.live {
   color: var(--text);
-  border-color: rgba(229, 72, 77, 0.45);
-  background: rgba(229, 72, 77, 0.12);
+  border-color: rgba(var(--down-rgb), 0.45);
+  background: rgba(var(--down-rgb), 0.12);
 }
 
 .icon-button {
@@ -1475,7 +1508,7 @@ body {
 }
 
 .tools-menu button.on b {
-  color: var(--accent);
+  color: var(--accent-bright);
 }
 
 .menu-sep {
@@ -1485,7 +1518,7 @@ body {
 }
 
 .tools-menu button.danger-item:hover {
-  background: rgba(229, 72, 77, 0.12);
+  background: rgba(var(--down-rgb), 0.12);
 }
 
 .menu-live {
@@ -1563,14 +1596,14 @@ body {
 .watch-progress-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: rgba(62, 207, 142, 0.28);
+  background: rgba(var(--ok-rgb), 0.28);
 }
 
 .watch-tick {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(167, 139, 250, 0.75);
+  background: rgba(var(--edit-rgb), 0.75);
 }
 
 .watch-section {
@@ -1614,7 +1647,7 @@ body {
 }
 
 .watch-now-value.scene {
-  color: #a78bfa;
+  color: var(--edit);
 }
 
 .watch-next-value {
@@ -1717,7 +1750,7 @@ body {
 
 .section-chip.active {
   color: #fff;
-  background: rgba(91, 140, 255, 0.22);
+  background: rgba(var(--accent-rgb), 0.22);
   border-color: var(--accent);
 }
 
@@ -1813,9 +1846,9 @@ body {
   margin-top: 3px;
 }
 
-.diag-row.down { background: rgba(229, 72, 77, 0.1); }
-.diag-row.live { background: rgba(229, 72, 77, 0.14); }
-.diag-row.idle { background: rgba(245, 166, 35, 0.08); }
+.diag-row.down { background: rgba(var(--down-rgb), 0.1); }
+.diag-row.live { background: rgba(var(--down-rgb), 0.14); }
+.diag-row.idle { background: rgba(var(--warn-rgb), 0.08); }
 
 .diag-row-label {
   font-size: 11px;

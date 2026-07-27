@@ -17,6 +17,7 @@ import {
   transportState,
 } from './editor'
 import { feed } from './feed'
+import { theme } from './theme'
 import { clampMove, clampTrimEnd, clampTrimStart } from './sceneRules'
 import { type Marker, type ShowFile } from './show'
 import { formatTime, pad, round1, TimeInput } from './TimeInput'
@@ -138,12 +139,12 @@ export default function Timeline({
         // The show starts at 0: formatTime clamps negatives, so ticks before
         // the start all read "0:00" and stack up on the left.
         if (x < 0 || t < 0) continue
-        ctx.strokeStyle = '#262a31'
+        ctx.strokeStyle = theme.border
         ctx.beginPath()
         ctx.moveTo(x, RULER_H)
         ctx.lineTo(x, height)
         ctx.stroke()
-        ctx.fillStyle = '#8a8f98'
+        ctx.fillStyle = theme.textDim
         ctx.fillText(formatTime(t), x + 4, 3)
       }
 
@@ -158,10 +159,10 @@ export default function Timeline({
         MARKER_BOTTOM,
         width,
         {
-          fill: 'rgba(91,140,255,0.16)',
-          fillSelected: 'rgba(91,140,255,0.34)',
-          stroke: 'rgba(91,140,255,0.45)',
-          strokeSelected: '#5b8cff',
+          fill: rgba(theme.accentBright, 0.16),
+          fillSelected: rgba(theme.accentBright, 0.34),
+          stroke: rgba(theme.accentBright, 0.5),
+          strokeSelected: theme.accentBright,
         },
         undefined,
         true,
@@ -174,10 +175,10 @@ export default function Timeline({
         height - 6,
         width,
         {
-          fill: 'rgba(167,139,250,0.16)',
-          fillSelected: 'rgba(167,139,250,0.38)',
-          stroke: 'rgba(167,139,250,0.5)',
-          strokeSelected: '#a78bfa',
+          fill: rgba(theme.edit, 0.16),
+          fillSelected: rgba(theme.edit, 0.38),
+          stroke: rgba(theme.edit, 0.5),
+          strokeSelected: theme.edit,
         },
         (item) => sceneTint(item as SceneSpec),
         true,
@@ -188,15 +189,27 @@ export default function Timeline({
       // actually takes the lights over.
       ctx.font = '9px Inter, sans-serif'
       ctx.textBaseline = 'middle'
-      ctx.fillStyle = 'rgba(138,143,152,0.5)'
-      ctx.fillText('SECTIONS', 6, (MARKER_TOP + MARKER_BOTTOM) / 2)
-      ctx.fillStyle = 'rgba(167,139,250,0.5)'
-      ctx.fillText('SCENES', 6, SCENE_TOP + 9)
+      // A block that starts before the view used to run its own name under the
+      // lane name. A short fade of the dock's background keeps the label
+      // legible without hiding anything that begins inside the view.
+      const laneLabel = (text: string, y: number, color: string): void => {
+        const fadeWidth = ctx.measureText(text).width + 22
+        const fade = ctx.createLinearGradient(0, 0, fadeWidth, 0)
+        fade.addColorStop(0, rgba(theme.panel, 0.95))
+        fade.addColorStop(0.65, rgba(theme.panel, 0.95))
+        fade.addColorStop(1, rgba(theme.panel, 0))
+        ctx.fillStyle = fade
+        ctx.fillRect(0, y - 7, fadeWidth, 14)
+        ctx.fillStyle = color
+        ctx.fillText(text, 6, y)
+      }
+      laneLabel('SECTIONS', (MARKER_TOP + MARKER_BOTTOM) / 2, rgba(theme.textDim, 0.6))
+      laneLabel('SCENES', SCENE_TOP + 9, rgba(theme.edit, 0.6))
       ctx.textBaseline = 'top'
 
       // First-time hint in edit mode.
       if (modeRef.current === 'edit' && scenesRef.current.length === 0) {
-        ctx.fillStyle = '#5f6570'
+        ctx.fillStyle = rgba(theme.textDim, 0.8)
         ctx.font = '12px Inter, sans-serif'
         ctx.textBaseline = 'middle'
         ctx.textAlign = 'center'
@@ -215,7 +228,7 @@ export default function Timeline({
       if (showTime !== null) {
         const x = Math.round(xOf(showTime)) + 0.5
         if (x >= 0 && x <= width) {
-          ctx.strokeStyle = timeOverridden ? '#a78bfa' : replayingRef.current ? '#f5a623' : '#3ecf8e'
+          ctx.strokeStyle = timeOverridden ? theme.edit : replayingRef.current ? theme.warn : theme.ok
           ctx.lineWidth = 1.5
           ctx.beginPath()
           ctx.moveTo(x, 0)
@@ -300,18 +313,18 @@ export default function Timeline({
       const mx = (t: number) => (t / extent) * w
 
       for (const scene of scenesRef.current) {
-        mctx.fillStyle = rgba(sceneTint(scene) ?? '#a78bfa', 0.85)
+        mctx.fillStyle = rgba(sceneTint(scene) ?? theme.edit, 0.85)
         mctx.fillRect(mx(scene.start), h / 2 - 2, Math.max(2, mx(scene.end) - mx(scene.start)), 4)
       }
       if (showTime !== null) {
-        mctx.fillStyle = timeOverridden ? '#a78bfa' : replayingRef.current ? '#f5a623' : '#3ecf8e'
+        mctx.fillStyle = timeOverridden ? theme.edit : replayingRef.current ? theme.warn : theme.ok
         mctx.fillRect(mx(showTime) - 0.75, 0, 1.5, h)
       }
       const state = view.current
       const vx1 = mx(state.start)
       const vx2 = mx(state.start + mainWidth / state.pxPerSec)
-      mctx.fillStyle = 'rgba(232,234,237,0.07)'
-      mctx.strokeStyle = 'rgba(138,143,152,0.8)'
+      mctx.fillStyle = rgba(theme.text, 0.07)
+      mctx.strokeStyle = rgba(theme.textDim, 0.8)
       mctx.fillRect(vx1, 0.5, Math.max(8, vx2 - vx1), h - 1)
       mctx.strokeRect(vx1 + 0.5, 0.5, Math.max(8, vx2 - vx1), h - 1)
     }
@@ -353,7 +366,7 @@ export default function Timeline({
           ctx.fillRect(x1 + 1.5, notchTop, 3, 12)
           ctx.fillRect(x2 - 4.5, notchTop, 3, 12)
         }
-        ctx.fillStyle = isSelected ? '#e8eaed' : '#aab2c0'
+        ctx.fillStyle = isSelected ? theme.text : rgba(theme.text, 0.68)
         ctx.font = '11px Inter, sans-serif'
         ctx.save()
         ctx.beginPath()

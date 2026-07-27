@@ -194,7 +194,7 @@ export default function App() {
     statusText = `Replaying ${stats.replay.file ?? ''} — nothing is sent`
     dotClass = 'ok'
   } else if (!stats?.udp.listening) {
-    statusText = 'Art-Net port unavailable — open the DMX monitor'
+    statusText = 'Art-Net port unavailable — open the signal monitor'
     dotClass = 'down'
   } else if (totalPps > 0) {
     statusText = 'Console connected — nothing is sent'
@@ -350,7 +350,7 @@ export default function App() {
         ) : tool === 'monitor' ? (
           <div className="monitor-wrap">
             <div className="monitor-header">
-              <h2>DMX monitor</h2>
+              <h2>Signal monitor</h2>
               <button className="button" onClick={() => setTool(null)}>
                 Close
               </button>

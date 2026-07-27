@@ -20,8 +20,8 @@ const ROOM = { length: 40, width: 15, height: 10 }
 
 // Unlit battens must still read as physical objects: a rig that disappears
 // whenever the console goes dark looks broken, not dark.
-const BAR_BASE_COLOR = new THREE.Color('#2b313b')
-const BAR_SELECTED_COLOR = new THREE.Color('#3f6fe0')
+const BAR_BASE_COLOR = new THREE.Color('#242932')
+const BAR_SELECTED_COLOR = new THREE.Color('#2563ff')
 
 // Views are directions, not positions: the distance is computed from the
 // actual rig bounding box and the viewport aspect, so the installation is
@@ -119,7 +119,7 @@ export class PrevizScene {
   constructor(canvas: HTMLCanvasElement, patch: Patch) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
-    this.scene.background = new THREE.Color('#0b0c0f')
+    this.scene.background = new THREE.Color('#000000')
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 300)
 
@@ -195,14 +195,14 @@ export class PrevizScene {
   // ----- static scenery ---------------------------------------------------
 
   private buildRoom(): void {
-    const line = new THREE.LineBasicMaterial({ color: '#23272e' })
-    const panel = new THREE.MeshBasicMaterial({ color: '#14161a' })
+    const line = new THREE.LineBasicMaterial({ color: '#1c2028' })
+    const panel = new THREE.MeshBasicMaterial({ color: '#0a0c0f' })
 
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.length, ROOM.width), panel)
     floor.rotation.x = -Math.PI / 2
     this.scene.add(floor)
 
-    const grid = new THREE.GridHelper(ROOM.length, ROOM.length / 2, 0x1c1f25, 0x181b20)
+    const grid = new THREE.GridHelper(ROOM.length, ROOM.length / 2, 0x161a20, 0x101318)
     grid.scale.z = ROOM.width / ROOM.length
     grid.position.y = 0.01
     this.scene.add(grid)
@@ -215,7 +215,7 @@ export class PrevizScene {
     this.scene.add(shell)
 
     // Symbolic raked tribune in the middle of the room, rising towards +X.
-    const tribuneMaterial = new THREE.MeshBasicMaterial({ color: '#191c22' })
+    const tribuneMaterial = new THREE.MeshBasicMaterial({ color: '#101318' })
     const steps = 4
     for (let i = 0; i < steps; i++) {
       const height = 0.9 * (i + 1)
@@ -232,7 +232,7 @@ export class PrevizScene {
     // the MVP scope).
     const arch = new THREE.Mesh(
       new THREE.TorusGeometry(6, 0.12, 8, 40, Math.PI),
-      new THREE.MeshBasicMaterial({ color: '#2a2e36' }),
+      new THREE.MeshBasicMaterial({ color: '#212630' }),
     )
     arch.position.set(-16, 0, 0)
     arch.rotation.y = Math.PI / 2
