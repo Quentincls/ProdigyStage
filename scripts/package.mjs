@@ -20,7 +20,7 @@ import archiver from 'archiver'
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const OUT_DIR = join(ROOT, 'dist-package')
 const STAGE = join(OUT_DIR, 'LumenStage')
-const ZIP_NAME = 'LumenStage-Previz-v2.zip'
+const ZIP_NAME = 'LumenStage-Previz-v3.zip'
 const LIVRABLES = 'C:\\Users\\quent\\Desktop\\Livrables'
 
 console.log('package: building server + ui...')
