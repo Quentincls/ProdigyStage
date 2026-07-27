@@ -57,9 +57,31 @@
         {
           "id": "fd69c9b8-f095-4509-859a-e326730f328d",
           "target": "both",
-          "effect": "solid",
+          "effect": "wave",
           "params": {
-            "color": "#2b00ff"
+            "color": "#4f42ff",
+            "speed": 2,
+            "size": 1.5
+          },
+          "fadeIn": 0.5,
+          "fadeOut": 0.5
+        }
+      ]
+    },
+    {
+      "id": "12a6d01f-8d6c-4a98-8d69-c520b55b7580",
+      "name": "Scene 4",
+      "start": 451,
+      "end": 605,
+      "tracks": [
+        {
+          "id": "ec5572f0-d223-4f46-b82f-c7deffd5d732",
+          "target": "both",
+          "effect": "chase",
+          "params": {
+            "color": "#b4dcff",
+            "speed": 1,
+            "count": 3
           },
           "fadeIn": 0.5,
           "fadeOut": 0.5
