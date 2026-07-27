@@ -51,8 +51,14 @@ const { wss } = startWebServer({
   },
   readShow,
   writeShow: (raw) => {
-    const parsed = JSON.parse(raw) as { markers?: unknown }
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.markers)) {
+    const parsed = JSON.parse(raw) as { markers?: unknown; scenes?: unknown; presets?: unknown }
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      !Array.isArray(parsed.markers) ||
+      (parsed.scenes !== undefined && !Array.isArray(parsed.scenes)) ||
+      (parsed.presets !== undefined && !Array.isArray(parsed.presets))
+    ) {
       throw new Error('invalid show shape')
     }
     writeFileSync(showPath, JSON.stringify(parsed, null, 2) + '\n')

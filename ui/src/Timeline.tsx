@@ -5,6 +5,7 @@
 // renders the chrome (buttons, selected-marker editor) at interaction rate.
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { backToLive, editor, effectiveShowTime, isTimeOverridden } from './editor'
 import { feed } from './feed'
 import {
   controlRecord,
@@ -14,16 +15,31 @@ import {
   type RecordingInfo,
   type ShowFile,
 } from './show'
+import { formatTime, pad, round1, TimeInput } from './TimeInput'
 
 interface TimelineProps {
   show: ShowFile
   onChange: (show: ShowFile) => void
   saveState: 'idle' | 'saving' | 'saved' | 'error'
+  selectedSceneId: string | null
+  onSelectScene: (id: string | null) => void
+  onAddScene: (start: number) => void
 }
 
 const RULER_STEPS = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]
+const RULER_H = 16
+const MARKER_TOP = 20
+const MARKER_BOTTOM = 38
+const SCENE_TOP = 42
 
-export default function Timeline({ show, onChange, saveState }: TimelineProps) {
+export default function Timeline({
+  show,
+  onChange,
+  saveState,
+  selectedSceneId,
+  onSelectScene,
+  onAddScene,
+}: TimelineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const tcRef = useRef<HTMLSpanElement>(null)
@@ -32,16 +48,28 @@ export default function Timeline({ show, onChange, saveState }: TimelineProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [recordings, setRecordings] = useState<RecordingInfo[]>([])
   const [replayFile, setReplayFile] = useState('')
+  const [overridden, setOverridden] = useState(false)
   const { stats } = useSyncExternalStore(feed.subscribe, feed.getSnapshot)
 
   // Mutable view state read by the draw loop.
   const view = useRef({ start: -5, pxPerSec: 6, followPausedUntil: 0 })
   const markersRef = useRef(show.markers)
   markersRef.current = show.markers
+  const scenesRef = useRef(show.scenes)
+  scenesRef.current = show.scenes
   const selectedRef = useRef(selectedId)
   selectedRef.current = selectedId
+  const selectedSceneRef = useRef(selectedSceneId)
+  selectedSceneRef.current = selectedSceneId
+  const onSelectSceneRef = useRef(onSelectScene)
+  onSelectSceneRef.current = onSelectScene
   const replayingRef = useRef(false)
   replayingRef.current = stats?.replay.replaying ?? false
+
+  useEffect(() => {
+    const poll = setInterval(() => setOverridden(isTimeOverridden()), 400)
+    return () => clearInterval(poll)
+  }, [])
 
   const selected = useMemo(
     () => show.markers.find((marker) => marker.id === selectedId) ?? null,
@@ -85,11 +113,14 @@ export default function Timeline({ show, onChange, saveState }: TimelineProps) {
 
       const tc = feed.timecode
       const state = view.current
+      const liveTime = tc.receiving ? tc.total : null
+      const showTime = effectiveShowTime(liveTime)
+      const timeOverridden = isTimeOverridden()
 
       // Follow the playhead unless the user recently panned/zoomed.
-      if (tc.receiving && performance.now() > state.followPausedUntil) {
-        const x = xOf(tc.total)
-        if (x > width * 0.88 || x < 0) state.start = tc.total - (width * 0.15) / state.pxPerSec
+      if (showTime !== null && performance.now() > state.followPausedUntil) {
+        const x = xOf(showTime)
+        if (x > width * 0.88 || x < 0) state.start = showTime - (width * 0.15) / state.pxPerSec
       }
 
       ctx.clearRect(0, 0, width, height)
@@ -104,41 +135,32 @@ export default function Timeline({ show, onChange, saveState }: TimelineProps) {
         if (x < 0) continue
         ctx.strokeStyle = '#262a31'
         ctx.beginPath()
-        ctx.moveTo(x, 16)
+        ctx.moveTo(x, RULER_H)
         ctx.lineTo(x, height)
         ctx.stroke()
         ctx.fillStyle = '#8a8f98'
         ctx.fillText(formatTime(t), x + 4, 3)
       }
 
-      // Markers.
-      const bandTop = 24
-      const bandBottom = height - 6
-      for (const marker of markersRef.current) {
-        const x1 = xOf(marker.start)
-        const x2 = xOf(marker.end)
-        if (x2 < 0 || x1 > width) continue
-        const isSelected = marker.id === selectedRef.current
-        ctx.fillStyle = isSelected ? 'rgba(91,140,255,0.34)' : 'rgba(91,140,255,0.16)'
-        ctx.strokeStyle = isSelected ? '#5b8cff' : 'rgba(91,140,255,0.45)'
-        roundedRect(ctx, x1, bandTop, Math.max(2, x2 - x1), bandBottom - bandTop, 4)
-        ctx.fill()
-        ctx.stroke()
-        ctx.fillStyle = isSelected ? '#e8eaed' : '#aab2c0'
-        ctx.font = '11px Inter, sans-serif'
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(x1 + 2, bandTop, Math.max(0, x2 - x1 - 4), bandBottom - bandTop)
-        ctx.clip()
-        ctx.fillText(marker.name, x1 + 7, bandTop + 6)
-        ctx.restore()
-      }
+      // Section markers (slim band) then scenes (main band).
+      drawBand(ctx, markersRef.current, selectedRef.current, MARKER_TOP, MARKER_BOTTOM, width, {
+        fill: 'rgba(91,140,255,0.16)',
+        fillSelected: 'rgba(91,140,255,0.34)',
+        stroke: 'rgba(91,140,255,0.45)',
+        strokeSelected: '#5b8cff',
+      })
+      drawBand(ctx, scenesRef.current, selectedSceneRef.current, SCENE_TOP, height - 6, width, {
+        fill: 'rgba(167,139,250,0.16)',
+        fillSelected: 'rgba(167,139,250,0.38)',
+        stroke: 'rgba(167,139,250,0.5)',
+        strokeSelected: '#a78bfa',
+      })
 
-      // Playhead.
-      if (tc.receiving) {
-        const x = Math.round(xOf(tc.total)) + 0.5
+      // Playhead: green live, orange replay, violet preview/scrub.
+      if (showTime !== null) {
+        const x = Math.round(xOf(showTime)) + 0.5
         if (x >= 0 && x <= width) {
-          ctx.strokeStyle = replayingRef.current ? '#f5a623' : '#3ecf8e'
+          ctx.strokeStyle = timeOverridden ? '#a78bfa' : replayingRef.current ? '#f5a623' : '#3ecf8e'
           ctx.lineWidth = 1.5
           ctx.beginPath()
           ctx.moveTo(x, 0)
@@ -150,27 +172,84 @@ export default function Timeline({ show, onChange, saveState }: TimelineProps) {
 
       // Timecode readout (imperative, outside React).
       if (tcRef.current) {
-        tcRef.current.textContent = tc.receiving
-          ? `${pad(tc.hours)}:${pad(tc.minutes)}:${pad(tc.seconds)}:${pad(tc.frames)}`
-          : '--:--:--:--'
+        if (timeOverridden && showTime !== null) {
+          const s = Math.floor(showTime)
+          const frames = Math.floor((showTime - s) * tc.fps)
+          tcRef.current.textContent = `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}:${pad(frames)}`
+        } else {
+          tcRef.current.textContent = tc.receiving
+            ? `${pad(tc.hours)}:${pad(tc.minutes)}:${pad(tc.seconds)}:${pad(tc.frames)}`
+            : '--:--:--:--'
+        }
       }
       if (tcSubRef.current) {
-        tcSubRef.current.textContent = tc.receiving
-          ? `${tc.fps} fps · ${replayingRef.current ? 'REPLAY' : 'LIVE'}`
-          : 'no timecode'
+        tcSubRef.current.textContent = timeOverridden
+          ? editor.playing
+            ? 'PREVIEW LOOP'
+            : 'SCRUB'
+          : tc.receiving
+            ? `${tc.fps} fps · ${replayingRef.current ? 'REPLAY' : 'LIVE'}`
+            : 'no timecode'
       }
     }
     draw()
 
-    // Interactions: drag to pan, wheel to zoom, click to select a marker.
-    let down: { x: number; y: number; start: number; moved: boolean } | null = null
+    function drawBand(
+      ctx: CanvasRenderingContext2D,
+      items: { id: string; name: string; start: number; end: number }[],
+      selectedId: string | null,
+      top: number,
+      bottom: number,
+      width: number,
+      colors: { fill: string; fillSelected: string; stroke: string; strokeSelected: string },
+    ): void {
+      for (const item of items) {
+        const x1 = xOf(item.start)
+        const x2 = xOf(item.end)
+        if (x2 < 0 || x1 > width) continue
+        const isSelected = item.id === selectedId
+        ctx.fillStyle = isSelected ? colors.fillSelected : colors.fill
+        ctx.strokeStyle = isSelected ? colors.strokeSelected : colors.stroke
+        roundedRect(ctx, x1, top, Math.max(2, x2 - x1), bottom - top, 4)
+        ctx.fill()
+        ctx.stroke()
+        ctx.fillStyle = isSelected ? '#e8eaed' : '#aab2c0'
+        ctx.font = '11px Inter, sans-serif'
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(x1 + 2, top, Math.max(0, x2 - x1 - 4), bottom - top)
+        ctx.clip()
+        ctx.fillText(item.name, x1 + 7, top + 4)
+        ctx.restore()
+      }
+    }
+
+    // Interactions: scrub on the ruler, drag to pan elsewhere, wheel to zoom,
+    // click to select a marker (top band) or a scene (main band).
+    let down: { x: number; y: number; start: number; moved: boolean; scrubbing: boolean } | null =
+      null
 
     const onPointerDown = (event: PointerEvent) => {
-      down = { x: event.clientX, y: event.clientY, start: view.current.start, moved: false }
+      const rect = canvas.getBoundingClientRect()
+      const y = event.clientY - rect.top
+      const scrubbing = y < RULER_H
+      down = { x: event.clientX, y: event.clientY, start: view.current.start, moved: false, scrubbing }
       canvas.setPointerCapture(event.pointerId)
+      if (scrubbing) {
+        editor.playing = false
+        editor.scrub = Math.max(0, timeAt(event.clientX - rect.left))
+        editor.version++
+        setOverridden(true)
+      }
     }
     const onPointerMove = (event: PointerEvent) => {
       if (!down) return
+      if (down.scrubbing) {
+        const rect = canvas.getBoundingClientRect()
+        editor.scrub = Math.max(0, timeAt(event.clientX - rect.left))
+        editor.version++
+        return
+      }
       const dx = event.clientX - down.x
       if (Math.abs(dx) > 4) down.moved = true
       if (down.moved) {
@@ -180,13 +259,22 @@ export default function Timeline({ show, onChange, saveState }: TimelineProps) {
     }
     const onPointerUp = (event: PointerEvent) => {
       if (!down) return
-      if (!down.moved) {
+      if (!down.moved && !down.scrubbing) {
         const rect = canvas.getBoundingClientRect()
         const t = timeAt(event.clientX - rect.left)
-        const hit = [...markersRef.current]
-          .reverse()
-          .find((marker) => t >= marker.start && t <= marker.end)
-        setSelectedId(hit?.id ?? null)
+        const y = event.clientY - rect.top
+        if (y >= MARKER_TOP && y <= MARKER_BOTTOM) {
+          const hit = [...markersRef.current]
+            .reverse()
+            .find((marker) => t >= marker.start && t <= marker.end)
+          setSelectedId(hit?.id ?? null)
+        } else if (y >= SCENE_TOP) {
+          const hit = [...scenesRef.current]
+            .reverse()
+            .find((scene) => t >= scene.start && t <= scene.end)
+          onSelectSceneRef.current(hit?.id ?? null)
+          if (hit) setSelectedId(null)
+        }
       }
       down = null
     }
@@ -294,6 +382,28 @@ export default function Timeline({ show, onChange, saveState }: TimelineProps) {
           Add section
         </button>
         <button
+          className="button"
+          onClick={() => {
+            const canvas = canvasRef.current!
+            const tc = feed.timecode
+            const center = view.current.start + canvas.clientWidth / 2 / view.current.pxPerSec
+            onAddScene(Math.max(0, round1(tc.receiving ? tc.total : center)))
+          }}
+        >
+          Add scene
+        </button>
+        {overridden && (
+          <button
+            className="button live-button"
+            onClick={() => {
+              backToLive()
+              setOverridden(false)
+            }}
+          >
+            ⏺ Back to live
+          </button>
+        )}
+        <button
           className={`button record ${recording ? 'on' : ''}`}
           onClick={() => void controlRecord(recording ? 'stop' : 'start')}
         >
@@ -328,54 +438,8 @@ export default function Timeline({ show, onChange, saveState }: TimelineProps) {
   )
 }
 
-function TimeInput({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
-  const [text, setText] = useState(formatTime(value))
-  useEffect(() => setText(formatTime(value)), [value])
-  return (
-    <input
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => {
-        const parsed = parseTime(text)
-        if (parsed !== null) onCommit(round1(parsed))
-        else setText(formatTime(value))
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-      }}
-    />
-  )
-}
-
-function formatTime(t: number): string {
-  const s = Math.max(0, Math.round(t))
-  const hours = Math.floor(s / 3600)
-  const minutes = Math.floor((s % 3600) / 60)
-  const seconds = s % 60
-  return hours > 0
-    ? `${hours}:${pad(minutes)}:${pad(seconds)}`
-    : `${minutes}:${pad(seconds)}`
-}
-
-function parseTime(text: string): number | null {
-  const parts = text.trim().split(':').map(Number)
-  if (parts.some((n) => Number.isNaN(n))) return null
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
-  if (parts.length === 2) return parts[0] * 60 + parts[1]
-  if (parts.length === 1) return parts[0]
-  return null
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, '0')
-}
-
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
-}
-
-function round1(n: number): number {
-  return Math.round(n * 10) / 10
 }
 
 function roundedRect(

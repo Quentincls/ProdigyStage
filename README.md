@@ -13,6 +13,10 @@ synchronisée au timecode et édition de scènes en man-in-the-middle.
 - [x] **Phase 3** — mode Placement (picking 3D + champs, save patch.json), résilience, package v1
 - [x] **Phase 4** — timecode Art-Net, timeline (règle/tête de lecture/marqueurs → show.json), enregistreur + replay de runs
 - [x] Passe UX/UI (hover/focus/transitions, reduced-motion, layout dock fixe) — package v2
+- [x] **Phase 5** — éditeur de scènes : moteur d'effets déterministe partagé `/core`
+      (solid/gradient/wave/chase/sparkle), scènes+tracks dans show.json, panneau
+      d'édition (groupe + effet + ≤4 réglages + fades), préécoute en boucle, scrub,
+      presets. Visible en previz uniquement.
 
 **Le soft n'émet toujours RIEN vers le rig** — pur spectateur jusqu'à la Phase 6.
 
@@ -21,17 +25,12 @@ synchronisée au timecode et édition de scènes en man-in-the-middle.
 1. **Tests réels en attente** : lancement du zip sur le Mac du client (Gatekeeper/Node),
    premier branchement au flux console (validera le channel-map Tambora et la
    numérotation d'univers), tête de lecture calée sur MagicQ au timecode.
-   Enregistrer un run complet du show sur site (bouton Record) pour développer la suite dessus.
-2. **Phase 5A** — modèle de scènes (show.json : scènes → tracks → effets) + moteur
-   d'effets pixel-map déterministe partagé serveur/UI (`/core`) : solid, gradient,
-   wave, chase, sparkle.
-3. **Phase 5B** — interface d'édition : créer une scène sur la timeline, choisir
-   groupe + effet + 3-4 paramètres, préécoute en boucle dans la previz, presets.
-   Zéro notion DMX visible.
-4. **Phase 6** — sortie Art-Net man-in-the-middle : passthrough < 5 ms, override par
-   scène avec crossfade 0,5 s, blackout safe, watchdog 250 ms, mode ARMED explicite.
-   La phase la plus sensible du projet.
-5. **Phase 7** — confort prod : headless multi-poste, undo/redo, univers 5-8,
+   Enregistrer un run complet du show sur site (bouton Record) pour développer dessus.
+2. **Phase 6** — sortie Art-Net man-in-the-middle : passthrough < 5 ms, override par
+   scène avec crossfade 0,5 s (le moteur /core passe côté serveur), blackout safe,
+   watchdog 250 ms, mode ARMED explicite. La phase la plus sensible du projet —
+   à valider en répétition sur site uniquement.
+3. **Phase 7** — confort prod : headless multi-poste, undo/redo, univers 5-8,
    volumétrique beams, shadow mode.
 
 ## Prérequis

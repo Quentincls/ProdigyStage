@@ -10,6 +10,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
+import { activeScene, renderScenePixel } from '../../../core/effects'
+import { editor, effectiveShowTime } from '../editor'
 import { feed } from '../feed'
 import type { Fixture, Patch } from '../patch'
 
@@ -31,6 +33,9 @@ interface PixelSlot {
   universe: number
   colorChannel: number // 0-based index of R in the DMX buffer
   dimmerChannel: number
+  group: string
+  wallPos: number // normalized 0-1 along the pixel's wall
+  fixtureIndex: number
 }
 
 export class PrevizScene {
@@ -49,10 +54,11 @@ export class PrevizScene {
   private glows: THREE.InstancedMesh | null = null
   private fixtures: Fixture[] = []
   private pixelSlots: PixelSlot[] = []
-  private glowSlots: PixelSlot[][] = []
   private selected = new Set<string>()
 
   private lastVersion = -1
+  private lastEditorVersion = -1
+  private glowSums = new Float32Array(0)
   private raf = 0
   private disposed = false
   private pointerDown: { x: number; y: number } | null = null
@@ -193,7 +199,6 @@ export class PrevizScene {
       this.fixtureGroup.remove(child)
     }
     this.pixelSlots = []
-    this.glowSlots = []
     this.fixtures = patch.fixtures
 
     const type = patch.fixtureTypes[this.fixtures[0]?.type ?? '']
@@ -226,6 +231,18 @@ export class PrevizScene {
     const black = new THREE.Color(0x000000)
     const degreesToRadians = Math.PI / 180
 
+    // Normalized position of each pixel along its wall (same convention as
+    // the fake-show and the effect engine): fixtures ordered by numeric id.
+    const wallOrder = new Map<string, number>()
+    const wallSizes = new Map<string, number>()
+    for (const group of patch.groups) {
+      const wall = this.fixtures
+        .filter((f) => f.group === group)
+        .sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10))
+      wall.forEach((fixture, index) => wallOrder.set(fixture.id, index))
+      wallSizes.set(group, wall.length * pixelsPerFixture)
+    }
+
     this.fixtures.forEach((fixture: Fixture, fixtureIndex: number) => {
       dummy.position.set(...fixture.position)
       dummy.rotation.set(
@@ -238,7 +255,6 @@ export class PrevizScene {
 
       const base = fixture.address - 1
       const dimmerChannel = base + (type?.standardMap.dimmer ?? 1) - 1
-      const fixtureSlots: PixelSlot[] = []
 
       for (let p = 0; p < pixelsPerFixture; p++) {
         const localX = -0.5 + (p + 0.5) / pixelsPerFixture
@@ -247,15 +263,18 @@ export class PrevizScene {
         const instance = fixtureIndex * pixelsPerFixture + p
         pixels.setMatrixAt(instance, pixelMatrix)
         pixels.setColorAt(instance, black)
+        const wallIndex = wallOrder.get(fixture.id) ?? 0
+        const wallPixels = wallSizes.get(fixture.group) ?? pixelsPerFixture
         const slot = {
           universe: fixture.universe,
           colorChannel: base + (type?.pixelStart ?? 14) - 1 + p * 3,
           dimmerChannel,
+          group: fixture.group,
+          wallPos: (wallIndex * pixelsPerFixture + p + 0.5) / wallPixels,
+          fixtureIndex,
         }
         this.pixelSlots.push(slot)
-        fixtureSlots.push(slot)
       }
-      this.glowSlots.push(fixtureSlots)
 
       // Glow pool sits on the floor, pushed towards the room center.
       const inward = fixture.group === 'wall-left' ? 2.1 : -2.1
@@ -276,41 +295,70 @@ export class PrevizScene {
 
   // ----- per-frame --------------------------------------------------------
 
+  // Scene priority (brief Phase 5): pixels covered by a track of the active
+  // scene render the shared engine's output; every other pixel keeps showing
+  // the console feed. Preview/scrub time overrides the live timecode.
   private updateColors(): void {
-    if (!this.pixels || !this.glows || feed.version === this.lastVersion) return
+    if (!this.pixels || !this.glows) return
+    const tc = feed.timecode
+    const liveTime = tc.receiving ? tc.total : null
+    const showTime = effectiveShowTime(liveTime)
+    const scene = showTime !== null ? activeScene(editor.scenes, showTime) : null
+
+    // An active scene animates continuously (its time advances even without
+    // new DMX frames); otherwise redraw only on new frames or editor changes.
+    if (!scene && feed.version === this.lastVersion && editor.version === this.lastEditorVersion) {
+      return
+    }
     this.lastVersion = feed.version
+    this.lastEditorVersion = editor.version
+
     const color = new THREE.Color()
+    const fixtureCount = this.fixtures.length
+    if (this.glowSums.length !== fixtureCount * 3) this.glowSums = new Float32Array(fixtureCount * 3)
+    this.glowSums.fill(0)
+    const sums = this.glowSums
 
     this.pixelSlots.forEach((slot, instance) => {
-      const buffer = feed.universes.get(slot.universe)
-      if (!buffer) return
-      const dimmer = buffer[slot.dimmerChannel] / 255
-      color.setRGB(
-        (buffer[slot.colorChannel] / 255) * dimmer,
-        (buffer[slot.colorChannel + 1] / 255) * dimmer,
-        (buffer[slot.colorChannel + 2] / 255) * dimmer,
-        THREE.SRGBColorSpace,
-      )
-      this.pixels!.setColorAt(instance, color)
-    })
-    this.pixels.instanceColor!.needsUpdate = true
-
-    this.glowSlots.forEach((slots, fixtureIndex) => {
-      const buffer = feed.universes.get(slots[0]?.universe ?? 0)
-      if (!buffer || slots.length === 0) return
       let r = 0
       let g = 0
       let b = 0
-      for (const slot of slots) {
-        r += buffer[slot.colorChannel]
-        g += buffer[slot.colorChannel + 1]
-        b += buffer[slot.colorChannel + 2]
+      const sceneColor = scene
+        ? renderScenePixel(scene, slot.group, slot.wallPos, instance, showTime!)
+        : null
+      if (sceneColor) {
+        r = sceneColor[0] / 255
+        g = sceneColor[1] / 255
+        b = sceneColor[2] / 255
+      } else {
+        const buffer = feed.universes.get(slot.universe)
+        if (buffer) {
+          const dimmer = buffer[slot.dimmerChannel] / 255
+          r = (buffer[slot.colorChannel] / 255) * dimmer
+          g = (buffer[slot.colorChannel + 1] / 255) * dimmer
+          b = (buffer[slot.colorChannel + 2] / 255) * dimmer
+        }
       }
-      const dimmer = buffer[slots[0].dimmerChannel] / 255
-      const scale = (dimmer * 0.55) / (255 * slots.length)
-      color.setRGB(r * scale, g * scale, b * scale, THREE.SRGBColorSpace)
-      this.glows!.setColorAt(fixtureIndex, color)
+      color.setRGB(r, g, b, THREE.SRGBColorSpace)
+      this.pixels!.setColorAt(instance, color)
+      const o = slot.fixtureIndex * 3
+      sums[o] += r
+      sums[o + 1] += g
+      sums[o + 2] += b
     })
+    this.pixels.instanceColor!.needsUpdate = true
+
+    const perFixture = this.pixelSlots.length / Math.max(1, fixtureCount)
+    for (let f = 0; f < fixtureCount; f++) {
+      const o = f * 3
+      color.setRGB(
+        (sums[o] / perFixture) * 0.55,
+        (sums[o + 1] / perFixture) * 0.55,
+        (sums[o + 2] / perFixture) * 0.55,
+        THREE.SRGBColorSpace,
+      )
+      this.glows!.setColorAt(f, color)
+    }
     this.glows.instanceColor!.needsUpdate = true
   }
 

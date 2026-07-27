@@ -58,6 +58,24 @@ Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
   (`/api/replay`) ou `npm run replay -- <file>`. Le serveur reste un pur
   spectateur du rig : le replay ne sort jamais de la machine.
 
+## Éditeur de scènes (Phase 5)
+
+- Moteur d'effets partagé dans **`/core/effects.ts`** : pur TS, zéro
+  dépendance, déterministe vs timecode (un même instant rejoue le même rendu,
+  sparkle inclus via hash entier). 5 primitives (solid, gradient, wave,
+  chase, sparkle), ≤ 4 paramètres chacune, métadonnées `EFFECTS` qui génèrent
+  l'UI. Tourne dans le navigateur ET dans Node (`node core/selftest.ts`,
+  script `npm run test:core`) — le serveur le branchera en Phase 6.
+- Modèle (`data/show.json`) : `scenes[]` = plage timecode + `tracks[]`
+  (cible wall-left/right/both + effet + params + fadeIn/fadeOut) ;
+  `presets[]` = tracks nommés réutilisables. Priorité : pixel couvert par la
+  scène active → effet ; sinon flux console (fait dans PrevizScene, une seule
+  passe pixels + glow).
+- Temps effectif (`ui/src/editor.ts`) : preview loop > scrub (drag sur la
+  règle) > timecode live. Vignettes d'effets animées dans l'éditeur, tout est
+  auto-sauvé (même debounce que les marqueurs). Aucune notion DMX visible.
+- Toujours AUCUNE émission réseau : les scènes ne se voient que dans la previz.
+
 ## Packaging v0 (`npm run package`)
 
 `dist-package/LumenStage/` : `server/` (JS compilé) + `ui/` (build Vite) +

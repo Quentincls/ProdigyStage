@@ -1,3 +1,40 @@
 {
-  "markers": []
+  "markers": [],
+  "scenes": [
+    {
+      "id": "ed6c62d4-85fc-4563-be98-f6a784b5ad71",
+      "name": "Scene — Intro v2",
+      "start": 130,
+      "end": 220,
+      "tracks": [
+        {
+          "id": "907676fb-14d6-43a1-ba2c-d9724c9effed",
+          "target": "both",
+          "effect": "wave",
+          "params": {
+            "color": "#ffb340",
+            "speed": 0.6,
+            "size": 3
+          },
+          "fadeIn": 0.5,
+          "fadeOut": 0.5
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "id": "9dccb9ce-9af5-4017-a88e-09e4f32668c1",
+      "name": "Wave 1",
+      "target": "both",
+      "effect": "wave",
+      "params": {
+        "color": "#ffb340",
+        "speed": 0.6,
+        "size": 3
+      },
+      "fadeIn": 0.5,
+      "fadeOut": 0.5
+    }
+  ]
 }

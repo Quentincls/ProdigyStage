@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { defaultParams } from '../../core/effects'
+import { editor } from './editor'
 import { feed } from './feed'
 import Monitor from './Monitor'
 import { fetchPatch, savePatch, type Patch } from './patch'
 import PlacementPanel from './previz/PlacementPanel'
 import Previz from './previz/Previz'
+import SceneEditor from './SceneEditor'
 import { fetchShow, saveShow, type ShowFile } from './show'
 import Timeline from './Timeline'
+import { round1 } from './TimeInput'
 
 type View = 'previz' | 'monitor'
 
@@ -19,8 +23,15 @@ export default function App() {
 
   const [show, setShow] = useState<ShowFile | null>(null)
   const [showSaveState, setShowSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const showSaveTimer = useRef<number | null>(null)
   const showLoaded = useRef(false)
+
+  // The previz render loop reads scenes from the mutable editor store.
+  useEffect(() => {
+    editor.scenes = show?.scenes ?? []
+    editor.version++
+  }, [show])
 
   useEffect(() => {
     feed.start()
@@ -33,7 +44,7 @@ export default function App() {
         setShow(initial)
         showLoaded.current = true
       })
-      .catch(() => setShow({ markers: [] }))
+      .catch(() => setShow({ markers: [], scenes: [], presets: [] }))
   }, [])
 
   // Auto-save show.json, debounced: markers are low-stakes and frequent edits
@@ -76,6 +87,38 @@ export default function App() {
     if (!patch) return
     await savePatch(patch)
     setSavedJson(JSON.stringify(patch))
+  }
+
+  function handleAddScene(start: number): void {
+    if (!show) return
+    const scene = {
+      id: crypto.randomUUID(),
+      name: `Scene ${show.scenes.length + 1}`,
+      start: round1(start),
+      end: round1(start + 60),
+      tracks: [
+        {
+          id: crypto.randomUUID(),
+          target: 'both' as const,
+          effect: 'wave' as const,
+          params: defaultParams('wave'),
+          fadeIn: 0.5,
+          fadeOut: 0.5,
+        },
+      ],
+    }
+    handleShowChange({ ...show, scenes: [...show.scenes, scene] })
+    setSelectedSceneId(scene.id)
+    setPlacement(false)
+    setView('previz')
+  }
+
+  function handleSelectScene(id: string | null): void {
+    setSelectedSceneId(id)
+    if (id) {
+      setPlacement(false)
+      setView('previz')
+    }
   }
 
   function handleRevert(): void {
@@ -126,7 +169,7 @@ export default function App() {
               selection={selection}
               onPick={(id) => setSelection(id ? [id] : [])}
             />
-            {placement && (
+            {placement && !selectedSceneId && (
               <PlacementPanel
                 patch={patch}
                 selection={selection}
@@ -135,6 +178,14 @@ export default function App() {
                 onChange={setPatch}
                 onSave={handleSave}
                 onRevert={handleRevert}
+              />
+            )}
+            {selectedSceneId && show && (
+              <SceneEditor
+                show={show}
+                sceneId={selectedSceneId}
+                onChange={handleShowChange}
+                onClose={() => setSelectedSceneId(null)}
               />
             )}
             {(!connected || totalPps === 0) && (
@@ -161,7 +212,16 @@ export default function App() {
           </div>
         )}
       </main>
-      {show && <Timeline show={show} onChange={handleShowChange} saveState={showSaveState} />}
+      {show && (
+        <Timeline
+          show={show}
+          onChange={handleShowChange}
+          saveState={showSaveState}
+          selectedSceneId={selectedSceneId}
+          onSelectScene={handleSelectScene}
+          onAddScene={handleAddScene}
+        />
+      )}
     </div>
   )
 }

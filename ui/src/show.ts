@@ -1,3 +1,4 @@
+import type { EffectType, ParamValue, SceneSpec, TrackTarget } from '../../core/effects'
 import { apiUrl } from './config'
 
 export interface Marker {
@@ -7,8 +8,20 @@ export interface Marker {
   end: number
 }
 
+export interface PresetSpec {
+  id: string
+  name: string
+  target: TrackTarget
+  effect: EffectType
+  params: Record<string, ParamValue>
+  fadeIn: number
+  fadeOut: number
+}
+
 export interface ShowFile {
   markers: Marker[]
+  scenes: SceneSpec[]
+  presets: PresetSpec[]
 }
 
 export interface RecordingInfo {
@@ -22,7 +35,7 @@ export async function fetchShow(): Promise<ShowFile> {
   const response = await fetch(apiUrl('/api/show'))
   if (!response.ok) throw new Error(`show fetch failed (${response.status})`)
   const data = (await response.json()) as Partial<ShowFile>
-  return { markers: data.markers ?? [] }
+  return { markers: data.markers ?? [], scenes: data.scenes ?? [], presets: data.presets ?? [] }
 }
 
 export async function saveShow(show: ShowFile): Promise<void> {
