@@ -1,14 +1,19 @@
-// PRODIGY STAGE server, Phases 1-4: passive Art-Net listener -> WebSocket
-// bridge. Receives ArtDMX + ArtTimeCode on UDP 6454, keeps a 4x512 state,
-// broadcasts a consolidated binary frame at ~40 fps plus a JSON stats message
-// at 1 Hz, records/replays full runs. Emits NOTHING towards the rig (the
-// replayer only feeds the local listener on 127.0.0.1).
+// PRODIGY STAGE server: Art-Net listener -> WebSocket bridge (Phases 1-5),
+// plus the Phase 6 man-in-the-middle output. Receives ArtDMX + ArtTimeCode on
+// UDP 6454, keeps a 4x512 state, broadcasts a consolidated binary frame at
+// ~40 fps plus a JSON stats message at 1 Hz, records/replays full runs.
+//
+// Transmission towards the rig lives entirely in output.ts and is OFF at
+// boot, with no configured target: see the header of that file.
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { SceneSpec } from '@prodigy-stage/core'
 import { WebSocket } from 'ws'
+import { timecodeToSeconds } from './artnet.js'
 import { ArtnetListener } from './listener.js'
+import { ArtnetOutput, type OutputMode } from './output.js'
 import { loadPatch, patchPath } from './patch.js'
 import { Recorder } from './recorder.js'
 import { Replayer } from './replayer.js'
@@ -19,11 +24,12 @@ const BROADCAST_MS = 25 // ~40 fps target, Windows timers make it ~32 fps: withi
 const STATS_MS = 1000
 
 const patch = loadPatch()
-console.log('PRODIGY STAGE server -- Phase 4')
+console.log('PRODIGY STAGE server -- Phase 6')
 console.log(`patch: ${patch.fixtures.length} fixtures on show universes ${SHOW_UNIVERSES.join(', ')}`)
 
 const dataDir = join(fileURLToPath(patchPath()), '..')
 const showPath = join(dataDir, 'show.json')
+const outputConfigPath = join(dataDir, 'output.json')
 const recordingsDir = join(dataDir, 'recordings')
 
 const listener = new ArtnetListener(SHOW_UNIVERSES)
@@ -37,6 +43,53 @@ function readShow(): string {
   if (!existsSync(showPath)) return '{"markers":[]}\n'
   return readFileSync(showPath, 'utf8')
 }
+
+// ----- Phase 6 output ------------------------------------------------------
+// No output.json = no target = the install cannot reach a rig. Commissioning
+// on site is exactly "write the rig's address into data/output.json".
+function loadOutputConfig(): { targets: string[]; port: number } {
+  if (!existsSync(outputConfigPath)) return { targets: [], port: 6454 }
+  try {
+    const raw = JSON.parse(readFileSync(outputConfigPath, 'utf8')) as {
+      targets?: unknown
+      port?: unknown
+    }
+    return {
+      targets: Array.isArray(raw.targets) ? raw.targets.filter((t): t is string => typeof t === 'string') : [],
+      port: typeof raw.port === 'number' ? raw.port : 6454,
+    }
+  } catch (error) {
+    console.error(`output: ignoring unreadable output.json (${(error as Error).message})`)
+    return { targets: [], port: 6454 }
+  }
+}
+
+const output = new ArtnetOutput(loadOutputConfig(), patch)
+
+// Scenes are cached: the merge runs on every console frame, it must never
+// touch the disk. Invalidated whenever the editor saves.
+let scenesCache: SceneSpec[] | null = null
+function scenes(): SceneSpec[] {
+  if (scenesCache) return scenesCache
+  try {
+    const parsed = JSON.parse(readShow()) as { scenes?: SceneSpec[] }
+    scenesCache = Array.isArray(parsed.scenes) ? parsed.scenes : []
+  } catch {
+    scenesCache = []
+  }
+  return scenesCache
+}
+
+output.getScenes = scenes
+output.getShowTime = () =>
+  listener.isTimecodeActive() && listener.timecode ? timecodeToSeconds(listener.timecode) : null
+listener.onFrame = (universe, data, at) => output.onConsoleFrame(universe, data, at)
+
+console.log(
+  output.status().targets.length === 0
+    ? 'output: no target configured -- this install cannot transmit (data/output.json)'
+    : `output: targets ${output.status().targets.join(', ')} (mode off until armed)`,
+)
 
 const { wss } = startWebServer({
   port: WEB_PORT,
@@ -62,6 +115,21 @@ const { wss } = startWebServer({
       throw new Error('invalid show shape')
     }
     writeFileSync(showPath, JSON.stringify(parsed, null, 2) + '\n')
+    scenesCache = null
+  },
+  controlOutput: (action, value) => {
+    if (action === 'mode') return output.setMode(value as OutputMode)
+    if (action === 'targets') {
+      const targets = Array.isArray(value) ? value.filter((t): t is string => typeof t === 'string') : []
+      const status = output.setTargets(targets)
+      writeFileSync(
+        outputConfigPath,
+        JSON.stringify({ targets: status.targets, port: status.port }, null, 2) + '\n',
+      )
+      return status
+    }
+    if (action === 'status') return output.status()
+    throw new Error(`unknown output action: ${action}`)
   },
   listRecordings: () => {
     if (!existsSync(recordingsDir)) return []
@@ -144,6 +212,7 @@ function encodeStats(): string {
     otherPps: listener.otherPps,
     record: recorder.status(),
     replay: replayer.status(),
+    output: output.status(),
   })
 }
 
@@ -170,6 +239,7 @@ wss.on('connection', (client) => {
 process.on('SIGINT', () => {
   recorder.stop()
   replayer.stop()
+  output.stop()
   listener.stop()
   wss.close()
   process.exit(0)

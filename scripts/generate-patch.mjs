@@ -64,8 +64,31 @@ const patch = {
       footprint: 61,
       pixels: 16,
       pixelOrder: 'RGB',
-      standardMap: { dimmer: 1, strobe: 2 },
+      // Tambora Batten "Standard RGB" 61ch mode. Base block validated against
+      // BOTH the official DMX chart (08.2021, via the QLC+ definition) and the
+      // venue recording of 2026-07-27: dimmer 7/8 toggled 0->255->0 at the
+      // session bounds, tilt 9/10 swept continuously (motorized tilt FX).
+      // The per-pixel zone (14-61) is left parked by the console programming.
+      standardMap: {
+        red: 1,
+        green: 2,
+        blue: 3,
+        white: 4,
+        cto: 5,
+        strobe: 6,
+        dimmer: 7,
+        dimmerFine: 8,
+        tilt: 9,
+        tiltFine: 10,
+        zoom: 11,
+        function: 12,
+        reset: 13,
+      },
       pixelStart: 14,
+      tiltRangeDeg: 220, // TiltMax from the fixture data
+      // Which way the yoke turns is not in any chart -- it is a physical
+      // fact of the install. Flip this on site if the previz mirrors the room.
+      tiltInvert: false,
     },
   },
   fixtures,

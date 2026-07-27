@@ -536,19 +536,6 @@ body {
   max-width: 150px;
 }
 
-.marker-editor {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(14, 15, 18, 0.95);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 10px;
-}
-
 .marker-editor input {
   font: inherit;
   font-size: 12px;
@@ -964,4 +951,814 @@ body {
 
 .universe-body[data-active='false'] .no-signal {
   display: flex;
+}
+
+/* ----- Phase 6: live output ---------------------------------------------
+   Visual weight matches consequence: armed and blackout are impossible to
+   miss, everything else stays as quiet as the rest of the chrome. */
+
+.dot.live {
+  background: var(--down);
+  box-shadow: 0 0 8px rgba(229, 72, 77, 0.8);
+  animation: live-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  50% { opacity: 0.35; }
+}
+
+.output-state {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.output-state.spectator {
+  border-left-color: var(--ok);
+}
+
+.output-state.armed {
+  border-left-color: var(--down);
+  background: rgba(229, 72, 77, 0.12);
+}
+
+.output-state.blackout {
+  border-left-color: var(--warn);
+  background: rgba(245, 166, 35, 0.12);
+}
+
+.output-warning {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--warn);
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+/* Press and hold: the fill is the feedback, so no separate progress bar. */
+.hold-button {
+  position: relative;
+  overflow: hidden;
+  padding: 11px 14px;
+  font-weight: 600;
+  border-color: rgba(229, 72, 77, 0.5);
+  user-select: none;
+  touch-action: none;
+}
+
+.hold-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(229, 72, 77, 0.45);
+  pointer-events: none;
+}
+
+.hold-label {
+  position: relative;
+}
+
+.button.blackout {
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  background: rgba(229, 72, 77, 0.22);
+  border-color: var(--down);
+}
+
+.button.blackout:hover:not(:disabled) {
+  background: var(--down);
+}
+
+.button.blackout.compact {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+/* ----- Transport --------------------------------------------------------
+   Following the console, parked, or playing on this machine's clock. */
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.transport-button {
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  cursor: pointer;
+}
+
+.transport-button:hover {
+  color: var(--text);
+  background: var(--panel-3);
+  border-color: var(--border-strong);
+}
+
+.transport-button.play {
+  min-width: 34px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.transport-button.live {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.transport-button.live.active {
+  color: var(--ok);
+  border-color: rgba(62, 207, 142, 0.45);
+  background: rgba(62, 207, 142, 0.12);
+}
+
+/* ----- Look library -----------------------------------------------------
+   Looks are picked by sight: every card renders the real engine output. */
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.preset-card:hover {
+  color: var(--text);
+  background: var(--panel-3);
+  border-color: var(--border-strong);
+}
+
+.preset-card.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(91, 140, 255, 0.12);
+}
+
+.preset-card canvas {
+  width: 100%;
+  height: 12px;
+  border-radius: 3px;
+  display: block;
+}
+
+/* ----- Panel hierarchy --------------------------------------------------
+   Four levels, in order of what the eye should hit first: the scene's
+   identity, the one action, the grouped sections, then Advanced. */
+
+.panel-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.panel-group > .panel-label {
+  margin-bottom: -2px;
+}
+
+.scene-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.scene-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.scene-name {
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 1px 0;
+  width: 100%;
+}
+
+.scene-name:hover {
+  border-bottom-color: var(--border-strong);
+}
+
+.scene-name:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.scene-when {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.scene-when input {
+  font: inherit;
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 2px 4px;
+  width: 56px;
+}
+
+.scene-when input:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.scene-when input:focus {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.scene-when-sep {
+  opacity: 0.5;
+}
+
+.scene-duration {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.icon-close {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 5px 7px;
+  cursor: pointer;
+  flex: none;
+}
+
+.icon-close:hover {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+
+.button.block {
+  width: 100%;
+  padding: 9px 14px;
+  font-weight: 600;
+}
+
+/* The chosen look, shown big enough to recognise at a glance. */
+.current-look {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.current-look canvas {
+  width: 100%;
+  height: 26px;
+  border-radius: 4px;
+  display: block;
+}
+
+.current-look-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.current-look-name {
+  font-size: 12.5px;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The tools menu floats over the scene panel: it needs its own elevation,
+   otherwise two identical surfaces overlap and neither reads. */
+.tools-menu {
+  background: var(--panel-3);
+  box-shadow: var(--shadow);
+}
+
+.param-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ----- Chrome: top bar, dock ---------------------------------------------
+   Three groups the eye can name: what mode am I in, what is the show doing,
+   what can I do about it. Each one gets a surface of its own. */
+
+.topbar {
+  padding: 10px 16px;
+}
+
+.brand h1 {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+/* Segmented control, Figma/Linear style: the active half is raised, the
+   inactive one recedes. */
+.tabs {
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--bg);
+}
+
+.tabs button {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 14px;
+  border-radius: 7px;
+}
+
+.tabs button.active {
+  color: var(--text);
+  background: var(--panel-3);
+  border: none;
+  padding: 5px 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px 5px 10px;
+  white-space: nowrap;
+}
+
+.status-pill.live {
+  color: var(--text);
+  border-color: rgba(229, 72, 77, 0.45);
+  background: rgba(229, 72, 77, 0.12);
+}
+
+.icon-button {
+  border-radius: 8px;
+}
+
+/* The player: timecode, what it is doing, and the transport, as one object
+   instead of three stacked strings. */
+.dock {
+  gap: 12px;
+  padding: 12px 16px;
+  height: 140px;
+}
+
+.tc-block {
+  gap: 6px;
+  min-width: 178px;
+  padding: 10px 12px;
+  border-right: none;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.tc-readout {
+  font-size: 21px;
+  line-height: 1.05;
+}
+
+.tc-sub {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.now-playing {
+  max-width: 100%;
+}
+
+.transport {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.transport-button {
+  flex: 1;
+  text-align: center;
+}
+
+/* Actions, in a column: the primary one first and full width. */
+.dock-controls {
+  display: flex;
+  flex-direction: column;
+  align-content: initial;
+  align-items: stretch;
+  justify-content: center;
+  gap: 6px;
+  min-width: 132px;
+}
+
+.dock-controls .button {
+  text-align: center;
+}
+
+.button.subtle {
+  color: var(--text-dim);
+  background: none;
+}
+
+.button.subtle:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.save-state {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  min-height: 13px;
+}
+
+.timeline-wrap {
+  border-radius: 10px;
+}
+
+/* ----- Tools menu -------------------------------------------------------
+   Four nouns told you nothing about what each one did, and the one that can
+   drive real fixtures looked like the other three. */
+
+.tools-menu {
+  min-width: 288px;
+  padding: 6px;
+  gap: 1px;
+}
+
+.menu-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 6px 10px 4px;
+}
+
+.tools-menu button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+}
+
+.tools-menu button b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.tools-menu button em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.tools-menu button.on b {
+  color: var(--accent);
+}
+
+.menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 5px 6px;
+}
+
+.tools-menu button.danger-item:hover {
+  background: rgba(229, 72, 77, 0.12);
+}
+
+.menu-live {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: var(--down);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.scene-name::placeholder {
+  color: var(--text-dim);
+  opacity: 0.6;
+  font-weight: 500;
+}
+
+/* ----- Watch mode -------------------------------------------------------
+   A show monitor: where we are, what is on the walls, what comes next.
+   Sized to be read from across a control room, not from a chair. */
+
+.watchbar {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex: none;
+}
+
+.watch-time {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 236px;
+}
+
+.watch-clock {
+  font-family: var(--mono);
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.watch-state {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.watch-track {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.watch-progress {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.watch-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(62, 207, 142, 0.28);
+}
+
+.watch-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(167, 139, 250, 0.75);
+}
+
+.watch-section {
+  font-size: 12px;
+  color: var(--text-dim);
+  min-height: 15px;
+}
+
+.watch-cues {
+  display: flex;
+  gap: 26px;
+  align-items: center;
+  padding-left: 20px;
+  border-left: 1px solid var(--border);
+}
+
+.watch-cue {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 150px;
+}
+
+.watch-cue-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.watch-now-value {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.watch-now-value.console {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.watch-now-value.scene {
+  color: #a78bfa;
+}
+
+.watch-next-value {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.3;
+}
+
+/* Wall clock: the show's timecode is not the time of day, and a control
+   room needs both. */
+.wall-clock {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  opacity: 0.85;
+  letter-spacing: 0.02em;
+}
+
+/* Five transport buttons now: section, start, play, section, live. */
+.transport {
+  gap: 3px;
+}
+
+.transport-button {
+  padding: 6px 6px;
+  font-size: 10px;
+}
+
+.transport-button.live {
+  font-size: 10px;
+  padding: 6px 8px;
+}
+
+/* Watch: the section is the show's structure, so it leads the readout. */
+.watch-section {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  min-height: 18px;
+}
+
+
+/* ----- Section bar ------------------------------------------------------
+   The show's table of contents, above the timeline and aligned with it:
+   every section in order, click to travel there. Editing happens in the
+   same row instead of floating over the lanes it lines up against. */
+
+.section-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  min-height: 34px;
+}
+
+.section-chips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.section-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.section-empty {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.section-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.section-chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--panel-3);
+}
+
+.section-chip.active {
+  color: #fff;
+  background: rgba(91, 140, 255, 0.22);
+  border-color: var(--accent);
+}
+
+.section-chip-time {
+  font-family: var(--mono);
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.marker-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.marker-editor .marker-name {
+  width: 128px;
+}
+
+.marker-editor label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.marker-editor input {
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
+.marker-editor .button {
+  padding: 4px 9px;
+  font-size: 11px;
+}
+
+.timeline-main {
+  flex: 1;
+  min-height: 0;
 }

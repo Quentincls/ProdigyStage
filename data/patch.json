@@ -6,10 +6,23 @@
       "pixels": 16,
       "pixelOrder": "RGB",
       "standardMap": {
-        "dimmer": 1,
-        "strobe": 2
+        "red": 1,
+        "green": 2,
+        "blue": 3,
+        "white": 4,
+        "cto": 5,
+        "strobe": 6,
+        "dimmer": 7,
+        "dimmerFine": 8,
+        "tilt": 9,
+        "tiltFine": 10,
+        "zoom": 11,
+        "function": 12,
+        "reset": 13
       },
-      "pixelStart": 14
+      "pixelStart": 14,
+      "tiltRangeDeg": 220,
+      "tiltInvert": false
     }
   },
   "fixtures": [

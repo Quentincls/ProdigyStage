@@ -6,7 +6,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { activeScene, hexToRgb, type SceneSpec } from '../../core/effects'
-import { backToLive, editor, effectiveShowTime, isTimeOverridden } from './editor'
+import {
+  backToLive,
+  editor,
+  effectiveShowTime,
+  isTimeOverridden,
+  pauseAt,
+  playLocal,
+  seekTo,
+  transportState,
+} from './editor'
 import { feed } from './feed'
 import { clampMove, clampTrimEnd, clampTrimStart } from './sceneRules'
 import { type Marker, type ShowFile } from './show'
@@ -45,7 +54,7 @@ export default function Timeline({
   const nowPlayingRef = useRef<HTMLSpanElement>(null)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [overridden, setOverridden] = useState(false)
+  const [, setOverridden] = useState(false)
   const fitRef = useRef<() => void>(() => {})
 
   // Mutable state read by the draw loop and the pointer handlers.
@@ -126,7 +135,9 @@ export default function Timeline({
       const first = Math.floor(state.start / step) * step
       for (let t = first; xOf(t) < width; t += step) {
         const x = Math.round(xOf(t)) + 0.5
-        if (x < 0) continue
+        // The show starts at 0: formatTime clamps negatives, so ticks before
+        // the start all read "0:00" and stack up on the left.
+        if (x < 0 || t < 0) continue
         ctx.strokeStyle = '#262a31'
         ctx.beginPath()
         ctx.moveTo(x, RULER_H)
@@ -138,12 +149,23 @@ export default function Timeline({
 
       // Section markers (slim band) then scenes (main band, tinted by their
       // main look's color so the timeline reads at a glance).
-      drawBand(ctx, markersRef.current, selectedRef.current, MARKER_TOP, MARKER_BOTTOM, width, {
-        fill: 'rgba(91,140,255,0.16)',
-        fillSelected: 'rgba(91,140,255,0.34)',
-        stroke: 'rgba(91,140,255,0.45)',
-        strokeSelected: '#5b8cff',
-      })
+      // Sections carry trim handles too, now that they move and resize.
+      drawBand(
+        ctx,
+        markersRef.current,
+        selectedRef.current,
+        MARKER_TOP,
+        MARKER_BOTTOM,
+        width,
+        {
+          fill: 'rgba(91,140,255,0.16)',
+          fillSelected: 'rgba(91,140,255,0.34)',
+          stroke: 'rgba(91,140,255,0.45)',
+          strokeSelected: '#5b8cff',
+        },
+        undefined,
+        true,
+      )
       drawBand(
         ctx,
         scenesRef.current,
@@ -160,6 +182,17 @@ export default function Timeline({
         (item) => sceneTint(item as SceneSpec),
         true,
       )
+
+      // Name the two lanes. Sections and scenes looked like the same object
+      // in two colours; only a label says one is a bookmark and the other
+      // actually takes the lights over.
+      ctx.font = '9px Inter, sans-serif'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = 'rgba(138,143,152,0.5)'
+      ctx.fillText('SECTIONS', 6, (MARKER_TOP + MARKER_BOTTOM) / 2)
+      ctx.fillStyle = 'rgba(167,139,250,0.5)'
+      ctx.fillText('SCENES', 6, SCENE_TOP + 9)
+      ctx.textBaseline = 'top'
 
       // First-time hint in edit mode.
       if (modeRef.current === 'edit' && scenesRef.current.length === 0) {
@@ -205,17 +238,24 @@ export default function Timeline({
         }
       }
       if (tcSubRef.current) {
-        tcSubRef.current.textContent = timeOverridden
-          ? editor.playing
+        // Same words as the transport buttons, so the readout never invents
+        // vocabulary of its own.
+        const state = transportState()
+        tcSubRef.current.textContent =
+          state === 'preview'
             ? 'PREVIEW LOOP'
-            : 'SCRUB'
-          : tc.receiving
-            ? `${tc.fps} fps · ${replayingRef.current ? 'REPLAY' : 'LIVE'}`
-            : 'no timecode'
+            : state === 'playing'
+              ? 'PLAYING'
+              : state === 'paused'
+                ? 'PAUSED'
+                : tc.receiving
+                  ? `${tc.fps} fps · ${replayingRef.current ? 'REPLAY' : 'LIVE'}`
+                  : 'no timecode'
       }
       if (nowPlayingRef.current) {
         const playing = showTime !== null ? activeScene(editor.scenes, showTime) : null
-        const label = playing ? `▶ ${playing.name}` : ''
+        // "Scene 1" on its own read as a stray control; say what it is.
+        const label = playing ? `Now: ${playing.name}` : ''
         if (nowPlayingRef.current.textContent !== label) nowPlayingRef.current.textContent = label
       }
 
@@ -334,6 +374,14 @@ export default function Timeline({
       | { type: 'scrub' }
       | { type: 'pending-scene'; x: number; sceneId: string; start: number; end: number }
       | { type: 'move' | 'trim-l' | 'trim-r'; x: number; sceneId: string; start: number; end: number }
+      | { type: 'pending-marker'; x: number; markerId: string; start: number; end: number }
+      | {
+          type: 'marker-move' | 'marker-trim-l' | 'marker-trim-r'
+          x: number
+          markerId: string
+          start: number
+          end: number
+        }
     let drag: Drag | null = null
     const EDGE_PX = 6
 
@@ -365,9 +413,22 @@ export default function Timeline({
         ),
       })
     }
+    const updateMarker = (markerId: string, update: Partial<Marker>): void => {
+      const current = showRef.current
+      onChangeRef.current({
+        ...current,
+        markers: current.markers.map((marker) =>
+          marker.id === markerId ? { ...marker, ...update } : marker,
+        ),
+      })
+    }
+    // Grabbing the playhead always parks time under the pointer, whether we
+    // were following the console or playing locally.
     const scrubTo = (clientX: number): void => {
       const rect = canvas.getBoundingClientRect()
       editor.playing = false
+      editor.previewSceneId = null
+      editor.localFrom = null
       editor.scrub = Math.max(0, timeAt(clientX - rect.left))
       editor.version++
       setOverridden(true)
@@ -393,11 +454,32 @@ export default function Timeline({
         scrubTo(event.clientX)
         return
       }
+      // Sections are the table of contents: they move and trim like scenes,
+      // and a plain click on one travels to it.
       if (y >= MARKER_TOP && y <= MARKER_BOTTOM) {
+        const tolerance = EDGE_PX / view.current.pxPerSec
         const hit = [...markersRef.current]
           .reverse()
-          .find((marker) => t >= marker.start && t <= marker.end)
-        setSelectedId(hit?.id ?? null)
+          .find((marker) => t >= marker.start - tolerance && t <= marker.end + tolerance)
+        if (!hit) {
+          setSelectedId(null)
+          return
+        }
+        const edge =
+          Math.abs(t - hit.start) <= tolerance
+            ? 'marker-trim-l'
+            : Math.abs(t - hit.end) <= tolerance
+              ? 'marker-trim-r'
+              : null
+        drag = edge
+          ? { type: edge, x: event.clientX, markerId: hit.id, start: hit.start, end: hit.end }
+          : {
+              type: 'pending-marker',
+              x: event.clientX,
+              markerId: hit.id,
+              start: hit.start,
+              end: hit.end,
+            }
         return
       }
       const scene = sceneHit(t, y)
@@ -427,14 +509,25 @@ export default function Timeline({
           const t = timeAt(event.clientX - rect.left)
           const y = event.clientY - rect.top
           const scene = sceneHit(t, y)
+          const tolerance = EDGE_PX / view.current.pxPerSec
+          const marker =
+            y >= MARKER_TOP && y <= MARKER_BOTTOM
+              ? [...markersRef.current]
+                  .reverse()
+                  .find((m) => t >= m.start - tolerance && t <= m.end + tolerance)
+              : undefined
           canvas.style.cursor =
             y < RULER_H
               ? 'crosshair'
-              : scene && edgeOf(scene, t)
-                ? 'ew-resize'
-                : scene
-                  ? 'pointer'
-                  : 'grab'
+              : marker
+                ? Math.abs(t - marker.start) <= tolerance || Math.abs(t - marker.end) <= tolerance
+                  ? 'ew-resize'
+                  : 'pointer'
+                : scene && edgeOf(scene, t)
+                  ? 'ew-resize'
+                  : scene
+                    ? 'pointer'
+                    : 'grab'
         } else {
           canvas.style.cursor = 'grab'
         }
@@ -457,6 +550,26 @@ export default function Timeline({
             drag = { ...drag, type: 'move' }
           }
           break
+        case 'pending-marker':
+          if (Math.abs(event.clientX - drag.x) > 4) {
+            drag = { ...drag, type: 'marker-move' }
+          }
+          break
+        case 'marker-move': {
+          const duration = drag.end - drag.start
+          const start = Math.max(0, snap(drag.start + dt))
+          updateMarker(drag.markerId, { start, end: start + duration })
+          break
+        }
+        case 'marker-trim-l': {
+          const start = Math.min(snap(drag.start + dt), drag.end - 1)
+          updateMarker(drag.markerId, { start: Math.max(0, start) })
+          break
+        }
+        case 'marker-trim-r': {
+          updateMarker(drag.markerId, { end: Math.max(snap(drag.end + dt), drag.start + 1) })
+          break
+        }
         case 'move': {
           const duration = drag.end - drag.start
           const start = clampMove(
@@ -500,6 +613,13 @@ export default function Timeline({
       if (drag?.type === 'pending-scene') {
         onSelectSceneRef.current(drag.sceneId)
         setSelectedId(null)
+      } else if (drag?.type === 'pending-marker') {
+        // Clicking a section is how you get to it -- that is what makes the
+        // lane a table of contents rather than a row of labels.
+        setSelectedId(drag.markerId)
+        onSelectSceneRef.current(null)
+        seekTo(drag.start)
+        setOverridden(true)
       } else if (drag?.type === 'pan' && drag.deselect && !drag.moved) {
         onSelectSceneRef.current(null)
         setSelectedId(null)
@@ -618,37 +738,67 @@ export default function Timeline({
           no timecode
         </span>
         <span className="now-playing" ref={nowPlayingRef} />
+        <Transport markers={show.markers} />
       </div>
 
       <div className="timeline-wrap" ref={wrapRef}>
-        <canvas className="timeline-main" ref={canvasRef} />
-        <canvas className="timeline-minimap" ref={minimapRef} />
-        <button className="fit-button" onClick={() => fitRef.current()}>
-          Fit
-        </button>
-        {mode === 'edit' && selected && (
-          <div className="marker-editor">
-            <input
-              className="marker-name"
-              value={selected.name}
-              onChange={(e) => updateSelected({ name: e.target.value })}
-            />
-            <label>
-              <span>Start</span>
-              <TimeInput value={selected.start} onCommit={(v) => updateSelected({ start: v })} />
-            </label>
-            <label>
-              <span>End</span>
-              <TimeInput value={selected.end} onCommit={(v) => updateSelected({ end: v })} />
-            </label>
-            <button className="button" onClick={deleteSelected}>
-              Delete
-            </button>
-            <button className="button" onClick={() => setSelectedId(null)}>
-              Close
-            </button>
+        {/* The show's table of contents, above the timeline: every section in
+            order, click to travel there. Editing happens here too instead of
+            floating over the lanes it is meant to line up with. */}
+        {mode === 'edit' && (
+          <div className="section-bar">
+            <div className="section-chips">
+              {show.markers.length === 0 && (
+                <span className="section-empty">
+                  No sections yet — add one to split the show into parts
+                </span>
+              )}
+              {[...show.markers]
+                .sort((a, b) => a.start - b.start)
+                .map((marker) => (
+                  <button
+                    key={marker.id}
+                    className={`section-chip ${selectedId === marker.id ? 'active' : ''}`}
+                    title={`Go to ${formatTime(marker.start)}`}
+                    onClick={() => {
+                      setSelectedId(marker.id)
+                      onSelectScene(null)
+                      seekTo(marker.start)
+                      setOverridden(true)
+                    }}
+                  >
+                    <span className="section-chip-time">{formatTime(marker.start)}</span>
+                    {marker.name}
+                  </button>
+                ))}
+            </div>
+            {selected && (
+              <div className="marker-editor">
+                <input
+                  className="marker-name"
+                  value={selected.name}
+                  onChange={(e) => updateSelected({ name: e.target.value })}
+                />
+                <label>
+                  <span>Start</span>
+                  <TimeInput value={selected.start} onCommit={(v) => updateSelected({ start: v })} />
+                </label>
+                <label>
+                  <span>End</span>
+                  <TimeInput value={selected.end} onCommit={(v) => updateSelected({ end: v })} />
+                </label>
+                <button className="button" onClick={deleteSelected}>
+                  Delete
+                </button>
+                <button className="button" onClick={() => setSelectedId(null)}>
+                  Close
+                </button>
+              </div>
+            )}
           </div>
         )}
+        <canvas className="timeline-main" ref={canvasRef} />
+        <canvas className="timeline-minimap" ref={minimapRef} />
       </div>
 
       {mode === 'edit' ? (
@@ -661,41 +811,32 @@ export default function Timeline({
               const center = view.current.start + canvas.clientWidth / 2 / view.current.pxPerSec
               onAddScene(Math.max(0, round1(tc.receiving ? tc.total : center)))
             }}
+            title="A scene takes the lights over for a moment of the show"
           >
             + Scene
           </button>
-          <button className="button" onClick={addSection}>
+          <button
+            className="button"
+            onClick={addSection}
+            title="A section is just a bookmark on the timeline. It never changes the lights."
+          >
             + Section
           </button>
-          {overridden && (
-            <button
-              className="button live-button"
-              onClick={() => {
-                backToLive()
-                setOverridden(false)
-              }}
-            >
-              Back to live
-            </button>
-          )}
+          {/* Returning to live is the transport's LIVE button -- one control,
+              one place, rather than two buttons doing the same thing. */}
+          <button className="button subtle" onClick={() => fitRef.current()}>
+            Fit
+          </button>
           <span className={`save-state ${saveState}`}>
             {saveState === 'saving' ? 'saving…' : saveState === 'saved' ? 'saved' : saveState === 'error' ? 'save failed' : ''}
           </span>
         </div>
       ) : (
-        overridden && (
-          <div className="dock-controls">
-            <button
-              className="button live-button"
-              onClick={() => {
-                backToLive()
-                setOverridden(false)
-              }}
-            >
-              Back to live
-            </button>
-          </div>
-        )
+        <div className="dock-controls">
+          <button className="button subtle" onClick={() => fitRef.current()}>
+            Fit
+          </button>
+        </div>
       )}
     </footer>
   )
@@ -733,4 +874,75 @@ function roundedRect(
   ctx.arcTo(x, y + h, x, y, r)
   ctx.arcTo(x, y, x + w, y, r)
   ctx.closePath()
+}
+
+// Transport. The show normally runs on the console's timecode, but editing
+// needs the timeline to hold still -- and to be reviewable with the console
+// stopped. Three states, always visible: following the console (Live),
+// parked, or playing on this machine's clock.
+function Transport({ markers }: { markers: Marker[] }) {
+  const [state, setState] = useState(transportState())
+  const markersRef = useRef(markers)
+  markersRef.current = markers
+
+  // The editor store is mutable and read at 60 fps by the canvases; polling
+  // it four times a second is enough to keep three buttons honest.
+  useEffect(() => {
+    const id = setInterval(() => setState(transportState()), 250)
+    return () => clearInterval(id)
+  }, [])
+
+  const liveTime = (): number | null => (feed.timecode.receiving ? feed.timecode.total : null)
+  const playing = state === 'playing' || state === 'preview'
+
+  // Sections are the show's structure, so they are how you travel through it.
+  const jumpSection = (direction: -1 | 1): void => {
+    const now = effectiveShowTime(liveTime()) ?? 0
+    const starts = markersRef.current.map((m) => m.start).sort((a, b) => a - b)
+    const target =
+      direction === 1
+        ? starts.find((s) => s > now + 0.05)
+        : [...starts].reverse().find((s) => s < now - 0.05)
+    seekTo(target ?? (direction === 1 ? now : 0))
+  }
+
+  return (
+    <div className="transport">
+      <button
+        className="transport-button"
+        title="Previous section"
+        onClick={() => jumpSection(-1)}
+      >
+        |◀
+      </button>
+      <button
+        className="transport-button"
+        title="Back to the start"
+        onClick={() => seekTo(0)}
+      >
+        ◀◀
+      </button>
+      <button
+        className="transport-button play"
+        title={playing ? 'Pause' : 'Play the timeline'}
+        onClick={() => (playing ? pauseAt(liveTime()) : playLocal(liveTime()))}
+      >
+        {playing ? '‖' : '▶'}
+      </button>
+      <button
+        className="transport-button"
+        title="Next section"
+        onClick={() => jumpSection(1)}
+      >
+        ▶|
+      </button>
+      <button
+        className={`transport-button live ${state === 'live' ? 'active' : ''}`}
+        title="Follow the console again"
+        onClick={() => backToLive()}
+      >
+        LIVE
+      </button>
+    </div>
+  )
 }

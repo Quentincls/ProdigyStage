@@ -18,24 +18,57 @@ import type { Fixture, Patch } from '../patch'
 // Room dimensions from the brief: ~40 x 15 m, 10 m high. Stage/arch at -X.
 const ROOM = { length: 40, width: 15, height: 10 }
 
-const BAR_BASE_COLOR = new THREE.Color('#101216')
+// Unlit battens must still read as physical objects: a rig that disappears
+// whenever the console goes dark looks broken, not dark.
+const BAR_BASE_COLOR = new THREE.Color('#2b313b')
 const BAR_SELECTED_COLOR = new THREE.Color('#3f6fe0')
 
-export const VIEWS: Record<number, { position: number[]; target: number[]; name: string }> = {
-  1: { position: [0, 4.5, 6], target: [0, 6, -6], name: 'Face' },
-  2: { position: [0.01, 36, 0], target: [0, 0, 0], name: 'Top' },
-  3: { position: [10, 4.5, 0], target: [-16, 5, 0], name: 'Tribune' },
+// Views are directions, not positions: the distance is computed from the
+// actual rig bounding box and the viewport aspect, so the installation is
+// always framed whatever the patch or the window size.
+export const VIEWS: Record<number, { name: string; dir: [number, number, number] }> = {
+  1: { name: 'Room', dir: [0.72, 0.5, 1] },
+  2: { name: 'Front', dir: [0, 0.16, 1] },
+  3: { name: 'Top', dir: [0, 1, 0.02] },
 }
 
-const DEFAULT_VIEW = { position: [19, 12, 14], target: [0, 4, 0] }
+const DEFAULT_VIEW = 1
+const FRAME_MARGIN = 1.18
+const BEAM_LENGTH = 7
 
 interface PixelSlot {
   universe: number
-  colorChannel: number // 0-based index of R in the DMX buffer
-  dimmerChannel: number
+  colorChannel: number // 0-based index of R in the DMX buffer (pixel zone)
+  // 0-based channels of the fixture-wide RGB when the personality has one
+  // (the real console drives this, not the pixel zone), else null.
+  globalRgb: [number, number, number] | null
+  // Fixture-wide channels of the Standard block (Tambora chart), all 0-based
+  // absolute, null when the personality does not declare them.
+  white: number | null
+  masterDimmer: number | null
+  masterDimmerFine: number | null
+  strobe: number | null
+  dimmerChannel: number // legacy dimmer x pixel personalities
   group: string
   wallPos: number // normalized 0-1 along the pixel's wall
+  // Same, but for the fixture's centre. When the console drives a
+  // fixture-wide colour the rig cannot do better than one colour per batten,
+  // so our scenes must be shown at that resolution too.
+  fixtureWallPos: number
+  fixturePixelIndex: number
   fixtureIndex: number
+}
+
+// Motorized tilt: per fixture, the bar and its pixels are re-posed when the
+// tilt channels move (the Tambora Batten physically tilts around its length).
+interface TiltSlot {
+  fixtureIndex: number
+  universe: number
+  tilt: number // 0-based absolute coarse channel
+  tiltFine: number | null
+  baseMatrix: THREE.Matrix4
+  pixelOffsets: THREE.Matrix4[]
+  lastValue: number
 }
 
 export class PrevizScene {
@@ -52,12 +85,25 @@ export class PrevizScene {
   private bars: THREE.InstancedMesh | null = null
   private pixels: THREE.InstancedMesh | null = null
   private glows: THREE.InstancedMesh | null = null
+  // Camera-facing halo per fixture: the light you see *in the air*, which a
+  // flat emissive plane alone never suggests.
+  private halos: THREE.InstancedMesh | null = null
+  private beams: THREE.InstancedMesh | null = null
   private fixtures: Fixture[] = []
   private pixelSlots: PixelSlot[] = []
+  private tiltSlots: TiltSlot[] = []
+  private tiltRange = 0 // radians of full travel
   private selected = new Set<string>()
 
   private lastVersion = -1
   private lastEditorVersion = -1
+  private lastTiltVersion = -1
+  // Bounding sphere of the rig, used to frame every view.
+  private rigCenter = new THREE.Vector3(0, 6, 0)
+  private rigRadius = 12
+  private currentView = DEFAULT_VIEW
+  // Set as soon as the operator orbits, so a resize never yanks their camera.
+  private userMoved = false
   private glowSums = new Float32Array(0)
   private raf = 0
   private disposed = false
@@ -76,21 +122,30 @@ export class PrevizScene {
     this.scene.background = new THREE.Color('#0b0c0f')
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 300)
-    this.camera.position.fromArray(DEFAULT_VIEW.position)
 
     this.controls = new OrbitControls(this.camera, canvas)
-    this.controls.target.fromArray(DEFAULT_VIEW.target)
     this.controls.enableDamping = true
     this.controls.dampingFactor = 0.08
-    this.controls.maxDistance = 90
+    this.controls.maxDistance = 120
+    this.controls.addEventListener('start', () => {
+      this.userMoved = true
+    })
 
     this.buildRoom()
     this.scene.add(this.fixtureGroup)
     this.applyPatch(patch)
+    this.applyView(DEFAULT_VIEW, false)
+
+    // Filmic tone mapping keeps saturated LEDs from clipping to flat white,
+    // and a wider bloom sells the light rather than the emitter.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+    this.renderer.toneMappingExposure = 1.15
 
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 1.05, 0.45, 0.3))
+    // Restrained: the haze below carries the light now, so the bloom only has
+    // to soften the emitters instead of blowing them out.
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.85, 0.55, 0.2))
     this.composer.addPass(new OutputPass())
 
     canvas.addEventListener('pointerdown', this.onPointerDown)
@@ -199,10 +254,15 @@ export class PrevizScene {
       this.fixtureGroup.remove(child)
     }
     this.pixelSlots = []
+    this.tiltSlots = []
+    this.lastTiltVersion = -1
     this.fixtures = patch.fixtures
+    this.measureRig()
 
     const type = patch.fixtureTypes[this.fixtures[0]?.type ?? '']
     const pixelsPerFixture = type?.pixels ?? 16
+    this.tiltRange =
+      (((type?.tiltRangeDeg ?? 0) * Math.PI) / 180) * (type?.tiltInvert ? -1 : 1)
 
     const bars = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1.02, 0.12, 0.06),
@@ -214,16 +274,48 @@ export class PrevizScene {
       new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
       this.fixtures.length * pixelsPerFixture,
     )
+    const glowTexture = makeGlowTexture()
     const glows = new THREE.InstancedMesh(
       new THREE.PlaneGeometry(3.4, 5.2).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({
-        map: makeGlowTexture(),
+        map: glowTexture,
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
       this.fixtures.length,
     )
+    const halos = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(2.6, 2.6),
+      new THREE.MeshBasicMaterial({
+        map: glowTexture,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0.34,
+      }),
+      this.fixtures.length,
+    )
+    halos.frustumCulled = false
+
+    // Light in the air: a soft sheet leaning from each batten towards the
+    // room, brightest at the fixture and fading with distance. Cheap stand-in
+    // for haze, and the thing that makes a wash read as a wash.
+    const beams = new THREE.InstancedMesh(
+      // Wider than a batten so neighbouring sheets overlap into one wash
+      // instead of reading as separate streaks.
+      new THREE.PlaneGeometry(2.4, BEAM_LENGTH).translate(0, -BEAM_LENGTH / 2, 0),
+      new THREE.MeshBasicMaterial({
+        map: makeBeamTexture(),
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        opacity: 0.5,
+      }),
+      this.fixtures.length,
+    )
+    beams.frustumCulled = false
 
     const dummy = new THREE.Object3D()
     const pixelMatrix = new THREE.Matrix4()
@@ -254,11 +346,24 @@ export class PrevizScene {
       bars.setMatrixAt(fixtureIndex, dummy.matrix)
 
       const base = fixture.address - 1
-      const dimmerChannel = base + (type?.standardMap.dimmer ?? 1) - 1
+      const map = type?.standardMap
+      const globalRgb: [number, number, number] | null =
+        map && map.red !== undefined && map.green !== undefined && map.blue !== undefined
+          ? [base + map.red - 1, base + map.green - 1, base + map.blue - 1]
+          : null
+      const abs = (key: string): number | null =>
+        map && map[key] !== undefined ? base + map[key] - 1 : null
+      const white = abs('white')
+      const masterDimmer = globalRgb ? abs('dimmer') : null
+      const masterDimmerFine = globalRgb ? abs('dimmerFine') : null
+      const strobe = globalRgb ? abs('strobe') : null
+      const dimmerChannel = base + (map?.dimmer ?? 1) - 1
+      const pixelOffsets: THREE.Matrix4[] = []
 
       for (let p = 0; p < pixelsPerFixture; p++) {
         const localX = -0.5 + (p + 0.5) / pixelsPerFixture
         offset.makeTranslation(localX, 0, 0.036)
+        pixelOffsets.push(offset.clone())
         pixelMatrix.multiplyMatrices(dummy.matrix, offset)
         const instance = fixtureIndex * pixelsPerFixture + p
         pixels.setMatrixAt(instance, pixelMatrix)
@@ -268,12 +373,32 @@ export class PrevizScene {
         const slot = {
           universe: fixture.universe,
           colorChannel: base + (type?.pixelStart ?? 14) - 1 + p * 3,
+          globalRgb,
+          white,
+          masterDimmer,
+          masterDimmerFine,
+          strobe,
           dimmerChannel,
           group: fixture.group,
           wallPos: (wallIndex * pixelsPerFixture + p + 0.5) / wallPixels,
+          fixtureWallPos: (wallIndex + 0.5) / (wallPixels / pixelsPerFixture),
+          fixturePixelIndex: wallIndex * pixelsPerFixture + Math.floor(pixelsPerFixture / 2),
           fixtureIndex,
         }
         this.pixelSlots.push(slot)
+      }
+
+      const tiltChannel = this.tiltRange > 0 ? abs('tilt') : null
+      if (tiltChannel !== null) {
+        this.tiltSlots.push({
+          fixtureIndex,
+          universe: fixture.universe,
+          tilt: tiltChannel,
+          tiltFine: abs('tiltFine'),
+          baseMatrix: dummy.matrix.clone(),
+          pixelOffsets,
+          lastValue: -1,
+        })
       }
 
       // Glow pool sits on the floor, pushed towards the room center.
@@ -283,12 +408,26 @@ export class PrevizScene {
       dummy.updateMatrix()
       glows.setMatrixAt(fixtureIndex, dummy.matrix)
       glows.setColorAt(fixtureIndex, black)
+      halos.setColorAt(fixtureIndex, black)
+
+      // The sheet hangs from the batten, leaning towards the room centre.
+      // Rotating by +x sends local -Y towards -Z, so the left wall (at -Z,
+      // throwing towards +Z) needs the negative angle -- same convention as
+      // the floor pool above, which offsets +Z for wall-left.
+      const lean = beamLean(fixture.group)
+      dummy.position.fromArray(fixture.position)
+      dummy.rotation.set(lean, 0, 0)
+      dummy.updateMatrix()
+      beams.setMatrixAt(fixtureIndex, dummy.matrix)
+      beams.setColorAt(fixtureIndex, black)
     })
 
     this.bars = bars
     this.pixels = pixels
     this.glows = glows
-    this.fixtureGroup.add(bars, pixels, glows)
+    this.halos = halos
+    this.beams = beams
+    this.fixtureGroup.add(bars, pixels, glows, halos, beams)
     this.applySelectionTint()
     this.lastVersion = -1 // force a recolor on the next frame
   }
@@ -323,8 +462,18 @@ export class PrevizScene {
       let r = 0
       let g = 0
       let b = 0
+      // Honest resolution: with a fixture-wide personality the real bar shows
+      // one colour, so a scene gradient must not look finer on screen than it
+      // ever can in the room.
+      const perFixture = slot.globalRgb !== null
       const sceneColor = scene
-        ? renderScenePixel(scene, slot.group, slot.wallPos, instance, showTime!)
+        ? renderScenePixel(
+            scene,
+            slot.group,
+            perFixture ? slot.fixtureWallPos : slot.wallPos,
+            perFixture ? slot.fixturePixelIndex : instance,
+            showTime!,
+          )
         : null
       if (sceneColor) {
         r = sceneColor[0] / 255
@@ -333,10 +482,31 @@ export class PrevizScene {
       } else {
         const buffer = feed.universes.get(slot.universe)
         if (buffer) {
-          const dimmer = buffer[slot.dimmerChannel] / 255
-          r = (buffer[slot.colorChannel] / 255) * dimmer
-          g = (buffer[slot.colorChannel + 1] / 255) * dimmer
-          b = (buffer[slot.colorChannel + 2] / 255) * dimmer
+          if (slot.globalRgb) {
+            // What the real fixture displays under the console's programming
+            // (validated on the venue recording): the fixture-wide RGBW of
+            // the Standard block, through its master dimmer and shutter. The
+            // parked pixel zone is not what the eye sees in the room.
+            let intensity = 1
+            if (slot.masterDimmer !== null) {
+              intensity =
+                slot.masterDimmerFine !== null
+                  ? (buffer[slot.masterDimmer] * 256 + buffer[slot.masterDimmerFine]) / 65535
+                  : buffer[slot.masterDimmer] / 255
+            }
+            // Tambora strobe channel: 0-3 = light off; strobing/pulsation
+            // ranges render as lit (flashes are not simulated yet).
+            if (slot.strobe !== null && buffer[slot.strobe] <= 3) intensity = 0
+            const w = slot.white !== null ? buffer[slot.white] / 255 : 0
+            r = Math.min(1, buffer[slot.globalRgb[0]] / 255 + w) * intensity
+            g = Math.min(1, buffer[slot.globalRgb[1]] / 255 + w) * intensity
+            b = Math.min(1, buffer[slot.globalRgb[2]] / 255 + w) * intensity
+          } else {
+            const dimmer = buffer[slot.dimmerChannel] / 255
+            r = (buffer[slot.colorChannel] / 255) * dimmer
+            g = (buffer[slot.colorChannel + 1] / 255) * dimmer
+            b = (buffer[slot.colorChannel + 2] / 255) * dimmer
+          }
         }
       }
       color.setRGB(r, g, b, THREE.SRGBColorSpace)
@@ -358,20 +528,140 @@ export class PrevizScene {
         THREE.SRGBColorSpace,
       )
       this.glows!.setColorAt(f, color)
+      this.halos?.setColorAt(f, color)
+      this.beams?.setColorAt(f, color)
     }
     this.glows.instanceColor!.needsUpdate = true
+    if (this.halos?.instanceColor) this.halos.instanceColor.needsUpdate = true
+    if (this.beams?.instanceColor) this.beams.instanceColor.needsUpdate = true
   }
 
-  setView(view: number): void {
+  // Halos are billboards: rebuilt each frame so they always face the camera
+  // and sit at the fixture, scaled with how hard it is running.
+  private updateHalos(): void {
+    const halos = this.halos
+    if (!halos) return
+    const matrix = new THREE.Matrix4()
+    const position = new THREE.Vector3()
+    const scale = new THREE.Vector3()
+    const sums = this.glowSums
+    this.fixtures.forEach((fixture, index) => {
+      const o = index * 3
+      const level = sums.length > o ? (sums[o] + sums[o + 1] + sums[o + 2]) / 3 : 0
+      const perPixel = this.pixelSlots.length / Math.max(1, this.fixtures.length)
+      const brightness = Math.min(1, level / Math.max(1, perPixel))
+      const size = 0.35 + brightness * 1.15
+      position.fromArray(fixture.position)
+      scale.setScalar(size)
+      matrix.compose(position, this.camera.quaternion, scale)
+      halos.setMatrixAt(index, matrix)
+    })
+    halos.instanceMatrix.needsUpdate = true
+  }
+
+  // Re-pose bars and their pixels when the motorized tilt moves. DMX is the
+  // truth: 0-65535 spans the full mechanical travel, mid-course = level.
+  private updateTilt(): void {
+    if (!this.bars || !this.pixels || this.tiltSlots.length === 0) return
+    if (feed.version === this.lastTiltVersion) return
+    this.lastTiltVersion = feed.version
+
+    const posed = new THREE.Matrix4()
+    const rotation = new THREE.Matrix4()
+    const pixelMatrix = new THREE.Matrix4()
+    const beamMatrix = new THREE.Matrix4()
+    const beamPosition = new THREE.Vector3()
+    const beamEuler = new THREE.Euler()
+    const beamQuaternion = new THREE.Quaternion()
+    const beamScale = new THREE.Vector3(1, 1, 1)
+    let dirty = false
+    for (const slot of this.tiltSlots) {
+      const buffer = feed.universes.get(slot.universe)
+      if (!buffer) continue
+      const raw =
+        slot.tiltFine !== null
+          ? buffer[slot.tilt] * 256 + buffer[slot.tiltFine]
+          : buffer[slot.tilt] * 257
+      if (raw === slot.lastValue) continue
+      slot.lastValue = raw
+      dirty = true
+      const angle = (raw / 65535 - 0.5) * this.tiltRange
+      rotation.makeRotationX(angle)
+      posed.multiplyMatrices(slot.baseMatrix, rotation)
+      this.bars.setMatrixAt(slot.fixtureIndex, posed)
+      slot.pixelOffsets.forEach((offset, p) => {
+        pixelMatrix.multiplyMatrices(posed, offset)
+        this.pixels!.setMatrixAt(slot.fixtureIndex * slot.pixelOffsets.length + p, pixelMatrix)
+      })
+      // The haze must follow where the fixture is actually pointing, or the
+      // light lands somewhere the beam never went.
+      const fixture = this.fixtures[slot.fixtureIndex]
+      if (this.beams && fixture) {
+        beamPosition.fromArray(fixture.position)
+        beamEuler.set(beamLean(fixture.group) + angle, 0, 0)
+        beamQuaternion.setFromEuler(beamEuler)
+        beamMatrix.compose(beamPosition, beamQuaternion, beamScale)
+        this.beams.setMatrixAt(slot.fixtureIndex, beamMatrix)
+      }
+    }
+    if (dirty) {
+      this.bars.instanceMatrix.needsUpdate = true
+      this.pixels.instanceMatrix.needsUpdate = true
+      if (this.beams) this.beams.instanceMatrix.needsUpdate = true
+    }
+  }
+
+  // ----- framing ----------------------------------------------------------
+
+  // The rig, not the room, is the subject: every view frames the battens.
+  private measureRig(): void {
+    const box = new THREE.Box3()
+    const point = new THREE.Vector3()
+    for (const fixture of this.fixtures) box.expandByPoint(point.fromArray(fixture.position))
+    if (this.fixtures.length === 0) {
+      box.set(new THREE.Vector3(-8, 5, -6), new THREE.Vector3(8, 7, 6))
+    }
+    box.expandByScalar(0.8) // batten length and its glow
+    box.getCenter(this.rigCenter)
+    const sphere = new THREE.Sphere()
+    box.getBoundingSphere(sphere)
+    this.rigRadius = Math.max(2, sphere.radius)
+  }
+
+  // Distance at which the rig's bounding sphere fits the *narrower* of the
+  // two field of views, so a wide window and a tall one both frame it.
+  private frameDistance(): number {
+    const vFov = (this.camera.fov * Math.PI) / 180
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Math.max(0.2, this.camera.aspect))
+    return (this.rigRadius * FRAME_MARGIN) / Math.sin(Math.min(vFov, hFov) / 2)
+  }
+
+  private applyView(view: number, animate: boolean): void {
     const preset = VIEWS[view]
     if (!preset) return
+    this.currentView = view
+    this.userMoved = false
+    const target = this.rigCenter.clone()
+    const position = target
+      .clone()
+      .addScaledVector(new THREE.Vector3(...preset.dir).normalize(), this.frameDistance())
+    if (!animate) {
+      this.camera.position.copy(position)
+      this.controls.target.copy(target)
+      this.controls.update()
+      return
+    }
     this.tween = {
       fromPosition: this.camera.position.clone(),
       fromTarget: this.controls.target.clone(),
-      toPosition: new THREE.Vector3().fromArray(preset.position),
-      toTarget: new THREE.Vector3().fromArray(preset.target),
+      toPosition: position,
+      toTarget: target,
       startedAt: performance.now(),
     }
+  }
+
+  setView(view: number): void {
+    this.applyView(view, true)
   }
 
   private updateTween(): void {
@@ -390,6 +680,9 @@ export class PrevizScene {
     this.composer.setSize(width, height)
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
+    // Keep the rig framed as the window changes -- unless the operator has
+    // taken the camera themselves, in which case we never move it.
+    if (!this.userMoved && !this.tween) this.applyView(this.currentView, false)
   }
 
   private loop = (): void => {
@@ -398,6 +691,8 @@ export class PrevizScene {
     this.updateTween()
     this.controls.update()
     this.updateColors()
+    this.updateTilt()
+    this.updateHalos()
     this.composer.render()
   }
 
@@ -441,4 +736,42 @@ function makeGlowTexture(): THREE.Texture {
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
+}
+
+// Vertical falloff for the haze sheet: bright where it leaves the fixture,
+// gone by the time it reaches the floor, and soft on the sides so the sheet
+// never shows an edge.
+function makeBeamTexture(): THREE.Texture {
+  const w = 32
+  const h = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  const image = ctx.createImageData(w, h)
+  for (let y = 0; y < h; y++) {
+    const along = 1 - y / h
+    const fall = Math.pow(along, 2.2)
+    for (let x = 0; x < w; x++) {
+      const across = Math.abs((x + 0.5) / w - 0.5) * 2
+      const sides = Math.pow(1 - across, 1.6)
+      const a = Math.max(0, Math.min(1, fall * sides))
+      const o = (y * w + x) * 4
+      image.data[o] = 255
+      image.data[o + 1] = 255
+      image.data[o + 2] = 255
+      image.data[o + 3] = a * 255
+    }
+  }
+  ctx.putImageData(image, 0, 0)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
+// Lean of a fixture's haze sheet, in radians about X. A +x rotation sends
+// local -Y towards -Z, so the wall sitting at -Z (throwing towards the room
+// centre at +Z) takes the negative angle.
+function beamLean(group: string): number {
+  return group === 'wall-left' ? -0.62 : 0.62
 }

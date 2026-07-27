@@ -115,11 +115,99 @@ Un seul process serveur, persistance 100 % fichiers JSON (`data/`).
   DMX monitor. La Phase 6 branchera SPECTATOR/ARMED/BLACKOUT sur ce même
   emplacement (hold 1 s pour armer, bannière watchdog).
 
+## UX (passe hiérarchie, 2026-07-27)
+
+Retour client : « la hiérarchie des informations est incompréhensible ».
+Corrections structurelles, pas cosmétiques :
+
+- **Previz** : les vues sont des **directions** (`VIEWS[].dir`), la distance
+  vient de la sphère englobante du rig et du ratio du viewport
+  (`measureRig` / `frameDistance` / `applyView`). Avant : positions en dur
+  qui cadraient mal et laissaient les murs sortir du champ. Reframe au
+  resize sauf si l'opérateur a bougé la caméra (`userMoved`). Barres
+  éteintes en `#2b313b` : le rig ne disparaît plus quand la console noircit.
+- **Transport** (`editor.ts`) : `live` / `paused` / `playing` / `preview`.
+  `pauseAt` fige, `playLocal` fait tourner la timeline sur l'horloge locale
+  (relire un show console éteinte), `seekTo` respecte l'état courant.
+  Un seul contrôle pour revenir au direct : le bouton LIVE (l'ancien
+  « Back to live » du dock faisait doublon, supprimé).
+- **Bibliothèque de looks** (`ui/src/presets.ts`) : 12 presets livrés,
+  vignettes rendues par le vrai moteur (`LookThumb`). Une install neuve
+  n'avait aucun preset — l'éditeur ouvrait sur le vide.
+- **Panneau de scène** — quatre zones, dans l'ordre de lecture : identité
+  (nom + plage + durée), **une** action primaire pleine largeur (Preview),
+  `LOOK` (look courant en grand + « Change » qui déplie la bibliothèque),
+  `ADJUST` (murs + paramètres), puis Advanced. Le sélecteur de type
+  d'effet est passé sous Advanced : deux façons concurrentes de choisir un
+  look côte à côte obligeaient à deviner laquelle utiliser.
+- Sections séparées par un filet (`.panel-group`), menu Tools sur sa propre
+  élévation (il flotte au-dessus du panneau, même surface = illisible), avec
+  titre + une ligne d'explication par entrée, et « Live output » isolé sous
+  un séparateur avec un badge ON quand il émet.
+- **Une scène = au plus un look par mur.** `renderScenePixel` applique le
+  *dernier* track qui correspond au mur : deux looks sur « both » et le
+  second masquait totalement le premier — on pouvait donc ajouter des looks
+  strictement invisibles. L'UI n'expose plus « ajouter un look » mais
+  « donner un look différent à chaque mur » (split/merge, 1 ou 2 tracks).
+- Nouvelles scènes nommées « At 0:11 » (leur position dans le show) plutôt
+  que « Scene 3 », et champ nom avec placeholder « Name this moment ».
+- **Rendu** : tone mapping ACES + bloom élargi (1,45 / 0,75 / 0,12) et un
+  halo additif face caméra par machine (`updateHalos`, billboard reconstruit
+  chaque frame, taille pilotée par l'intensité). Les barres se voient
+  désormais comme de la lumière dans l'air, pas comme des plans émissifs.
+
+## Sortie Art-Net — man-in-the-middle (Phase 6)
+
+**Tout ce qui émet vers le rig vit dans `server/src/output.ts`, et nulle part
+ailleurs.** Le fichier est écrit pour être sûr par construction, dans cet
+ordre :
+
+1. **Démarre en `off`** : le socket UDP n'est même pas créé.
+2. **Aucune cible par défaut** : `data/output.json` absent = `targets: []`.
+   Une install non mise en service ne *peut pas* atteindre un rig, quoi que
+   clique l'utilisateur. Mettre en service = écrire l'adresse du rig dans ce
+   fichier (ou via Advanced dans le panneau Live output).
+3. **Anti-boucle** : une cible loopback sur notre propre port d'écoute est
+   refusée (elle réinjecterait dans notre listener).
+4. **`spectator`** relaie la console octet pour octet ; seul **`armed`**
+   substitue nos scènes ; **`blackout`** force des zéros.
+5. **Watchdog 250 ms** : plus de trame console = on cesse d'émettre, pour ne
+   jamais figer le rig sur notre dernière image. Exception voulue : en
+   `blackout` on continue d'émettre des zéros à 25 Hz (une sécurité doit
+   fonctionner même console morte).
+
+Émission **à la réception** (pas sur timer) : le passthrough coûte une passe
+de merge, mesurée et exposée (`passthroughUs`). Mesuré ici : **~0,2 ms au
+pire**, budget 5 ms.
+
+Merge (`mergeUniverse`, pure et testée) : base = trame console, puis pour
+chaque batten couvert par une piste de la scène active — RGB ← couleur de la
+scène, blanc ← 0, dimmer ← plein, shutter ← ouvert, le tout fondu par
+`crossfadeMix` (0,5 s en entrée et en sortie, symétrique). **Tilt et zoom
+sont délibérément laissés à la console** : le mouvement continue de tourner,
+notre scène ne fait que repeindre. Un mur non ciblé n'est jamais écrit.
+
+Résolution : **une couleur par batten** (ch 1–3 + dimmer), puisque la console
+est en mode « Standard RGB ». La previz, elle, rend 16 pixels par batten :
+sur un effet à gradient fin, l'écran est donc plus détaillé que la salle.
+À corriger le jour où la console passera en mode pixel, ou en aplatissant la
+previz quand `armed`.
+
+Le moteur `/core` est un **workspace npm** (`@prodigy-stage/core`) : le
+serveur l'importe compilé (`core/dist`), l'UI importe la source (hot reload
+Vite). Conséquence en dev : après une modif de `core/effects.ts`, relancer
+`npm run build -w core` pour que le serveur la voie (`npm run dev` le fait
+au démarrage).
+
+Tests sans rig ni console : `npm run test:output` (sécurité, fidélité du
+passthrough, merge, watchdog, latence) et le banc complet documenté dans
+`README.md` (fake-show + sink UDP + scène armée).
+
 ## Packaging v0 (`npm run package`)
 
 `dist-package/LumenStage/` : `server/` (JS compilé) + `ui/` (build Vite) +
-`data/patch.json` + `node_modules/ws` + lanceurs `Start-LumenStage.bat/.command`
-et `Start-FakeShow.bat/.command` + `README.html` (doc client 1 page, anglais).
+`data/patch.json` + `node_modules/ws` + lanceurs `Windows-*.bat` / `Mac-*.command`
+(Start/FakeShow/Update) + `README.html` (doc client 1 page, anglais).
 Zip écrit avec mode 0755 sur les `.command` (double-clic macOS préservé).
 Les lanceurs vérifient Node ≥ 20 (sinon ouvrent nodejs.org). `LUMENSTAGE_OPEN=1`
 fait ouvrir le navigateur par le serveur une fois le port 4480 prêt.
@@ -132,7 +220,9 @@ Copie automatique du zip vers `Desktop\Livrables`.
 - Sur le réseau, l'adresse de port Art-Net commence à 0 : univers show N
   = univers Art-Net N-1 (convention MagicQ par défaut). Réglable en un seul
   point : `SHOW_TO_ARTNET_OFFSET` dans `server/src/artnet.ts`.
-  **À confirmer sur le vrai flux console (Phase 3/4bis).**
+  **Confirmé sur le vrai flux console (enregistrement venue du 2026-07-27)** :
+  les Tambora sortent sur les port-addresses 0–3 (= show 1–4). La console
+  émet aussi les port-addresses 4–15 (reste du rig) — ignorées, conforme.
 
 ## Patch (data/patch.json)
 
@@ -142,9 +232,35 @@ Vérifié le 2026-07-26 contre la PATCH LIJST officielle
 001/062/123/184/245/306/367/428, PixelRGB = Standard + 13, heads 1–16 (L)
 sur univers 1–2, heads 101–116 (R) sur univers 3–4.
 
-Reste une hypothèse (Phase 3/4bis, sur vraies données) : l'ordre interne des
-13 canaux Standard et l'ordre RGB des pixels. Corrigeable en data via
-`fixtureTypes.*.standardMap` / `pixelOrder` sans toucher au code.
+**Mode identifié : Tambora Batten « Standard RGB », 61 canaux** — croisement
+du chart DMX officiel (08.2021, corroboré par la définition QLC+) et du
+premier enregistrement réel (run du 2026-07-27, 147 s de looks manuels).
+L'hypothèse initiale (dimmer=1, strobe=2) était fausse. Bloc Standard :
+
+| ch | fonction | previz |
+|----|----------|--------|
+| 1–3 | Rouge, Vert, Bleu (machine entière) | affiché |
+| 4 | Blanc | additionné au RGB |
+| 5 | CTO | ignoré (à faire si besoin) |
+| 6 | Strobe (0–3 = noir, sinon ouvert/flash) | gate noir/ouvert, flashs non simulés |
+| 7–8 | Dimmer + fin (16 bits) | appliqué |
+| 9–10 | Tilt + fin (16 bits, mécanique, 220° de course) | barres animées en 3D |
+| 11 | Zoom | ignoré |
+| 12–13 | Function / Reset | ignorés |
+| 14–61 | 16 pixels RGB (Pixel Engine) | ignorés (parqués par la console) |
+
+Preuves dans l'enregistrement : couleurs de picker limpides sur ch 1–3
+(255,105,180 hot pink…), dimmer 7/8 monté 0→255 à t=9 s et redescendu à
+t=134 s (début/fin de session), tilt 9/10 balayant en continu (FX de tilt
+console — les « mouvements » vus en salle sont mécaniques).
+
+Points encore ouverts : sens et zéro du tilt (calibrer sur une vidéo salle
++ enregistrement synchrones), simulation des flashs de strobe, CTO, et
+comportement de la zone pixel pendant le show timecodé (le run du 27/07 ne
+contenait ni timecode ni cues — à revérifier sur un enregistrement du vrai
+show). Implication Phase 6 : pour être visibles sur les vraies machines,
+nos scènes devront sans doute émettre sur les ch 1–3 + dimmer par machine
+(résolution = 1 couleur par batten) tant que la console reste dans ce mode.
 
 ## Géométrie
 

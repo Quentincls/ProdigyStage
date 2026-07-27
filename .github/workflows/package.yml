@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      - run: npm run test:core
+      - run: npm test
       - run: npm run package
       - name: Publish to the rolling "latest" release
         uses: softprops/action-gh-release@v2

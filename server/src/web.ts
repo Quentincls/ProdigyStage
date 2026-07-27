@@ -44,6 +44,7 @@ export interface WebOptions {
   listRecordings: () => unknown
   controlRecord: (action: string) => unknown
   controlReplay: (action: string, file?: string) => unknown
+  controlOutput: (action: string, value?: unknown) => unknown
   openBrowser?: boolean
 }
 
@@ -121,6 +122,15 @@ export function startWebServer(options: WebOptions): { server: Server; wss: WebS
       collectBody(req, res, (body) => {
         const { action, file } = JSON.parse(body) as { action: string; file?: string }
         return options.controlReplay(action, file)
+      })
+      return
+    }
+
+    // Phase 6: the only endpoint that can make this software transmit.
+    if (url === '/api/output' && req.method === 'POST') {
+      collectBody(req, res, (body) => {
+        const { action, value } = JSON.parse(body) as { action: string; value?: unknown }
+        return options.controlOutput(action, value)
       })
       return
     }

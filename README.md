@@ -24,21 +24,43 @@ synchronisée au timecode et édition de scènes en man-in-the-middle.
 - [x] **Passe UX profonde** — non-chevauchement aimanté (pas de multi-pistes),
       undo/redo Ctrl+Z, mini-map + Fit, blocs teintés couleur du look, poignées
       de trim, Now playing, dupliquer, raccourcis Espace/Échap.
+- [x] **Validation sur le flux console réel** (enregistrement venue 2026-07-27) :
+      univers confirmés, mode Tambora « Standard RGB » 61 ch identifié
+      (RGBW global 1–4, dimmer 16 bits 7–8, tilt mécanique 9–10). La previz
+      suit couleur, intensité et mouvement.
+- [x] **Phase 6** — sortie Art-Net man-in-the-middle : passthrough mesuré
+      ~0,2 ms, substitution de scène avec crossfade 0,5 s (moteur `/core`
+      côté serveur), blackout, watchdog 250 ms, armement par appui long.
+      **Développée et testée hors site — pas encore mise en service.**
 
-**Le soft n'émet toujours RIEN vers le rig** — pur spectateur jusqu'à la Phase 6.
+**Une install sans `data/output.json` n'émet RIEN et ne peut pas émettre** :
+pas de cible = rien ne sort de la machine. C'est l'état livré au client.
 
 ## Prochaines étapes
 
-1. **Tests réels en attente** : lancement du zip sur le Mac du client (Gatekeeper/Node),
-   premier branchement au flux console (validera le channel-map Tambora et la
-   numérotation d'univers), tête de lecture calée sur MagicQ au timecode.
-   Enregistrer un run complet du show sur site (bouton Record) pour développer dessus.
-2. **Phase 6** — sortie Art-Net man-in-the-middle : passthrough < 5 ms, override par
-   scène avec crossfade 0,5 s (le moteur /core passe côté serveur), blackout safe,
-   watchdog 250 ms, mode ARMED explicite. La phase la plus sensible du projet —
-   à valider en répétition sur site uniquement.
-3. **Phase 7** — confort prod : headless multi-poste, undo/redo, univers 5-8,
+1. **Mise en service de la Phase 6, en répétition sur site uniquement**, avec
+   l'opérateur : rerouter la console vers le PC, écrire l'adresse du rig dans
+   `data/output.json`, puis dérouler `spectator` → vérifier que la salle est
+   identique → `armed` sur une scène de test → blackout → coupure console.
+   Rien d'irréversible : `off` rend la main immédiatement.
+2. **Finitions previz** : sens/zéro du tilt à calibrer sur vidéo salle
+   synchronisée, flashs de strobe, CTO. Enregistrement d'un run du vrai show
+   timecodé pour confirmer le comportement de la zone pixel.
+3. **Phase 7** — confort prod : headless multi-poste, univers 5-8,
    volumétrique beams, shadow mode.
+
+## Banc d'essai Phase 6 (sans rig, sans console)
+
+```
+npm test                                  # core + sortie (sécurité, passthrough, merge, watchdog)
+```
+
+Bout en bout local : écrire `data/output.json` avec `{"targets":["127.0.0.1"],"port":6455}`
+(un port qui n'est PAS le nôtre), lancer un sink UDP sur 6455, `npm run fake-show`
+comme console, puis piloter `/api/output` (`spectator` → `armed` → `blackout`).
+Vérifié ainsi : rien n'est émis en `off`, passthrough octet pour octet, scène
+substituée pile au timecode, retour console en fin de scène, blackout maintenu
+console morte, watchdog qui coupe l'émission en 250 ms.
 
 ## Prérequis
 
@@ -52,7 +74,8 @@ npm run dev            # serveur (watch, web sur 4480) + UI Vite sur http://loca
 npm run fake-show      # générateur Art-Net de test -> 127.0.0.1:6454, univers 1-4 + timecode 25 fps
 npm run replay -- data/recordings/run-XXX.artrec  # rejoue un run enregistré
 npm run generate-patch # régénère data/patch.json depuis scripts/generate-patch.mjs
-npm run build          # build serveur (tsc) + UI (vite)
+npm test               # self-test moteur /core + self-test de la sortie Phase 6
+npm run build          # build core + serveur (tsc) + UI (vite)
 npm run package        # produit dist-package/LumenStage-Previz-v1.zip (Win+Mac)
 ```
 

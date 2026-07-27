@@ -37,14 +37,15 @@
 <body>
 <h1>LumenStage</h1>
 <p class="sub">A live 3D copy of the Prodigy 12 light show, on your screen.</p>
-<div class="safe"><strong>Safe by design:</strong> this app only <em>listens</em> to the lighting network. It never sends anything to the lights. You cannot break the show with it — not even by accident.</div>
+<div class="safe"><strong>Safe by default:</strong> out of the box this app only <em>listens</em> to the lighting network — no address is configured, so it physically cannot send anything and you cannot break the show with it. It only ever transmits after you deliberately set it up with the lighting operator, which is Part 4 below.</div>
 
 <h2>Part 1 — Install and open it (5 minutes, at home)</h2>
-<p class="part-sub">You only do this once. You need a Mac and an internet browser.</p>
+<p class="part-sub">You only do this once. You need a computer and an internet browser.</p>
+<p class="note"><strong>Mac or Windows?</strong> The folder contains both. Every file starting with <span class="file">Mac-</span> is for macOS, every file starting with <span class="file">Windows-</span> is for Windows. Use your half and ignore the other. The steps below are written for Mac; on Windows it is the same but simpler — a plain double-click on <span class="file">Windows-Start-LumenStage</span>, no right-click needed.</p>
 <ol>
   <li><strong>Unzip</strong> the file you received. Put the <span class="file">LumenStage</span> folder anywhere (Desktop is fine).
-    <span class="check">a folder containing a few files, including <span class="file">Start-LumenStage.command</span>.</span></li>
-  <li><strong>Right-click</strong> (not double-click!) on <span class="file">Start-LumenStage.command</span>, choose <strong>Open</strong>, then <strong>Open</strong> again in the warning popup. macOS asks this the first time only — afterwards a normal double-click works.
+    <span class="check">a folder containing a few files, including <span class="file">Mac-Start-LumenStage</span>.</span></li>
+  <li><strong>Right-click</strong> (not double-click!) on <span class="file">Mac-Start-LumenStage</span>, choose <strong>Open</strong>, then <strong>Open</strong> again in the warning popup. macOS asks this the first time only — afterwards a normal double-click works.
     <span class="check">a black Terminal window opens with a few lines of text. Leave it open — it IS the app. Closing it stops everything.</span></li>
   <li>If your Mac asks <em>“Do you want the application node to accept incoming network connections?”</em> → click <strong>Allow</strong>.</li>
   <li>Wait 2 seconds.
@@ -56,7 +57,7 @@
 <p class="part-sub">The folder includes a fake lighting console, so you can see the app alive right away.</p>
 <ol>
   <li>Keep the app from Part 1 running.</li>
-  <li><strong>Right-click</strong> on <span class="file">Start-FakeShow.command</span> → <strong>Open</strong> → <strong>Open</strong> (first time only).
+  <li><strong>Right-click</strong> on <span class="file">Mac-Start-FakeShow</span> → <strong>Open</strong> → <strong>Open</strong> (first time only).
     <span class="check">a second Terminal window with a line of numbers updating every second.</span></li>
   <li>Go back to your browser.
     <span class="check">the two light walls in the 3D room are now animating — rainbows, waves, chases — and the top bar says “Console connected” with a green dot. A time counter runs at the bottom left.</span></li>
@@ -69,13 +70,99 @@
 <ol>
   <li>Connect the Mac to the lighting network with an <strong>Ethernet cable</strong> (ask the operator which socket/switch).</li>
   <li>Ask the operator what <strong>IP address</strong> to give the Mac, and set it in System Settings → Network → your Ethernet connection.</li>
-  <li>Start the app (<span class="file">Start-LumenStage.command</span>, like in Part 1). Show the operator the orange note below.</li>
+  <li>Start the app (<span class="file">Mac-Start-LumenStage</span>, like in Part 1). Show the operator the orange note below.</li>
   <li>Ask the console to play anything on the light walls (the Tambora bars).
     <span class="check">the 3D walls light up and move <em>exactly like the real room</em>, and the top bar turns green: “Console connected”. If the console sends its timecode, the counter bottom-left runs in sync with the show.</span></li>
   <li><strong>The most useful thing you can do:</strong> record a full run of the show. Click the gear <strong>⚙</strong> (top right) → <strong>Runs</strong> → <strong>● Record a run</strong> before the show starts, and stop it at the end. This creates a file in the <span class="file">LumenStage/data/recordings</span> folder — <strong>send us that file</strong>: it lets us build and test everything else on the real show, without the console.</li>
   <li>If the colors on screen don't match the room (say, red on stage but blue on screen): film 10 seconds showing both the room and the screen, and send us the video. It's a 5-minute remote fix on our side.</li>
 </ol>
-<p class="note warn"><strong>Show this to the lighting operator:</strong> the console must actually send Art-Net for universes 1–4 <em>towards this computer</em>. If the console only sends unicast to the DMX nodes, this Mac will see nothing. Either enable <strong>broadcast</strong> for universes 1–4, or add this Mac's IP as an <strong>extra unicast destination</strong>. Two-minute change, fully reversible, the rig keeps receiving normally. This app listens only — it never replies or transmits.</p>
+<p class="note warn"><strong>Show this to the lighting operator:</strong> the console must actually send Art-Net for universes 1–4 <em>towards this computer</em>. If the console only sends unicast to the DMX nodes, this Mac will see nothing. Either enable <strong>broadcast</strong> for universes 1–4, or add this Mac's IP as an <strong>extra unicast destination</strong>. Two-minute change, fully reversible, the rig keeps receiving normally. At this stage the app listens only — it has no address to send to, so it cannot transmit.</p>
+
+<h2>Part 4 — Changing the show for real (the commissioning session)</h2>
+<p class="part-sub">Do this with the lighting operator, in a rehearsal. Allow an hour the first time. Nothing here is permanent — everything goes back to normal in two minutes at the end.</p>
+
+<p><strong>What we are about to do.</strong> Today the console talks straight to the lights. We are going to put this computer in the middle, so that at the moments you choose it can say “this bar isn’t red any more, it’s blue, and it pulses” — and the room obeys. Everywhere else the console keeps running its show exactly as before.</p>
+
+<table>
+  <tr><th>Now</th><td>Console → lights</td></tr>
+  <tr><th>During the session</th><td>Console → this computer → lights</td></tr>
+  <tr><th>After the session</th><td>Console → lights (put back)</td></tr>
+</table>
+
+<p class="note warn"><strong>Show this to the lighting operator — this is the one thing that must happen first.</strong> For universes 1–4, the console must stop sending to the lighting nodes and send <em>only</em> to this computer’s IP address instead. If the console keeps reaching the lights directly while we are also sending, two sources fight over the same fixtures and you get flicker. This is a two-minute change on the console, and it is fully reversible.</p>
+
+<h3>Step 1 — Cable and addresses</h3>
+<ol>
+  <li>Connect the computer to the lighting network with an <strong>Ethernet cable</strong>, and set the IP address the operator gives you.</li>
+  <li>Ask the operator for two things and write them down: <strong>the computer’s IP</strong> (which they will point the console at) and <strong>the address to send the lights to</strong> (the node’s IP, or a broadcast address).</li>
+  <li>Start the app. Update it first if we have told you to.</li>
+</ol>
+
+<h3>Step 2 — Tell the app where the lights are</h3>
+<ol>
+  <li>Gear <strong>⚙</strong> → <strong>Live output</strong> → <strong>Advanced</strong>.</li>
+  <li>Type the lights’ address in <strong>Lighting network address</strong> and press <strong>Save</strong>.
+    <span class="check">the panel stops saying it cannot send, and a <strong>Connect to the lights</strong> button appears.</span></li>
+</ol>
+<p class="note">Until this address is filled in, the app physically cannot send anything, whatever you click. That is why it has been safe to explore until now.</p>
+
+<h3>Step 3 — Step into the chain, and check nothing changed</h3>
+<ol>
+  <li>Ask the operator to make the console send universes 1–4 to this computer only (the orange note above).</li>
+  <li>Click <strong>Connect to the lights</strong>.
+    <span class="check">the room looks <em>exactly</em> as it did a second ago. The app is now passing the console through, untouched.</span></li>
+  <li><strong>Watch the room for two full minutes.</strong> Any flicker, any colour that hops, anything at all different → click <strong>Disconnect</strong> and tell us. Do not go further.</li>
+</ol>
+
+<h3>Step 4 — Go live</h3>
+<ol>
+  <li>Press and <strong>hold</strong> the <strong>Hold to go live</strong> button for a second.
+    <span class="check">the bar at the top turns red and reads “LIVE — your scenes are playing on the lights”.</span></li>
+  <li>Nothing changes in the room yet — you have no scene at this moment of the show. That is normal and it is a good sign.</li>
+</ol>
+
+<h3>Step 5 — Change a passage</h3>
+<ol>
+  <li>Switch to <strong>Edit</strong>. Pick a short passage the operator can replay easily.</li>
+  <li>Go to that moment: click its <strong>section</strong> in the bar above the timeline, or drag the playhead.</li>
+  <li><strong>+ Scene</strong>, then set <strong>Start</strong> and <strong>End</strong> to cover the passage.</li>
+  <li><strong>Change</strong> → pick a look. For a first test use something unmistakable: <em>Deep red</em>, <em>Full white</em>. For something that blinks: <em>Pulse</em>, <em>Heartbeat</em>, <em>Storm</em>.</li>
+  <li>Ask the operator to <strong>replay that passage</strong>.
+    <span class="check">when the console’s timecode enters your scene, the walls take your colour over half a second, hold it, and hand it back to the console at the end.</span></li>
+</ol>
+<p class="note">A scene fires on the show’s timecode, so the console has to be playing that passage. The <strong>Preview</strong> button in the panel only shows the scene on your screen — the real lights always follow the console’s clock, never the editor. This is deliberate: it means nobody can change the room by scrubbing around during a show.</p>
+
+<h3>If anything looks wrong</h3>
+<table>
+  <tr><th>What you see</th><th>What to do</th></tr>
+  <tr><td>Flicker, or colours fighting each other</td><td>The console is still reaching the lights directly. <strong>Disconnect</strong>, and have the operator finish the reroute.</td></tr>
+  <tr><td>The room went dark when you connected</td><td>The address is wrong, or the console is no longer reaching this computer. <strong>Disconnect</strong> — the operator can put the console back in one move.</td></tr>
+  <tr><td>Your scene plays at the wrong moment</td><td>Check its Start and End against the show’s timecode, not the clock on the wall.</td></tr>
+  <tr><td>Your scene never plays</td><td>The console must be playing that part of the show, and the top bar must read LIVE.</td></tr>
+  <tr><td>Anything you don’t like, at any time</td><td><strong>BLACKOUT</strong> (one click, top of the screen) kills everything. <strong>Stop playing my scenes</strong> gives the show back to the console. <strong>Disconnect</strong> takes this computer out of the chain.</td></tr>
+</table>
+
+<h3>Step 6 — Putting everything back</h3>
+<p>At the end of the session, unless we have agreed otherwise:</p>
+<ol>
+  <li>Click <strong>Stop playing my scenes</strong>, then <strong>Disconnect</strong>.</li>
+  <li>Ask the operator to point the console back at the lighting nodes.
+    <span class="check">the console runs the show on its own again, exactly as before we arrived.</span></li>
+  <li>You can close the app. Your scenes are saved and will still be there next time.</li>
+</ol>
+<p class="note warn"><strong>Worth knowing before a performance.</strong> While this computer sits in the chain, the show goes through it. If it crashes, sleeps or gets unplugged, the lights stop — the software gives control back within a quarter of a second if it fails, but it cannot deliver the console’s signal if the machine is off. That is an acceptable trade in a rehearsal. Before using this in front of an audience, talk to us.</p>
+
+<p class="note"><strong>Please record the session.</strong> Gear <strong>⚙</strong> → <strong>Runs</strong> → <strong>● Record a run</strong>, from the start. If anything behaves oddly we can replay exactly what happened instead of guessing from a description — that is how every problem so far got fixed in one round.</p>
+
+<h2>Updating (10 seconds, whenever we tell you)</h2>
+<p class="part-sub">We improve the app remotely. When we say "there's a new version", do this:</p>
+<ol>
+  <li>Close LumenStage if it's running (close the Terminal windows).</li>
+  <li>Double-click <span class="file">Mac-Update-LumenStage</span> (right-click → <strong>Open</strong> the first time, like in Part 1).
+    <span class="check">a Terminal window downloads the new version, then prints "Update complete." with the build date.</span></li>
+  <li>Start the app again. That's it.</li>
+</ol>
+<p class="note">Updating never touches your work: scenes, presets, recordings and fixture placements all stay exactly as they were. It needs an internet connection.</p>
 
 <h2>If something doesn't work</h2>
 <table>

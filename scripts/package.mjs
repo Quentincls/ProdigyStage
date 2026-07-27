@@ -12,6 +12,7 @@ import {
   mkdirSync,
   readdirSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -39,12 +40,37 @@ for (const file of readdirSync(join(ROOT, 'server', 'dist'))) {
 cpSync(join(ROOT, 'ui', 'dist'), join(STAGE, 'ui'), { recursive: true })
 copyFileSync(join(ROOT, 'data', 'patch.json'), join(STAGE, 'data', 'patch.json'))
 cpSync(join(ROOT, 'node_modules', 'ws'), join(STAGE, 'node_modules', 'ws'), { recursive: true })
+// The shared effect engine is a workspace package: npm links it, so the copy
+// must dereference the symlink to land real files in the client's zip.
+cpSync(
+  join(ROOT, 'node_modules', '@prodigy-stage', 'core'),
+  join(STAGE, 'node_modules', '@prodigy-stage', 'core'),
+  { recursive: true, dereference: true },
+)
 
 const launchers = join(ROOT, 'scripts', 'launchers')
 for (const file of readdirSync(launchers)) {
   copyFileSync(join(launchers, file), join(STAGE, file))
 }
 copyFileSync(join(ROOT, 'docs', 'client', 'README.html'), join(STAGE, 'README.html'))
+
+// Without this, Node reparses every server file as ESM and prints a
+// MODULE_TYPELESS_PACKAGE_JSON warning in the client's terminal window.
+writeFileSync(
+  join(STAGE, 'package.json'),
+  JSON.stringify({ name: 'lumenstage', private: true, type: 'module' }, null, 2) + '\n',
+)
+
+// Build stamp shown by Update-LumenStage so "am I on the new version?" is
+// answerable over the phone.
+let commit = 'unknown'
+try {
+  commit = execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString().trim()
+} catch {
+  // not a git checkout (e.g. building from an exported archive)
+}
+const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16)
+writeFileSync(join(STAGE, 'version.txt'), `LumenStage build ${stamp} UTC (${commit})\n`)
 
 console.log('package: zipping...')
 const zipPath = join(OUT_DIR, ZIP_NAME)

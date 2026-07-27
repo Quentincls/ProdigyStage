@@ -31,6 +31,9 @@ export class ArtnetListener {
   lastTimecodeAt = 0
   // Raw tap for the recorder: every Art-Net packet, before parsing.
   onRaw: ((msg: Buffer, at: number) => void) | null = null
+  // Parsed tap for the Phase 6 output: one call per show-universe frame, with
+  // the hrtime stamp taken on arrival so passthrough latency is measurable.
+  onFrame: ((universe: number, data: Uint8Array, at: bigint) => void) | null = null
 
   private socket: Socket | null = null
   private buffers = new Map<number, Uint8Array>()
@@ -53,6 +56,7 @@ export class ArtnetListener {
     this.socket = socket
 
     socket.on('message', (msg, rinfo) => {
+      const receivedAt = process.hrtime.bigint()
       this.onRaw?.(msg, Date.now())
       const packet = parseArtDmx(msg)
       if (!packet) {
@@ -75,6 +79,7 @@ export class ArtnetListener {
       stats.lastPacketAt = Date.now()
       stats.totalPackets++
       this.counters.set(universe, this.counters.get(universe)! + 1)
+      this.onFrame?.(universe, buffer, receivedAt)
     })
 
     socket.on('error', (err) => {

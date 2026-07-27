@@ -3,19 +3,23 @@ import { defaultParams } from '../../core/effects'
 import { backToLive, editor, isTimeOverridden, startPreview } from './editor'
 import { feed } from './feed'
 import Monitor from './Monitor'
+import OutputPanel from './OutputPanel'
 import { fetchPatch, savePatch, type Patch } from './patch'
 import PlacementPanel from './previz/PlacementPanel'
 import Previz from './previz/Previz'
 import RunsPanel from './RunsPanel'
 import SceneEditor from './SceneEditor'
 import { findFreeSlot } from './sceneRules'
-import { fetchShow, saveShow, type ShowFile } from './show'
+import { controlOutput, fetchShow, saveShow, type ShowFile } from './show'
 import Timeline from './Timeline'
+import WatchBar from './WatchBar'
+import { formatTime } from './TimeInput'
 
 // Two intents, two modes: Watch (default, safe, zero chrome) and Edit.
-// Technical tools (DMX monitor, placement, runs) live behind the gear menu.
+// Technical tools (DMX monitor, placement, runs, live output) live behind the
+// gear menu.
 type Mode = 'watch' | 'edit'
-type Tool = 'monitor' | 'placement' | 'runs' | null
+type Tool = 'monitor' | 'placement' | 'runs' | 'output' | null
 
 export default function App() {
   const [patch, setPatch] = useState<Patch | null>(null)
@@ -168,12 +172,23 @@ export default function App() {
     ? Object.values(stats.perUniverse).reduce((sum, u) => sum + u.pps, 0)
     : 0
 
-  // Status in plain words -- the metrics live in the DMX monitor.
+  // Status in plain words -- the metrics live in the DMX monitor. Whatever
+  // else is going on, if we are driving the real lights that comes first.
+  const outputMode = stats?.output?.mode ?? 'off'
   let statusText: string
   let dotClass: string
   if (!connected) {
     statusText = 'Connecting to server…'
     dotClass = 'down'
+  } else if (outputMode === 'blackout') {
+    statusText = 'BLACKOUT — the lights are forced off'
+    dotClass = 'live'
+  } else if (outputMode === 'armed') {
+    statusText = 'LIVE — your scenes are playing on the lights'
+    dotClass = 'live'
+  } else if (outputMode === 'spectator') {
+    statusText = 'Connected to the lights — the console passes through'
+    dotClass = 'ok'
   } else if (stats?.replay.replaying) {
     statusText = `Replaying ${stats.replay.file ?? ''} — nothing is sent`
     dotClass = 'ok'
@@ -224,7 +239,9 @@ export default function App() {
     const slot = findFreeSlot(show.scenes, start, 60)
     const scene = {
       id: crypto.randomUUID(),
-      name: `Scene ${show.scenes.length + 1}`,
+      // Named after when it happens: more useful than "Scene 4" when you are
+      // looking for the moment you want to change.
+      name: `At ${formatTime(slot.start)}`,
       start: slot.start,
       end: slot.end,
       tracks: [
@@ -259,8 +276,19 @@ export default function App() {
           {dirty && tool === 'placement' && <span className="dirty-badge">unsaved changes</span>}
         </div>
         <div className="statusline">
-          <span className={`dot ${dotClass}`} />
-          <span>{statusText}</span>
+          <WallClock />
+          <span className={`status-pill ${dotClass}`}>
+            <span className={`dot ${dotClass}`} />
+            {statusText}
+          </span>
+          {outputMode !== 'off' && outputMode !== 'blackout' && (
+            <button
+              className="button blackout compact"
+              onClick={() => void controlOutput('mode', 'blackout')}
+            >
+              BLACKOUT
+            </button>
+          )}
           <div className="tools">
             <button
               className="ghost-button icon-button"
@@ -272,15 +300,38 @@ export default function App() {
             {toolsOpen && (
               <>
                 <div className="menu-backdrop" onClick={() => setToolsOpen(false)} />
+                {/* Each entry says what it is for: a bare list of four nouns
+                    made people click to find out. */}
                 <div className="tools-menu">
-                  <button onClick={() => openTool('monitor')}>
-                    DMX monitor {tool === 'monitor' ? '·' : ''}
+                  <span className="menu-label">Tools</span>
+                  <button className={tool === 'runs' ? 'on' : ''} onClick={() => openTool('runs')}>
+                    <b>Runs</b>
+                    <em>Record the console, replay it anytime</em>
                   </button>
-                  <button onClick={() => openTool('placement')}>
-                    Placement {tool === 'placement' ? '·' : ''}
+                  <button
+                    className={tool === 'placement' ? 'on' : ''}
+                    onClick={() => openTool('placement')}
+                  >
+                    <b>Placement</b>
+                    <em>Move the light bars to match the venue</em>
                   </button>
-                  <button onClick={() => openTool('runs')}>
-                    Runs — record and replay {tool === 'runs' ? '·' : ''}
+                  <button
+                    className={tool === 'monitor' ? 'on' : ''}
+                    onClick={() => openTool('monitor')}
+                  >
+                    <b>Signal monitor</b>
+                    <em>Raw values coming from the console</em>
+                  </button>
+                  <span className="menu-sep" />
+                  <button
+                    className={`danger-item ${tool === 'output' ? 'on' : ''}`}
+                    onClick={() => openTool('output')}
+                  >
+                    <b>
+                      Live output
+                      {outputMode !== 'off' && <span className="menu-live">ON</span>}
+                    </b>
+                    <em>Play your scenes on the real lights</em>
                   </button>
                 </div>
               </>
@@ -322,6 +373,7 @@ export default function App() {
               />
             )}
             {tool === 'runs' && <RunsPanel onClose={() => setTool(null)} />}
+            {tool === 'output' && <OutputPanel onClose={() => setTool(null)} />}
             {mode === 'edit' && selectedSceneId && show && (
               <SceneEditor
                 show={show}
@@ -347,17 +399,38 @@ export default function App() {
           </>
         )}
       </main>
-      {show && (
-        <Timeline
-          show={show}
-          mode={mode}
-          onChange={handleShowChange}
-          saveState={showSaveState}
-          selectedSceneId={selectedSceneId}
-          onSelectScene={handleSelectScene}
-          onAddScene={handleAddScene}
-        />
-      )}
+      {/* Watch is a show monitor, not an editor with its buttons hidden: it
+          answers where we are, what is on the walls and what comes next. */}
+      {show &&
+        (mode === 'watch' ? (
+          <WatchBar show={show} />
+        ) : (
+          <Timeline
+            show={show}
+            mode={mode}
+            onChange={handleShowChange}
+            saveState={showSaveState}
+            selectedSceneId={selectedSceneId}
+            onSelectScene={handleSelectScene}
+            onAddScene={handleAddScene}
+          />
+        ))}
     </div>
+  )
+}
+
+// Wall clock. A control room screen that shows the show's timecode but not
+// the actual time of day is missing the one thing everyone else in the room
+// is looking at their phone for.
+function WallClock() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 10_000)
+    return () => clearInterval(id)
+  }, [])
+  return (
+    <span className="wall-clock" title="Local time">
+      {String(now.getHours()).padStart(2, '0')}:{String(now.getMinutes()).padStart(2, '0')}
+    </span>
   )
 }

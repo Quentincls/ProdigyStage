@@ -7,6 +7,12 @@ export interface FixtureType {
   pixelOrder: string
   standardMap: Record<string, number>
   pixelStart: number
+  // Full mechanical tilt travel in degrees (DMX 0 -> one end, 65535 -> the
+  // other). Absent or 0 = fixture does not tilt.
+  tiltRangeDeg?: number
+  // Which way the yoke turns. No DMX chart states this -- it is a fact of
+  // the physical install, so it is calibrated on site rather than guessed.
+  tiltInvert?: boolean
 }
 
 export interface Fixture {

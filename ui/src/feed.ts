@@ -10,12 +10,28 @@ export interface UniverseStat {
   from: string | null
 }
 
+export type OutputMode = 'off' | 'spectator' | 'armed' | 'blackout'
+
+export interface OutputStatus {
+  mode: OutputMode
+  targets: string[]
+  port: number
+  framesSent: number
+  pps: number
+  passthroughUs: number
+  maxPassthroughUs: number
+  watchdogTripped: boolean
+  activeSceneName: string | null
+  lastError: string | null
+}
+
 export interface FeedStats {
   udp: { port: number; listening: boolean; error: string | null }
   perUniverse: Record<string, UniverseStat>
   otherPps: number
   record: { recording: boolean; file: string | null; seconds: number; frames: number }
   replay: { replaying: boolean; file: string | null; seconds: number }
+  output: OutputStatus
 }
 
 export interface FeedTimecode {

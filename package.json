@@ -8,15 +8,19 @@
     "node": ">=20"
   },
   "workspaces": [
+    "core",
     "server",
     "ui"
   ],
   "scripts": {
-    "dev": "concurrently -n server,ui -c blue,magenta \"npm run dev -w server\" \"npm run dev -w ui\"",
-    "build": "npm run build -w server && npm run build -w ui",
+    "dev": "npm run build -w core && concurrently -n server,ui -c blue,magenta \"npm run dev -w server\" \"npm run dev -w ui\"",
+    "build": "npm run build -w core && npm run build -w server && npm run build -w ui",
     "fake-show": "npm run fake-show -w server",
     "replay": "npm run replay -w server --",
     "generate-patch": "node scripts/generate-patch.mjs",
+    "test:core": "node core/selftest.ts",
+    "test:output": "npm run build -w core && npm run test:output -w server",
+    "test": "npm run test:core && npm run test:output",
     "package": "node scripts/package.mjs"
   },
   "devDependencies": {
