@@ -1785,3 +1785,76 @@ body {
   outline: none;
   border-color: var(--accent);
 }
+
+/* Diagnostics: state first, in colour; the paste-able text folded under it
+   so what you read and what you send stay the same thing. */
+.diag-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.diag-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  font-size: 12.5px;
+}
+
+/* The dot and the label sit on the value's first line, whatever it wraps to. */
+.diag-row .dot,
+.diag-row-label {
+  margin-top: 3px;
+}
+
+.diag-row.down { background: rgba(229, 72, 77, 0.1); }
+.diag-row.live { background: rgba(229, 72, 77, 0.14); }
+.diag-row.idle { background: rgba(245, 166, 35, 0.08); }
+
+.diag-row-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  width: 66px;
+  flex: none;
+}
+
+/* Never truncated: the build number is the whole reason this row exists. */
+.diag-row-value {
+  color: var(--text);
+  min-width: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.diag-details {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 0 1 auto;
+}
+
+/* Only the opened dump claims the rest of the panel. */
+.diag-details[open] {
+  flex: 1;
+}
+
+.diag-details summary {
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px 0 8px;
+  list-style: none;
+}
+
+.diag-details summary::before { content: '▸ '; }
+.diag-details[open] summary::before { content: '▾ '; }
+.diag-details summary:hover { color: var(--text); }

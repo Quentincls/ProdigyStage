@@ -47,20 +47,81 @@ export default function Diagnostics({
       <header className="panel-header scene-header">
         <div className="scene-identity">
           <h2>Diagnostics</h2>
-          <span className="muted-note">Everything about the current state, as text.</span>
+          <span className="muted-note">What the software sees right now.</span>
         </div>
         <button className="icon-close" onClick={onClose} aria-label="Close">
           ✕
         </button>
       </header>
 
+      {/* Read the state at a glance; the text below is what gets sent. */}
+      <div className="diag-rows">
+        {checks(stats, connected).map((row) => (
+          <div className={`diag-row ${row.level}`} key={row.label}>
+            <span className={`dot ${row.level}`} />
+            <span className="diag-row-label">{row.label}</span>
+            <span className="diag-row-value">{row.value}</span>
+          </div>
+        ))}
+      </div>
+
       <button className="button block primary" onClick={() => void copy()}>
-        {copied ? 'Copied — paste it in a message' : 'Copy this report'}
+        {copied ? 'Copied — paste it in a message' : 'Copy the full report'}
       </button>
 
-      <textarea className="diag-text" readOnly value={report} spellCheck={false} />
+      <details className="diag-details">
+        <summary>What will be copied</summary>
+        <textarea className="diag-text" readOnly value={report} spellCheck={false} />
+      </details>
     </aside>
   )
+}
+
+// The four questions that decide whether tonight works, each answered in a
+// phrase and a colour rather than buried in the dump.
+function checks(
+  stats: ReturnType<typeof feed.getSnapshot>['stats'],
+  connected: boolean,
+): { label: string; value: string; level: 'ok' | 'idle' | 'down' | 'live' }[] {
+  const rows: { label: string; value: string; level: 'ok' | 'idle' | 'down' | 'live' }[] = []
+
+  rows.push(
+    connected
+      ? { label: 'Software', value: stats?.version ?? 'running', level: 'ok' }
+      : { label: 'Software', value: 'not talking to its own server', level: 'down' },
+  )
+
+  const pps = stats ? Object.values(stats.perUniverse).reduce((sum, u) => sum + u.pps, 0) : 0
+  const from = stats ? Object.values(stats.perUniverse).find((u) => u.from)?.from : null
+  rows.push(
+    !stats?.udp.listening
+      ? { label: 'Console', value: 'Art-Net port unavailable', level: 'down' }
+      : pps > 0
+        ? { label: 'Console', value: `${pps} frames/s from ${from ?? 'the network'}`, level: 'ok' }
+        : { label: 'Console', value: 'nothing arriving', level: 'down' },
+  )
+
+  const tc = feed.timecode
+  rows.push(
+    tc.receiving
+      ? { label: 'Timecode', value: `running at ${tc.fps} fps`, level: 'ok' }
+      : { label: 'Timecode', value: 'not received — scenes cannot fire', level: 'idle' },
+  )
+
+  const out = stats?.output
+  rows.push(
+    !out || out.mode === 'off'
+      ? { label: 'Lights', value: 'nothing is sent', level: 'idle' }
+      : out.watchdogTripped
+        ? { label: 'Lights', value: 'on hold — no console signal', level: 'idle' }
+        : out.mode === 'spectator'
+          ? { label: 'Lights', value: 'console passing through', level: 'ok' }
+          : out.mode === 'blackout'
+            ? { label: 'Lights', value: 'BLACKOUT — forced off', level: 'live' }
+            : { label: 'Lights', value: `LIVE${out.activeSceneName ? ` — ${out.activeSceneName}` : ''}`, level: 'live' },
+  )
+
+  return rows
 }
 
 function buildReport(
