@@ -203,10 +203,47 @@ Tests sans rig ni console : `npm run test:output` (sécurité, fidélité du
 passthrough, merge, watchdog, latence) et le banc complet documenté dans
 `README.md` (fake-show + sink UDP + scène armée).
 
+## Compose et la direction artistique
+
+Trois responsabilités, jamais mélangées :
+
+| Qui | Sait | Fichier |
+| --- | --- | --- |
+| l'analyse | **quand** — beats, barres, sections, énergie | `server/src/audio.ts` |
+| l'intention | **pour quoi** — palette, mood, énergie, mouvement, densité | `core/vocabulary.ts` |
+| le compositeur | **comment** — quel effet, à quelle vitesse, sur quelle barre | `server/src/compose.ts` |
+
+La direction artistique (`server/src/direction.ts`) écrit **uniquement des
+intentions**. Elle reçoit la structure trouvée par l'analyse plus le brief de
+l'opérateur, et renvoie pour chaque chapitre une palette, un mood, une énergie
+(avec rampe), un mouvement, une densité, des familles de looks, un nom et une
+phrase d'explication. Elle ne voit jamais une barre, n'écrit jamais une scène,
+et ne déplace jamais une frontière : la composition reste produite par
+`compose.ts`, de façon déterministe, à partir de ce qu'elle a proposé. C'est
+ce qui préserve la garantie dont dépend Regenerate — même intention, même show.
+
+- Modèle `claude-opus-5`, `thinking: adaptive`, réponse contrainte par un JSON
+  schema **généré depuis `core/vocabulary.ts`** : ajouter une palette la rend
+  disponible au modèle le jour même, sans toucher à ce fichier.
+- `applyDirection()` est pur et testé sans réseau (`npm run test:audio`) :
+  mot inconnu, mauvais type, nombre hors bornes, section manquante ou
+  renumérotée — la proposition la plus fausse possible ne peut pas casser un
+  draft. C'est la porte d'entrée, donc c'est elle qu'on teste.
+- **Optionnelle et inerte sans clé.** Pas de clé (`data/direction.json` ou
+  `ANTHROPIC_API_KEY`) = la fonctionnalité n'est pas proposée et Compose
+  retombe sur `defaultIntent()`. `direction.ts` est le seul module qui parle à
+  l'extérieur de la machine ; comme `output.ts`, garder cette propriété.
+- La clé n'est jamais renvoyée à l'UI : `status()` ne dit que `configured` et
+  d'où elle vient.
+
 ## Packaging v0 (`npm run package`)
 
 `dist-package/LumenStage/` : `server/` (JS compilé) + `ui/` (build Vite) +
-`data/patch.json` + `node_modules/ws` + lanceurs `Windows-*.bat` / `Mac-*.command`
+`data/patch.json` + les dépendances runtime avec leur fermeture transitive
+(`copyPackage()` dans `scripts/package.mjs` — les nommer à la main marchait
+avec `ws` seul et devient un piège dès qu'il y en a deux, un paquet oublié
+n'étant pas une erreur de build mais un `ERR_MODULE_NOT_FOUND` en salle)
++ lanceurs `Windows-*.bat` / `Mac-*.command`
 (Start/FakeShow/Update) + `README.html` (doc client 1 page, anglais).
 Zip écrit avec mode 0755 sur les `.command` (double-clic macOS préservé).
 Les lanceurs vérifient Node ≥ 20 (sinon ouvrent nodejs.org). `LUMENSTAGE_OPEN=1`

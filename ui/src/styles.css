@@ -2143,6 +2143,8 @@ select:focus {
 }
 
 .ins-title-static {
+  flex: 1;
+  min-width: 0;
   font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -2285,4 +2287,122 @@ select:focus {
 
 .family.active b {
   color: var(--text);
+}
+
+/* ----- the direction -----
+   The show-level line above the section-level ones. It is deliberately quiet:
+   the whole point is that it is written once and then lives on the timeline as
+   names and colours, not as a panel demanding attention. No badge, no gradient,
+   nothing announcing that a model was involved -- it is a brief, and briefs
+   look like this. */
+
+.direction-strip {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0 0 12px;
+  margin-bottom: -4px;
+}
+
+.direction-strip:hover:not(:disabled) .direction-strip-value {
+  color: var(--text);
+}
+
+.direction-strip:hover:not(:disabled) .direction-strip-go {
+  color: var(--text);
+}
+
+.direction-strip:disabled {
+  cursor: default;
+}
+
+.direction-strip-label {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.direction-strip-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-dim);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.direction-strip-value.empty {
+  color: var(--text-faint);
+}
+
+.direction-strip-go {
+  flex: none;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.direction-brief {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 11px;
+}
+
+.direction-brief:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.direction-brief::placeholder {
+  color: var(--text-faint);
+}
+
+.direction-key {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.direction-key:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* The section's own line, right under when it happens: one sentence, in the
+   operator's language, about why this part of the show looks like this. */
+.direction-why {
+  margin-top: -6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  border-left: 1px solid var(--border-strong);
+  padding-left: 10px;
+}
+
+.direction-arc {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
 }

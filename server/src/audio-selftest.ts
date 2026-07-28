@@ -11,8 +11,10 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DENSITIES, MOODS, MOVEMENTS, PALETTES } from '@prodigy-stage/core/vocabulary'
 import { analyseWav } from './audio.js'
 import { compose, sectionsFromAnalysis } from './compose.js'
+import { applyDirection } from './direction.js'
 import { proposeShow } from './showFromAudio.js'
 
 const SR = 44100
@@ -228,6 +230,83 @@ try {
     assert(distance < 0.15, `a block starts at ${scene.start}s, ${distance.toFixed(2)}s off the bar`)
   }
 
+  // ----- the artistic direction --------------------------------------------
+  // Only the half that must hold when the answer is wrong is tested here: no
+  // network, no key, no model. A direction arrives as JSON from somewhere else
+  // and this is the door it comes through, so the door is what gets tested.
+  const good = applyDirection(sections, analysis, {
+    arc: '  A cave,\n  then a red world.  ',
+    sections: sections.map((_section, index) => ({
+      index: index + 1,
+      name: `Chapter ${index + 1}`,
+      why: 'Because the music does.',
+      palette: 'toxic-green',
+      mood: 'euphoric',
+      energy: 30,
+      energyEnd: index === 1 ? 90 : 30,
+      movement: 'epic',
+      density: 'low',
+      families: ['impact', 'impact', 'movement'],
+    })),
+  })
+  assert(good.arc === 'A cave, then a red world.', `the arc was not tidied: ${good.arc}`)
+  assert(good.sections[0].intent.palette === 'toxic-green', 'a valid palette was not taken')
+  assert(good.sections[0].intent.energyTo === null, 'a flat section was given a ramp')
+  assert(good.sections[1].intent.energyTo === 90, 'a climbing section lost its ramp')
+  assert(
+    good.sections[0].intent.families.length === 2,
+    'a repeated look family was not folded away',
+  )
+  assert(
+    good.sections.every((section) => section.variant === 0),
+    'a new direction kept a variant from the proposal it replaced',
+  )
+
+  // Every field wrong, in every way a model can be wrong: unknown words, the
+  // wrong types, out-of-range numbers, a missing section, a renumbered one.
+  const rubbish = applyDirection(sections, analysis, {
+    arc: 42,
+    sections: [
+      {
+        index: 1,
+        name: '',
+        palette: 'chartreuse',
+        mood: null,
+        energy: 'quite a lot',
+        energyEnd: 5000,
+        movement: 'teleport',
+        density: [],
+        families: ['sunbeams'],
+      },
+      { index: 99, name: 'Nowhere', palette: 'red-black' },
+    ],
+  })
+  assert(rubbish.arc === '', 'a non-string arc was kept')
+  assert(rubbish.sections.length === sections.length, 'a bad proposal changed how many parts exist')
+  for (const [index, section] of rubbish.sections.entries()) {
+    assert(section.name.length > 0, `part ${index + 1} was left without a name`)
+    assert(section.intent.palette in PALETTES, `part ${index + 1} kept an invented palette`)
+    assert(section.intent.mood in MOODS, `part ${index + 1} kept an invented mood`)
+    assert(section.intent.movement in MOVEMENTS, `part ${index + 1} kept an invented movement`)
+    assert(section.intent.density in DENSITIES, `part ${index + 1} kept an invented density`)
+    assert(section.intent.families.length > 0, `part ${index + 1} was left with nothing to compose`)
+    assert(
+      section.intent.energy >= 0 && section.intent.energy <= 100,
+      `part ${index + 1} kept an energy of ${section.intent.energy}`,
+    )
+    assert(section.start === sections[index].start, 'a direction moved a boundary')
+    assert(section.end === sections[index].end, 'a direction moved a boundary')
+  }
+  // And whatever it says, the composition is still made the same way.
+  composeCounter = 0
+  const directed = compose(analysis, good.sections, newId)
+  for (let i = 1; i < directed.scenes.length; i++) {
+    assert(
+      directed.scenes[i].start >= directed.scenes[i - 1].end - 0.001,
+      `directed scenes ${i - 1} and ${i} overlap`,
+    )
+  }
+
   console.log(
     `audio selftest: OK (${analysis.sections.length} sections found at the right seconds, ` +
       `${analysis.bpm} BPM, ${analysis.analysedInMs} ms for ${DURATION}s)`,
@@ -235,6 +314,9 @@ try {
   console.log(
     `compose selftest: OK (${first.scenes.length} scenes on the bar grid, deterministic, ` +
       `variants differ)`,
+  )
+  console.log(
+    'direction selftest: OK (a valid proposal is taken, an invalid one cannot break a draft)',
   )
 } finally {
   rmSync(dir, { recursive: true, force: true })

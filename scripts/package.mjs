@@ -11,6 +11,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -58,7 +59,12 @@ writeFileSync(
     '',
   ].join('\r\n'),
 )
-cpSync(join(ROOT, 'node_modules', 'ws'), join(STAGE, 'node_modules', 'ws'), { recursive: true })
+// Runtime dependencies, with everything they themselves need. Naming each one
+// by hand was fine with a single dependency and is a trap with more: the SDK
+// pulls in half a dozen packages, and a missing one is not a build error --
+// it is the client's launcher printing ERR_MODULE_NOT_FOUND at a venue.
+for (const name of ['ws', '@anthropic-ai/sdk']) copyPackage(name)
+
 // The shared effect engine is a workspace package: npm links it, so the copy
 // must dereference the symlink to land real files in the client's zip.
 cpSync(
@@ -66,6 +72,21 @@ cpSync(
   join(STAGE, 'node_modules', '@prodigy-stage', 'core'),
   { recursive: true, dereference: true },
 )
+
+function copyPackage(name, copied = new Set()) {
+  if (copied.has(name)) return copied
+  const from = join(ROOT, 'node_modules', name)
+  if (!existsSync(from)) throw new Error(`package: ${name} is not installed -- run npm install`)
+  copied.add(name)
+  cpSync(from, join(STAGE, 'node_modules', name), { recursive: true, dereference: true })
+  const manifest = JSON.parse(readFileSync(join(from, 'package.json'), 'utf8'))
+  // Optional peers are exactly that: ws's bufferutil and the SDK's zod are not
+  // installed here and are not needed to run.
+  for (const dependency of Object.keys(manifest.dependencies ?? {})) {
+    copyPackage(dependency, copied)
+  }
+  return copied
+}
 
 const launchers = join(ROOT, 'scripts', 'launchers')
 for (const file of readdirSync(launchers)) {

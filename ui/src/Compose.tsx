@@ -23,7 +23,7 @@ import {
   type MovementId,
   type PaletteId,
 } from '../../core/vocabulary'
-import { composeStore, type ComposeSection } from './compose'
+import { composeStore, type ComposeDraft, type ComposeSection, type DirectionStatus } from './compose'
 import { editor, effectiveShowTime, pauseAt, playLocal, seekTo, transportState } from './editor'
 import { listMusic, type MusicFile } from './music'
 import { theme } from './theme'
@@ -253,17 +253,22 @@ export function ComposeDock({ onSendToEdit }: { onSendToEdit: () => void }) {
 
 export function ComposeInspector() {
   useCompose()
+  const [directing, setDirecting] = useState(false)
+  const draft = composeStore.draft
   const section = composeStore.selected
 
-  if (!composeStore.draft) return <TrackPicker />
-  if (!section) {
-    return (
-      <aside className="inspector">
+  if (!draft) return <TrackPicker />
+  if (directing) return <DirectionPanel draft={draft} onDone={() => setDirecting(false)} />
+  return (
+    <aside className="inspector">
+      <DirectionStrip draft={draft} onOpen={() => setDirecting(true)} />
+      {section ? (
+        <IntentEditor section={section} />
+      ) : (
         <span className="muted-note">Select a part of the track to give it an intention.</span>
-      </aside>
-    )
-  }
-  return <IntentEditor section={section} />
+      )}
+    </aside>
+  )
 }
 
 function TrackPicker() {
@@ -322,13 +327,137 @@ function TrackPicker() {
   )
 }
 
+// ========================================================== the direction =====
+// The one thing in Compose that is about the whole show rather than one part of
+// it, so it sits above the section and reads as a different level. It is a
+// door, not a panel: the show's story is written once and then referred to.
+
+function DirectionStrip({ draft, onOpen }: { draft: ComposeDraft; onOpen: () => void }) {
+  const working = composeStore.busy === 'directing'
+  return (
+    <button className="direction-strip" onClick={onOpen} disabled={working}>
+      <span className="direction-strip-label">Direction</span>
+      <span className={`direction-strip-value ${draft.arc ? '' : 'empty'}`}>
+        {working ? 'Reading the whole track…' : (draft.arc ?? 'Say what the show is about')}
+      </span>
+      <span className="direction-strip-go">›</span>
+    </button>
+  )
+}
+
+function DirectionPanel({ draft, onDone }: { draft: ComposeDraft; onDone: () => void }) {
+  useCompose()
+  const [brief, setBrief] = useState(draft.brief ?? '')
+  const [status, setStatus] = useState<DirectionStatus | null>(null)
+  const [key, setKey] = useState('')
+  const [keyError, setKeyError] = useState<string | null>(null)
+  const working = composeStore.busy === 'directing'
+
+  useEffect(() => {
+    composeStore
+      .directionStatus()
+      .then(setStatus)
+      .catch(() => setStatus({ configured: false, source: null, model: '' }))
+  }, [])
+
+  const ask = async (): Promise<void> => {
+    await composeStore.direct(brief)
+    // Stay on failure so the reason is next to the thing that failed; leave on
+    // success, because the answer is out there on the timeline, not in here.
+    if (!composeStore.error) onDone()
+  }
+
+  const saveKey = async (): Promise<void> => {
+    setKeyError(null)
+    try {
+      setStatus(await composeStore.saveDirectionKey(key))
+      setKey('')
+    } catch (error) {
+      setKeyError((error as Error).message)
+    }
+  }
+
+  return (
+    <aside className="inspector">
+      <header className="ins-head">
+        <h2 className="ins-title-static">Direction</h2>
+        <button className="ins-close" title="Back to the section" onClick={onDone}>
+          ←
+        </button>
+      </header>
+      <p className="ins-note">
+        Describe the show in your own words — the story, the places it goes, the colours you already
+        have in mind. Every part of the track gets a name and an intention from it, and you edit
+        them afterwards like anything else here.
+      </p>
+
+      <section className="ins-section">
+        <span className="ins-label">The show</span>
+        <textarea
+          className="direction-brief"
+          value={brief}
+          rows={7}
+          spellCheck={false}
+          placeholder={
+            'A narrative show. It opens in a cold cave, blue and almost still. ' +
+            'After the first drop it breaks into a red, aggressive world and stays there. ' +
+            'The last ten minutes are white and euphoric.'
+          }
+          onChange={(event) => setBrief(event.target.value)}
+        />
+      </section>
+
+      {status !== null && !status.configured ? (
+        <section className="ins-section">
+          <span className="ins-label">Not connected</span>
+          <p className="ins-note">
+            The direction is written over the internet. Paste an API key to use it — it stays on
+            this machine. Compose works without it: every part keeps the intention its own rules
+            gave it.
+          </p>
+          <input
+            className="direction-key"
+            type="password"
+            placeholder="sk-…"
+            value={key}
+            spellCheck={false}
+            onChange={(event) => setKey(event.target.value)}
+          />
+          {keyError && <span className="error-text">{keyError}</span>}
+          <button className="ins-button" disabled={key.trim().length === 0} onClick={() => void saveKey()}>
+            Save the key
+          </button>
+        </section>
+      ) : (
+        <button className="ins-preview" disabled={working || status === null} onClick={() => void ask()}>
+          <span className="ins-preview-glyph">{working ? '◍' : '◆'}</span>
+          <span className="ins-preview-label">
+            {working ? 'Reading the track…' : draft.arc ? 'Direct it again' : 'Propose a direction'}
+          </span>
+        </button>
+      )}
+
+      {composeStore.error && <span className="error-text">{composeStore.error}</span>}
+
+      {draft.arc && (
+        <section className="ins-section">
+          <span className="ins-label">Now</span>
+          <p className="direction-arc">{draft.arc}</p>
+        </section>
+      )}
+    </aside>
+  )
+}
+
+// ==================================================== the section's intent ====
+
 function IntentEditor({ section }: { section: ComposeSection }) {
   const { intent } = section
   const set = (patch: Partial<typeof intent>): void =>
     composeStore.update(section.id, { intent: patch })
 
   return (
-    <aside className="inspector">
+    <>
       <header className="ins-head">
         <input
           className="ins-title"
@@ -342,6 +471,7 @@ function IntentEditor({ section }: { section: ComposeSection }) {
         <span className="compose-when-value">{formatTime(section.end)}</span>
         <span className="ins-duration">{formatDuration(section.end - section.start)}</span>
       </div>
+      {section.why && <p className="direction-why">{section.why}</p>}
 
       <section className="ins-section">
         <span className="ins-label">Palette</span>
@@ -469,7 +599,7 @@ function IntentEditor({ section }: { section: ComposeSection }) {
           Merge next
         </button>
       </footer>
-    </aside>
+    </>
   )
 }
 

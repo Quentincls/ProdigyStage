@@ -12,7 +12,9 @@ exigence produit ("n'importe qui change une couleur en 2 clics").
    service en répétition sur site**. La Phase 6 est développée et testée hors
    site (2026-07-27) mais livrée inerte : sans `data/output.json`, aucune cible,
    rien ne peut sortir. Toute émission vit dans `server/src/output.ts` et nulle
-   part ailleurs — garder cette propriété.
+   part ailleurs — garder cette propriété. Même règle pour l'extérieur de la
+   machine : `server/src/direction.ts` est le seul module qui appelle le
+   réseau, et il est inerte sans clé.
 2. **Développement par phases avec validation utilisateur** — ne jamais
    déborder de la phase demandée. Récap de fin + STOP.
 3. **Tout est data-driven** : patch dans `data/patch.json` (vérifié contre la
@@ -44,6 +46,18 @@ moteur `/core` devenu workspace npm partagé serveur+UI, `npm test`.
 **Livrée inerte** : aucune cible configurée, donc rien ne peut sortir.
 Reste : mise en service en répétition avec l'opérateur, calibrage du sens du
 tilt sur vidéo salle, enregistrement d'un run timecodé du vrai show.
+
+**COMPOSE + direction artistique (2026-07-28)** : troisième espace à côté de
+Watch et Edit (`COMPOSE → EDIT → LIVE`). Analyse WAV maison sans dépendance
+(`server/src/audio.ts` : tempo, phase des barres, sections), vocabulaire
+d'intentions partagé (`core/vocabulary.ts`), composition déterministe
+(`server/src/compose.ts`). La direction artistique (`server/src/direction.ts`)
+fait lire la structure par un modèle et propose palette/mood/énergie/mouvement
+/densité **et un nom** par chapitre, à partir d'un brief écrit en clair par
+l'opérateur — intentions seulement, jamais de timing, jamais de scène.
+Optionnelle : sans clé (`data/direction.json` ou `ANTHROPIC_API_KEY`), retour
+aux règles fixes. Reste : le moteur ne produit **aucun mouvement physique**
+(couleur seule), donc un show composé ne fait bouger aucun projecteur.
 
 Lire `README.md` (état + roadmap) et `docs/architecture.md` (conventions,
 formats, pièges) avant toute modification.

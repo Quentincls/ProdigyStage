@@ -49,7 +49,8 @@ export interface WebOptions {
   listMusic: () => unknown
   controlMusic: (action: string, file?: string) => unknown
   musicPath: (file: string) => string | null
-  /** Compose: the draft that proposes a show, before Edit owns it. */
+  /** Compose: the draft that proposes a show, before Edit owns it. May answer
+   *  with a promise -- asking for an artistic direction takes real time. */
   readCompose: () => string
   controlCompose: (action: string, payload: unknown) => unknown
   openBrowser?: boolean
@@ -259,6 +260,11 @@ export function startWebServer(options: WebOptions): { server: Server; wss: WebS
 
 // Shared body collector for the small JSON POST endpoints: 200 with the
 // handler's JSON result, 400 with the error message if the handler throws.
+//
+// Handlers may be async -- one of them asks a model for an artistic direction
+// and takes half a minute over it. A promise is awaited rather than
+// JSON.stringify'd, which is what a synchronous version of this would quietly
+// have done, answering `{}` before the work had started.
 function collectBody(
   req: import('node:http').IncomingMessage,
   res: import('node:http').ServerResponse,
@@ -271,13 +277,20 @@ function collectBody(
     if (body.length > limit) req.destroy()
   })
   req.on('end', () => {
-    try {
-      const result = handle(body)
+    const send = (result: unknown): void => {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(result ?? { ok: true }))
-    } catch (error) {
+    }
+    const fail = (error: unknown): void => {
       res.writeHead(400, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: (error as Error).message }))
+    }
+    try {
+      const result = handle(body)
+      if (result instanceof Promise) result.then(send, fail)
+      else send(result)
+    } catch (error) {
+      fail(error)
     }
   })
 }

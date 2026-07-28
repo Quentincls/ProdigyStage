@@ -50,12 +50,24 @@ export interface ComposeSection {
   kind: SectionKind
   intent: Intent
   variant: number
+  /** One line about why this part looks like this, when a direction wrote it. */
+  why?: string
 }
 
 export interface ComposeDraft {
   file: string
   analysis: AudioAnalysis
   sections: ComposeSection[]
+  /** What the operator said the show is about, in their own words. */
+  brief?: string
+  /** The one-sentence journey a direction answered with. */
+  arc?: string
+}
+
+export interface DirectionStatus {
+  configured: boolean
+  source: 'environment' | 'file' | null
+  model: string
 }
 
 export interface Composition {
@@ -78,7 +90,7 @@ class ComposeStore {
   draft: ComposeDraft | null = null
   composition: Composition | null = null
   selectedId: string | null = null
-  busy: '' | 'analysing' | 'composing' = ''
+  busy: '' | 'analysing' | 'composing' | 'directing' = ''
   error: string | null = null
   private listeners = new Set<() => void>()
   private version = 0
@@ -154,6 +166,38 @@ class ComposeStore {
     }
     this.busy = ''
     this.changed()
+  }
+
+  /**
+   * Ask for an artistic direction: a reading of the whole track at once, in
+   * the operator's own words, which comes back as an intention and a name for
+   * every part. It replaces intentions -- it never moves a boundary, and it
+   * never composes anything itself. What it proposes is edited afterwards like
+   * anything else here, which is the point: it is a first pass, not a verdict.
+   */
+  async direct(brief: string): Promise<void> {
+    if (!this.draft) return
+    this.busy = 'directing'
+    this.error = null
+    this.changed()
+    try {
+      this.draft = await post<ComposeDraft>('direct', { draft: this.draft, brief })
+      this.busy = ''
+      this.changed()
+      await this.generate()
+    } catch (error) {
+      this.error = (error as Error).message
+      this.busy = ''
+      this.changed()
+    }
+  }
+
+  directionStatus(): Promise<DirectionStatus> {
+    return post<DirectionStatus>('direction')
+  }
+
+  saveDirectionKey(key: string): Promise<DirectionStatus> {
+    return post<DirectionStatus>('directionKey', { key })
   }
 
   private queueGenerate(): void {

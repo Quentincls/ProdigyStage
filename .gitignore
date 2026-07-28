@@ -6,6 +6,8 @@ data/recordings/
 data/music/*
 # The Compose draft: tied to an audio file that is not in the repo.
 data/compose.json
+# This install's API key for the artistic direction. Never ours, never shared.
+data/direction.json
 !data/music/.gitkeep
 *.log
 .DS_Store

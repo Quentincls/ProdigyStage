@@ -12,6 +12,7 @@
     "test:audio": "tsx src/audio-selftest.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@prodigy-stage/core": "*",
     "ws": "^8.18.0"
   },

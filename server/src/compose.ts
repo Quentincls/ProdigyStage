@@ -40,6 +40,8 @@ export interface ComposeSection {
   intent: Intent
   /** Bumped by Regenerate: another take on the same intention. */
   variant: number
+  /** One line about why this part looks like this, when a direction wrote it. */
+  why?: string
 }
 
 export interface Marker {

@@ -56,6 +56,20 @@ on site — plays those scenes on the real fixtures as a man-in-the-middle.
       invents** (`server/src/showFromAudio.ts`), and the result is a draft to
       argue with, not a finished show. Nothing is written until the operator
       presses the button.
+- [x] **The artistic direction (2026-07-28).** Compose's own rules give every
+      part of a track the same intention every time — an intro is always deep
+      blue, a drop is always red — which is a starting point and not a show.
+      A direction replaces them: the operator writes what the show is about in
+      their own words ("a cold cave that breaks into a red world"), a language
+      model reads that against the structure the analysis found, and answers
+      with a palette, a mood, an energy, a movement, a density and a *name* for
+      every chapter. It decides nothing else: it never sees a bar, never writes
+      a scene, and the composition is still built from its intentions
+      deterministically, so Regenerate keeps its promise. **Optional and inert
+      without a key** — an install with no internet, which is the normal case
+      on a show day, falls back to the rules and nothing downstream can tell.
+      The key lives in `data/direction.json` (never committed) or in
+      `ANTHROPIC_API_KEY`.
 - [x] **UX/UI passes (evening of 2026-07-27)** — previz framed on the rig with
       haze sheets and halos, transport controls (pause / local playback /
       LIVE), 31 built-in looks, a real hierarchy in the scene panel, Watch
@@ -82,7 +96,12 @@ target means nothing leaves the machine. That is the state the client receives.
    only right if the file starts where timecode `00:00:00:00` starts. Ask the
    operator before building a show on it: no amount of code fixes an offset
    nobody measured.
-4. **Phase 7, the rest** — production comfort: headless multi-station,
+4. **Make the light move.** The effect engine returns colour only, and the
+   tilt in the previz comes from the console's own DMX — so a composed show,
+   however well directed, never turns a fixture. Movement in the engine
+   (tilt as an effect parameter, then output writing channels 9–10) is the
+   next thing that changes what the room actually does.
+5. **Phase 7, the rest** — production comfort: headless multi-station,
    universes 5–8, volumetric beams, shadow mode.
 
 ## Phase 6 test bench (no rig, no console)
@@ -137,6 +156,8 @@ http://localhost:4480.
   copied into two files is a colour table that will disagree with itself.
 - `/server` — Art-Net reception (hand-rolled ArtDMX parser), state, WebSocket
   bridge, and `output.ts`: the one and only module that transmits to the rig.
+  `direction.ts` is the only module that talks to anything outside this
+  machine, and only when a key has been configured.
 - `/ui` — 3D previz, timeline, scene editor, DMX monitor.
 - `/data/patch.json` — the whole rig as data, hot-reloadable. Generated from
   the official patch list (checked against the lighting PDF, pp. 28–29).
@@ -144,6 +165,9 @@ http://localhost:4480.
   committed: it is the client's material and it is measured in hundreds of
   megabytes. WAV only, streamed to the browser with byte ranges so the player
   can seek without downloading the set.
+- `/data/direction.json` — this install's API key for the artistic direction,
+  written by the interface and never committed. Absent is the normal state and
+  means the feature is simply not offered.
 - `/scripts` — patch generator, double-click launchers, packaging.
 - `/docs` — conventions and architecture
   ([docs/architecture.md](docs/architecture.md), in French), plus the client

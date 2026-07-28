@@ -17,6 +17,7 @@ import { analyseWav, type AudioAnalysis } from './audio.js'
 import { ArtnetListener } from './listener.js'
 import { ArtnetOutput, type OutputMode } from './output.js'
 import { compose, sectionsFromAnalysis, type ComposeSection } from './compose.js'
+import { ArtisticDirection } from './direction.js'
 import { proposeShow } from './showFromAudio.js'
 import { loadPatch, patchPath } from './patch.js'
 import { Recorder } from './recorder.js'
@@ -37,6 +38,7 @@ const outputConfigPath = join(dataDir, 'output.json')
 const recordingsDir = join(dataDir, 'recordings')
 const musicDir = join(dataDir, 'music')
 const composePath = join(dataDir, 'compose.json')
+const directionPath = join(dataDir, 'direction.json')
 
 const listener = new ArtnetListener(SHOW_UNIVERSES)
 listener.start()
@@ -118,7 +120,14 @@ interface ComposeDraft {
   file: string
   analysis: AudioAnalysis
   sections: ComposeSection[]
+  /** What the operator said the show is about, in their own words. */
+  brief?: string
+  /** The one-sentence journey a direction answered with. */
+  arc?: string
 }
+
+// Optional, and inert without a key: see the header of direction.ts.
+const direction = new ArtisticDirection(directionPath)
 
 function musicFile(name: string): string | null {
   const safe = basename(name)
@@ -248,6 +257,33 @@ const { wss } = startWebServer({
       }
       writeFileSync(composePath, JSON.stringify(draft, null, 2) + '\n')
       return compose(draft.analysis, draft.sections, () => randomUUID())
+    }
+    // The artistic direction. It answers with intentions and names only: the
+    // composition itself is still made here, deterministically, from what
+    // comes back -- so a direction changes what the show feels like and
+    // nothing about how it is built.
+    if (action === 'direction') return direction.status()
+    if (action === 'directionKey') {
+      const key = (payload as { key?: string } | undefined)?.key
+      if (typeof key !== 'string') throw new Error('missing key')
+      return direction.setKey(key)
+    }
+    if (action === 'direct') {
+      const { draft, brief } = (payload ?? {}) as { draft?: ComposeDraft; brief?: string }
+      if (!draft || !draft.analysis || !Array.isArray(draft.sections)) {
+        throw new Error('invalid draft')
+      }
+      const written = brief ?? draft.brief ?? ''
+      return direction.propose(draft.analysis, draft.sections, written).then((result) => {
+        const directed: ComposeDraft = {
+          ...draft,
+          brief: written,
+          arc: result.arc,
+          sections: result.sections,
+        }
+        writeFileSync(composePath, JSON.stringify(directed, null, 2) + '\n')
+        return directed
+      })
     }
     if (action === 'clear') {
       if (existsSync(composePath)) writeFileSync(composePath, 'null\n')
