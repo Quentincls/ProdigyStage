@@ -2352,6 +2352,13 @@ select:focus {
   color: var(--text-faint);
 }
 
+.ins-optional {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
 .direction-brief {
   width: 100%;
   resize: vertical;

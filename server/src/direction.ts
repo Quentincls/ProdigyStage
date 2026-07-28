@@ -225,6 +225,12 @@ HOW TO USE IT WELL
 - The operator's brief outranks the numbers. A place, a story, or a colour they
   already have in mind is the strongest signal in the whole request; follow it,
   and let the analysis tell you where it changes rather than what it should be.
+- When there is no brief, write the show yourself. Read what this set is
+  actually doing -- where it opens up, where it holds back, where it arrives --
+  decide what it is about, and commit to that reading for the whole track. An
+  absent brief is permission to invent, not an instruction to play safe: the
+  answer must still be one show with a shape, never a part-by-part reaction to
+  the numbers.
 - Energy is a feeling, not a level meter: a quiet passage can be the most
   intense thing in the set.
 - Set energyEnd equal to energy for a part that holds. Set it higher for a part

@@ -338,7 +338,7 @@ function DirectionStrip({ draft, onOpen }: { draft: ComposeDraft; onOpen: () => 
     <button className="direction-strip" onClick={onOpen} disabled={working}>
       <span className="direction-strip-label">Direction</span>
       <span className={`direction-strip-value ${draft.arc ? '' : 'empty'}`}>
-        {working ? 'Reading the whole track…' : (draft.arc ?? 'Say what the show is about')}
+        {working ? 'Reading the whole track…' : (draft.arc ?? 'Let it read the music, or tell it the story')}
       </span>
       <span className="direction-strip-go">›</span>
     </button>
@@ -386,13 +386,15 @@ function DirectionPanel({ draft, onDone }: { draft: ComposeDraft; onDone: () => 
         </button>
       </header>
       <p className="ins-note">
-        Describe the show in your own words — the story, the places it goes, the colours you already
-        have in mind. Every part of the track gets a name and an intention from it, and you edit
-        them afterwards like anything else here.
+        Every part of the track gets a name and an intention. You edit them afterwards like
+        anything else here.
       </p>
 
       <section className="ins-section">
-        <span className="ins-label">The show</span>
+        <div className="ins-section-head">
+          <span className="ins-label">The show</span>
+          <span className="ins-optional">Optional</span>
+        </div>
         <textarea
           className="direction-brief"
           value={brief}
@@ -405,6 +407,13 @@ function DirectionPanel({ draft, onDone }: { draft: ComposeDraft; onDone: () => 
           }
           onChange={(event) => setBrief(event.target.value)}
         />
+        {/* Empty is a real answer, not an unfinished form. Saying so here is the
+            difference between a feature that works and one nobody tries. */}
+        <p className="ins-note">
+          {brief.trim()
+            ? 'The story leads; the music decides where it turns.'
+            : 'Leave it empty and the show is read from the music alone. Write something and it leads instead.'}
+        </p>
       </section>
 
       {status !== null && !status.configured ? (
@@ -432,7 +441,11 @@ function DirectionPanel({ draft, onDone }: { draft: ComposeDraft; onDone: () => 
         <button className="ins-preview" disabled={working || status === null} onClick={() => void ask()}>
           <span className="ins-preview-glyph">{working ? '◍' : '◆'}</span>
           <span className="ins-preview-label">
-            {working ? 'Reading the track…' : draft.arc ? 'Direct it again' : 'Propose a direction'}
+            {working
+              ? 'Reading the track…'
+              : brief.trim()
+                ? 'Propose a direction'
+                : 'Listen and propose'}
           </span>
         </button>
       )}
