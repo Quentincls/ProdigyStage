@@ -478,20 +478,31 @@ export function analyseWav(path: string): AudioAnalysis {
   let noveltyMax = 0
   for (const n of novelty) noveltyMax = Math.max(noveltyMax, n)
 
-  const bounds = [0]
+  // How many chapters a track deserves depends on how long it is. A fixed
+  // threshold gives a three-minute track five sections and a forty-five minute
+  // set forty-five of them, several a few seconds wide -- which is not a table
+  // of contents, it is a list of every time the hi-hats changed. So: peaks are
+  // ranked by how strong they are, and the strongest are kept, spaced apart by
+  // an amount that also grows with the track.
+  const minSpacing = Math.round(clamp(buckets * 0.02, 12, 40))
+  const maxSections = Math.round(clamp(buckets / 60, 6, 28))
+
+  const candidates: { at: number; strength: number }[] = []
   for (let s = half; s < buckets - half; s++) {
-    if (
-      novelty[s] > noveltyMax * 0.32 &&
-      novelty[s] >= novelty[s - 1] &&
-      novelty[s] > novelty[s + 1] &&
-      // Nothing shorter than 12 s: below that it is a fill, not a section.
-      s - bounds[bounds.length - 1] >= 12
-    ) {
-      bounds.push(s)
+    if (novelty[s] > noveltyMax * 0.28 && novelty[s] >= novelty[s - 1] && novelty[s] > novelty[s + 1]) {
+      candidates.push({ at: s, strength: novelty[s] })
     }
   }
-  if (buckets - bounds[bounds.length - 1] < 12 && bounds.length > 1) bounds.pop()
-  bounds.push(buckets)
+  candidates.sort((a, b) => b.strength - a.strength)
+
+  const chosen: number[] = [0]
+  for (const candidate of candidates) {
+    if (chosen.length >= maxSections) break
+    if (candidate.at > buckets - minSpacing) continue
+    if (chosen.every((at) => Math.abs(at - candidate.at) >= minSpacing)) chosen.push(candidate.at)
+  }
+  chosen.sort((a, b) => a - b)
+  const bounds = [...chosen, buckets]
 
   // ----- describe each section --------------------------------------------
   const floor = onsetFloor(flux.low, frames)
@@ -579,6 +590,10 @@ export function analyseWav(path: string): AudioAnalysis {
     peaks,
     analysedInMs: Date.now() - started,
   }
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n))
 }
 
 function round2(n: number): number {
