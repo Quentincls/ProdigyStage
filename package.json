@@ -20,8 +20,9 @@
     "generate-patch": "node scripts/generate-patch.mjs",
     "test:core": "node core/selftest.ts",
     "test:output": "npm run build -w core && npm run test:output -w server",
-    "test": "npm run test:core && npm run test:output",
-    "package": "node scripts/package.mjs"
+    "test": "npm run test:core && npm run test:output && npm run test:audio",
+    "package": "node scripts/package.mjs",
+    "test:audio": "npm run build -w core && npm run test:audio -w server"
   },
   "devDependencies": {
     "archiver": "^7.0.0",

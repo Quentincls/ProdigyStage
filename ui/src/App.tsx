@@ -4,6 +4,7 @@ import { backToLive, editor, isTimeOverridden, startPreview } from './editor'
 import { feed } from './feed'
 import Diagnostics from './Diagnostics'
 import Monitor from './Monitor'
+import MusicPanel from './MusicPanel'
 import OutputPanel from './OutputPanel'
 import { fetchPatch, savePatch, type Patch } from './patch'
 import PlacementPanel from './previz/PlacementPanel'
@@ -20,7 +21,7 @@ import { formatTime } from './TimeInput'
 // Technical tools (DMX monitor, placement, runs, live output) live behind the
 // gear menu.
 type Mode = 'watch' | 'edit'
-type Tool = 'monitor' | 'placement' | 'runs' | 'output' | 'diag' | null
+type Tool = 'monitor' | 'placement' | 'runs' | 'output' | 'diag' | 'music' | null
 
 export default function App() {
   const [patch, setPatch] = useState<Patch | null>(null)
@@ -305,6 +306,10 @@ export default function App() {
                     made people click to find out. */}
                 <div className="tools-menu">
                   <span className="menu-label">Tools</span>
+                  <button className={tool === 'music' ? 'on' : ''} onClick={() => openTool('music')}>
+                    <b>Music</b>
+                    <em>Play the track, and build a first show from it</em>
+                  </button>
                   <button className={tool === 'runs' ? 'on' : ''} onClick={() => openTool('runs')}>
                     <b>Runs</b>
                     <em>Record the console, replay it anytime</em>
@@ -376,6 +381,9 @@ export default function App() {
                 onSave={handleSavePatch}
                 onRevert={handleRevertPatch}
               />
+            )}
+            {tool === 'music' && show && (
+              <MusicPanel show={show} onChange={handleShowChange} onClose={() => setTool(null)} />
             )}
             {tool === 'runs' && <RunsPanel onClose={() => setTool(null)} />}
             {tool === 'output' && <OutputPanel onClose={() => setTool(null)} />}

@@ -1934,3 +1934,126 @@ select:focus {
   outline: none;
   border-color: var(--accent);
 }
+
+/* =============================================================== MUSIC ====
+   Building the show from the track. The analysis reports; the operator
+   decides. Nothing here writes anything until they press the last button. */
+
+.music-path {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border-radius: 5px;
+  padding: 8px 9px;
+  overflow-wrap: anywhere;
+}
+
+.music-file {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 8px;
+}
+
+.music-file:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.music-file.active {
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.music-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-file-size {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.music-playback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.music-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.music-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* One row per part of the track: when it starts, what it is, how fast, and a
+   bar for how loud -- the shape of the set, readable in one column. */
+.music-section {
+  position: relative;
+  display: grid;
+  grid-template-columns: 46px 1fr 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.music-section-level {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.04);
+  z-index: -1;
+}
+
+.music-section-time {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.music-section-kind {
+  color: var(--text-dim);
+  text-transform: capitalize;
+}
+
+.music-section-bpm {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  text-align: right;
+}
+
+/* The four words the analyser uses, told apart at a glance. */
+.music-section.drop .music-section-kind { color: var(--down); }
+.music-section.build .music-section-kind { color: var(--warn); }
+.music-section.break .music-section-kind,
+.music-section.intro .music-section-kind { color: var(--accent-bright); }

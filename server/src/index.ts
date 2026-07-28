@@ -6,14 +6,17 @@
 // Transmission towards the rig lives entirely in output.ts and is OFF at
 // boot, with no configured target: see the header of that file.
 
+import { randomUUID } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { SceneSpec } from '@prodigy-stage/core'
 import { WebSocket } from 'ws'
 import { timecodeToSeconds } from './artnet.js'
+import { analyseWav, type AudioAnalysis } from './audio.js'
 import { ArtnetListener } from './listener.js'
 import { ArtnetOutput, type OutputMode } from './output.js'
+import { proposeShow } from './showFromAudio.js'
 import { loadPatch, patchPath } from './patch.js'
 import { Recorder } from './recorder.js'
 import { Replayer } from './replayer.js'
@@ -31,6 +34,7 @@ const dataDir = join(fileURLToPath(patchPath()), '..')
 const showPath = join(dataDir, 'show.json')
 const outputConfigPath = join(dataDir, 'output.json')
 const recordingsDir = join(dataDir, 'recordings')
+const musicDir = join(dataDir, 'music')
 
 const listener = new ArtnetListener(SHOW_UNIVERSES)
 listener.start()
@@ -101,6 +105,35 @@ console.log(
     : `output: targets ${output.status().targets.join(', ')} (mode off until armed)`,
 )
 
+// ----- Phase 7: the music ---------------------------------------------------
+// Analysing a mastered set takes seconds, not milliseconds, and the answer for
+// a given file never changes -- so it is computed once and kept.
+const analysisCache = new Map<string, AudioAnalysis>()
+
+function musicFile(name: string): string | null {
+  const safe = basename(name)
+  if (!/\.(wav|wave)$/i.test(safe)) return null
+  const path = join(musicDir, safe)
+  return existsSync(path) ? path : null
+}
+
+function listMusic(): unknown {
+  if (!existsSync(musicDir)) return { dir: musicDir, files: [] }
+  const files = readdirSync(musicDir)
+    .filter((file) => /\.(wav|wave)$/i.test(file))
+    .map((file) => {
+      const stats = statSync(join(musicDir, file))
+      return {
+        file,
+        sizeBytes: stats.size,
+        modifiedAt: stats.mtimeMs,
+        analysed: analysisCache.has(file),
+      }
+    })
+    .sort((a, b) => b.modifiedAt - a.modifiedAt)
+  return { dir: musicDir, files }
+}
+
 const { wss } = startWebServer({
   port: WEB_PORT,
   // Re-read on every request so a hand-edited patch.json is picked up on reload.
@@ -159,6 +192,35 @@ const { wss } = startWebServer({
         return { file, sizeBytes: stats.size, modifiedAt: stats.mtimeMs, durationMs }
       })
       .sort((a, b) => b.modifiedAt - a.modifiedAt)
+  },
+  listMusic,
+  musicPath: musicFile,
+  controlMusic: (action, file) => {
+    if (action === 'list') return listMusic()
+    if (!file) throw new Error('missing file')
+    const path = musicFile(file)
+    if (!path) throw new Error(`not a readable WAV in data/music: ${file}`)
+    const name = basename(file)
+    if (action === 'analyse' || action === 'propose') {
+      let analysis = analysisCache.get(name)
+      if (!analysis) {
+        console.log(`music: analysing ${name}…`)
+        analysis = analyseWav(path)
+        analysisCache.set(name, analysis)
+        console.log(
+          `music: ${name} -> ${analysis.sections.length} sections, ${analysis.bpm ?? '?'} BPM, ${analysis.analysedInMs} ms`,
+        )
+      }
+      if (action === 'analyse') return analysis
+      // The proposal is handed back, never written: applying it is the
+      // operator's decision, and it goes through the one show-writing path.
+      return { analysis, proposal: proposeShow(analysis, () => randomUUID()) }
+    }
+    if (action === 'forget') {
+      analysisCache.delete(name)
+      return { ok: true }
+    }
+    throw new Error(`unknown music action: ${action}`)
   },
   controlRecord: (action) => {
     if (action === 'start') recorder.start()

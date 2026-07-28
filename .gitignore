@@ -2,5 +2,8 @@ node_modules/
 dist/
 dist-package/
 data/recordings/
+# The show's audio: hundreds of megabytes that belong to the client, not here.
+data/music/*
+!data/music/.gitkeep
 *.log
 .DS_Store

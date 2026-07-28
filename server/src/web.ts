@@ -3,7 +3,7 @@
 // Hand-rolled static serving on purpose: no backend framework (brief).
 
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -45,6 +45,10 @@ export interface WebOptions {
   controlRecord: (action: string) => unknown
   controlReplay: (action: string, file?: string) => unknown
   controlOutput: (action: string, value?: unknown) => unknown
+  /** Phase 7: the music the show is built against. */
+  listMusic: () => unknown
+  controlMusic: (action: string, file?: string) => unknown
+  musicPath: (file: string) => string | null
   openBrowser?: boolean
 }
 
@@ -123,6 +127,55 @@ export function startWebServer(options: WebOptions): { server: Server; wss: WebS
         const { action, file } = JSON.parse(body) as { action: string; file?: string }
         return options.controlReplay(action, file)
       })
+      return
+    }
+
+    if (url === '/api/music' && req.method === 'POST') {
+      collectBody(req, res, (body) => {
+        const { action, file } = JSON.parse(body) as { action: string; file?: string }
+        return options.controlMusic(action, file)
+      })
+      return
+    }
+
+    if (url === '/api/music') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(options.listMusic()))
+      return
+    }
+
+    // The audio itself. Range matters: without it the browser can play the
+    // track but not seek inside it, and seeking is most of what editing is.
+    if (url.startsWith('/music/')) {
+      const path = options.musicPath(decodeURIComponent(url.slice('/music/'.length)))
+      if (!path || !existsSync(path)) {
+        res.writeHead(404)
+        res.end('not found')
+        return
+      }
+      const total = statSync(path).size
+      const range = req.headers.range
+      const type = extname(path) === '.mp3' ? 'audio/mpeg' : 'audio/wav'
+      if (range) {
+        const match = /bytes=(\d*)-(\d*)/.exec(range)
+        const start = match && match[1] ? Number(match[1]) : 0
+        const end = match && match[2] ? Math.min(Number(match[2]), total - 1) : total - 1
+        if (start >= total || start > end) {
+          res.writeHead(416, { 'Content-Range': `bytes */${total}` })
+          res.end()
+          return
+        }
+        res.writeHead(206, {
+          'Content-Type': type,
+          'Content-Range': `bytes ${start}-${end}/${total}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': end - start + 1,
+        })
+        createReadStream(path, { start, end }).pipe(res)
+        return
+      }
+      res.writeHead(200, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': total })
+      createReadStream(path).pipe(res)
       return
     }
 

@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "fake-show": "tsx src/fake-show.ts",
     "replay": "tsx src/replay-cli.ts",
-    "test:output": "tsx src/output-selftest.ts"
+    "test:output": "tsx src/output-selftest.ts",
+    "test:audio": "tsx src/audio-selftest.ts"
   },
   "dependencies": {
     "@prodigy-stage/core": "*",

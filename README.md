@@ -33,6 +33,17 @@ on site — plays those scenes on the real fixtures as a man-in-the-middle.
       ~0.2 ms, scene substitution with a 0.5 s crossfade (the `/core` engine
       runs server-side too), blackout, 250 ms watchdog, press-and-hold to arm.
       **Built and tested off site — commissioning at the venue is next.**
+- [x] **Phase 7, first step — the show, proposed from the music.** Drop the
+      set's WAV into `data/music`, and the Music panel plays it in sync with
+      the timeline (scrubbing the playhead scrubs the track) and reads it: where
+      the track changes character, and how fast each of those parts runs. From
+      that it lays out a draft — one section and one scene per part, every
+      effect running on that part's own tempo, so a wave advances one cycle per
+      beat and a runner crosses the wall once per bar. **Where the changes
+      happen is measured; which colour goes where is a convention the software
+      invents** (`server/src/showFromAudio.ts`), and the result is a draft to
+      argue with, not a finished show. Nothing is written until the operator
+      presses the button.
 - [x] **UX/UI passes (evening of 2026-07-27)** — previz framed on the rig with
       haze sheets and halos, transport controls (pause / local playback /
       LIVE), 31 built-in looks, a real hierarchy in the scene panel, Watch
@@ -54,8 +65,13 @@ target means nothing leaves the machine. That is the state the client receives.
 2. **Previz finishing touches**: tilt direction and zero to calibrate on site
    (`tiltInvert` in the patch), strobe flashes, CTO. A recording of the real
    timecoded show to confirm what the pixel zone does during the performance.
-3. **Phase 7** — production comfort: headless multi-station, universes 5–8,
-   volumetric beams, shadow mode.
+3. **Confirm the audio lines up with the console's timecode.** The music
+   analysis places everything at the second it hears it in the file, so it is
+   only right if the file starts where timecode `00:00:00:00` starts. Ask the
+   operator before building a show on it: no amount of code fixes an offset
+   nobody measured.
+4. **Phase 7, the rest** — production comfort: headless multi-station,
+   universes 5–8, volumetric beams, shadow mode.
 
 ## Phase 6 test bench (no rig, no console)
 
@@ -83,7 +99,7 @@ npm run dev            # server (watch, web on 4480) + Vite UI on http://localho
 npm run fake-show      # Art-Net test generator -> 127.0.0.1:6454, universes 1-4 + 25 fps timecode
 npm run replay -- data/recordings/run-XXX.artrec  # replays a recorded run
 npm run generate-patch # regenerates data/patch.json from scripts/generate-patch.mjs
-npm test               # /core engine self-test + Phase 6 output self-test
+npm test               # /core engine + Phase 6 output + Phase 7 audio self-tests
 npm run build          # builds core + server (tsc) + UI (vite)
 npm run package        # produces dist-package/LumenStage-Previz-v3.zip (Windows + Mac)
 ```
@@ -108,6 +124,10 @@ http://localhost:4480.
 - `/ui` — 3D previz, timeline, scene editor, DMX monitor.
 - `/data/patch.json` — the whole rig as data, hot-reloadable. Generated from
   the official patch list (checked against the lighting PDF, pp. 28–29).
+- `/data/music` — the show's audio, read but never modified, and never
+  committed: it is the client's material and it is measured in hundreds of
+  megabytes. WAV only, streamed to the browser with byte ranges so the player
+  can seek without downloading the set.
 - `/scripts` — patch generator, double-click launchers, packaging.
 - `/docs` — conventions and architecture
   ([docs/architecture.md](docs/architecture.md), in French), plus the client
