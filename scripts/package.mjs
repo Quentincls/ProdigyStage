@@ -39,6 +39,25 @@ for (const file of readdirSync(join(ROOT, 'server', 'dist'))) {
 }
 cpSync(join(ROOT, 'ui', 'dist'), join(STAGE, 'ui'), { recursive: true })
 copyFileSync(join(ROOT, 'data', 'patch.json'), join(STAGE, 'data', 'patch.json'))
+
+// The music folder ships empty but present, with a note in it. Telling someone
+// to "drop the audio in data/music" only works if the folder is there to be
+// found -- and a zip cannot carry an empty directory, so the note is also what
+// makes it survive the archive.
+mkdirSync(join(STAGE, 'data', 'music'), { recursive: true })
+writeFileSync(
+  join(STAGE, 'data', 'music', 'PUT THE SHOW MUSIC HERE.txt'),
+  [
+    'Put the show’s audio in this folder, as a WAV file.',
+    '',
+    'Then open LumenStage, go to Compose, and pick it from the list.',
+    'It is read, never modified, and never sent anywhere.',
+    '',
+    'WAV only for now (.wav). An hour of music takes about twenty seconds',
+    'to analyse the first time, and is remembered afterwards.',
+    '',
+  ].join('\r\n'),
+)
 cpSync(join(ROOT, 'node_modules', 'ws'), join(STAGE, 'node_modules', 'ws'), { recursive: true })
 // The shared effect engine is a workspace package: npm links it, so the copy
 // must dereference the symlink to land real files in the client's zip.

@@ -7,7 +7,7 @@
 // boot, with no configured target: see the header of that file.
 
 import { randomUUID } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { SceneSpec } from '@prodigy-stage/core'
@@ -126,6 +126,14 @@ function musicFile(name: string): string | null {
   const path = join(musicDir, safe)
   return existsSync(path) ? path : null
 }
+
+// Created at boot rather than on demand: "drop the show's audio in data/music"
+// is useless advice when data/music does not exist, and the one person who
+// needs it is standing in a venue looking for a folder that was never made.
+if (!existsSync(musicDir)) {
+  mkdirSync(musicDir, { recursive: true })
+}
+console.log(`music: put the show's audio (WAV) in ${musicDir}`)
 
 function listMusic(): unknown {
   if (!existsSync(musicDir)) return { dir: musicDir, files: [] }
