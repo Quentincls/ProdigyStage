@@ -11,6 +11,7 @@
 
 import type { SceneSpec } from '../../core/effects'
 import type { Intent, LookFamily } from '../../core/vocabulary'
+import { apiUrl } from './config'
 import { editor } from './editor'
 import { player } from './music'
 import type { Marker } from './show'
@@ -63,7 +64,7 @@ export interface Composition {
 }
 
 async function post<T>(action: string, payload?: unknown): Promise<T> {
-  const response = await fetch('/api/compose', {
+  const response = await fetch(apiUrl('/api/compose'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, payload }),
@@ -101,7 +102,7 @@ class ComposeStore {
 
   async load(): Promise<void> {
     try {
-      const response = await fetch('/api/compose')
+      const response = await fetch(apiUrl('/api/compose'))
       const draft = (await response.json()) as ComposeDraft | null
       if (draft && draft.analysis) {
         this.draft = draft

@@ -7,6 +7,7 @@
 // pauses it, and jumping to a section jumps the music with it, without a line
 // of synchronisation logic anywhere else in the application.
 
+import { apiUrl } from './config'
 import { effectiveShowTime, transportState } from './editor'
 import { feed } from './feed'
 
@@ -47,13 +48,13 @@ export interface AudioAnalysis {
 }
 
 export async function listMusic(): Promise<{ dir: string; files: MusicFile[] }> {
-  const response = await fetch('/api/music')
+  const response = await fetch(apiUrl('/api/music'))
   if (!response.ok) throw new Error('could not list the music folder')
   return (await response.json()) as { dir: string; files: MusicFile[] }
 }
 
 async function post<T>(action: string, file?: string): Promise<T> {
-  const response = await fetch('/api/music', {
+  const response = await fetch(apiUrl('/api/music'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, file }),
@@ -114,7 +115,7 @@ class Player {
       return
     }
 
-    const el = new Audio(`/music/${encodeURIComponent(file)}`)
+    const el = new Audio(apiUrl(`/music/${encodeURIComponent(file)}`))
     el.preload = 'auto'
     el.volume = this.muted ? 0 : this.volume
     // Attached, though it draws nothing: a detached element plays perfectly
