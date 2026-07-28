@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { defaultParams } from '../../core/effects'
 import { backToLive, editor, isTimeOverridden, startPreview } from './editor'
 import { feed } from './feed'
+import { ComposeDock, ComposeInspector, enterCompose } from './Compose'
+import { composeStore } from './compose'
 import Diagnostics from './Diagnostics'
 import Monitor from './Monitor'
 import MusicPanel from './MusicPanel'
@@ -20,7 +22,7 @@ import { formatTime } from './TimeInput'
 // Two intents, two modes: Watch (default, safe, zero chrome) and Edit.
 // Technical tools (DMX monitor, placement, runs, live output) live behind the
 // gear menu.
-type Mode = 'watch' | 'edit'
+type Mode = 'watch' | 'edit' | 'compose'
 type Tool = 'monitor' | 'placement' | 'runs' | 'output' | 'diag' | 'music' | null
 
 export default function App() {
@@ -38,13 +40,20 @@ export default function App() {
   const showSaveTimer = useRef<number | null>(null)
   const showLoaded = useRef(false)
 
-  // The previz render loop reads scenes from the mutable editor store.
+  // The previz render loop reads scenes from the mutable editor store. In
+  // Compose it renders the composition instead: the same room, showing a
+  // proposal rather than the show.
   useEffect(() => {
+    if (mode === 'compose') {
+      composeStore.preview()
+      return
+    }
     editor.scenes = show?.scenes ?? []
     editor.version++
-  }, [show])
+  }, [show, mode])
 
   useEffect(() => {
+    void composeStore.load()
     feed.start()
     void fetchPatch().then((initial) => {
       setPatch(initial)
@@ -213,6 +222,30 @@ export default function App() {
       setTool((current) => (current === 'monitor' ? current : null))
       backToLive()
     }
+    if (next === 'compose') {
+      setSelectedSceneId(null)
+      setTool(null)
+      enterCompose()
+    }
+  }
+
+  // Compose proposes; Edit owns the result. Crossing that line writes the
+  // composition into the show and hands over -- after which nothing
+  // distinguishes a generated scene from a hand-made one.
+  function sendToEdit(): void {
+    const composition = composeStore.composition
+    if (!composition || !show) return
+    if (
+      (show.scenes.length > 0 || show.markers.length > 0) &&
+      !window.confirm(
+        'Send this composition to Edit? It replaces the sections and scenes currently in the show.',
+      )
+    ) {
+      return
+    }
+    handleShowChange({ ...show, markers: composition.markers, scenes: composition.scenes })
+    setMode('edit')
+    backToLive()
   }
 
   function openTool(next: Tool): void {
@@ -273,6 +306,12 @@ export default function App() {
             </button>
             <button className={mode === 'edit' ? 'active' : ''} onClick={() => switchMode('edit')}>
               Edit
+            </button>
+            <button
+              className={mode === 'compose' ? 'active' : ''}
+              onClick={() => switchMode('compose')}
+            >
+              Compose
             </button>
           </nav>
           {dirty && tool === 'placement' && <span className="dirty-badge">unsaved changes</span>}
@@ -390,6 +429,7 @@ export default function App() {
             {tool === 'diag' && (
               <Diagnostics patch={patch} show={show} onClose={() => setTool(null)} />
             )}
+            {mode === 'compose' && <ComposeInspector />}
             {mode === 'edit' && selectedSceneId && show && (
               <SceneEditor
                 show={show}
@@ -400,8 +440,10 @@ export default function App() {
               />
             )}
             {/* Nothing to look at yet: say so in the middle of the empty room
-                rather than in a card floating over it. */}
-            {(!connected || (totalPps === 0 && stats?.udp.listening)) && (
+                rather than in a card floating over it. Never in Compose --
+                there the room is showing a proposal, and no console is
+                involved in deciding what a section should feel like. */}
+            {mode !== 'compose' && (!connected || (totalPps === 0 && stats?.udp.listening)) && (
               <div className="stage-empty">
                 <span className="stage-empty-title">
                   {connected ? 'Waiting for the console' : 'Connecting to the server'}
@@ -415,7 +457,9 @@ export default function App() {
       {/* Watch is a show monitor, not an editor with its buttons hidden: it
           answers where we are, what is on the walls and what comes next. */}
       {show &&
-        (mode === 'watch' ? (
+        (mode === 'compose' ? (
+          <ComposeDock onSendToEdit={sendToEdit} />
+        ) : mode === 'watch' ? (
           <WatchBar show={show} />
         ) : (
           <Timeline

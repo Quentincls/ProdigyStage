@@ -29,6 +29,12 @@ export interface AudioSection {
   level: number
   /** Low-band attacks per second: how busy the section is down there. */
   hitsPerSecond: number
+  /**
+   * When a beat lands, in seconds from the start of the file. A tempo without
+   * a phase places nothing: it says how long a bar lasts but not where one
+   * begins, and every change the composer writes has to land on one.
+   */
+  beatPhase: number | null
 }
 
 export interface AudioAnalysis {
@@ -39,8 +45,16 @@ export interface AudioAnalysis {
   bits: number
   bpm: number | null
   sections: AudioSection[]
+  /**
+   * Loudness down the whole track, 0-1, at a fixed count regardless of length.
+   * This is the waveform Compose draws: enough shape to recognise the set by
+   * eye, small enough to send as JSON.
+   */
+  peaks: number[]
   analysedInMs: number
 }
+
+export const PEAK_COUNT = 1200
 
 // 1024 samples at ~22 kHz is a 46 ms window, hopping every 12 ms: fine enough
 // to place a kick inside a beat, coarse enough to stay cheap.
@@ -342,6 +356,41 @@ function tempoOf(
   return Number.isFinite(bpm) ? Math.round(bpm * 100) / 100 : null
 }
 
+/**
+ * Where the beats actually land, given how fast they come.
+ *
+ * Tempo alone is half an answer: it says a beat every 0.47 s without saying
+ * which 0.47 s. This tries every offset within one beat and keeps the one that
+ * lands on the most energy -- the phase a person taps when they join in.
+ */
+function beatPhaseOf(
+  flux: Float32Array,
+  fps: number,
+  from: number,
+  to: number,
+  bpm: number,
+): number | null {
+  const period = (fps * 60) / bpm
+  if (!Number.isFinite(period) || period < 2 || to - from < period * 4) return null
+  const steps = Math.max(8, Math.round(period))
+  let bestOffset = 0
+  let bestScore = -1
+  for (let step = 0; step < steps; step++) {
+    const offset = (step / steps) * period
+    let score = 0
+    for (let beat = 0; ; beat++) {
+      const frame = Math.round(from + offset + beat * period)
+      if (frame >= to) break
+      score += flux[frame]
+    }
+    if (score > bestScore) {
+      bestScore = score
+      bestOffset = offset
+    }
+  }
+  return (from + bestOffset) / fps
+}
+
 /** Attacks in a band: a peak that clears both the local mean and the floor. */
 function countOnsets(
   flux: Float32Array,
@@ -466,11 +515,13 @@ export function analyseWav(path: string): AudioAnalysis {
     // periodicity too, and autocorrelation will happily report a tempo for it
     // -- one that no one in the room could clap along to.
     const beaten = hits / span > 0.5
+    const bpm = beaten ? tempoOf(flux.low, fps, fromFrame, toFrame, floor) : null
     sections.push({
       start: a,
       end: b,
       kind: 'groove',
-      bpm: beaten ? tempoOf(flux.low, fps, fromFrame, toFrame, floor) : null,
+      bpm,
+      beatPhase: bpm === null ? null : beatPhaseOf(flux.low, fps, fromFrame, toFrame, bpm),
       bass: round2(bass / span),
       air: round2(air / span),
       level: round2(level / span),
@@ -501,6 +552,22 @@ export function analyseWav(path: string): AudioAnalysis {
   const loud = [...sections].sort((x, y) => y.level - x.level)
   const overall = loud.find((s) => s.bpm !== null)?.bpm ?? null
 
+  // The waveform, at a fixed width: the loudest frame in each slice, so short
+  // hits survive the downsampling instead of averaging away.
+  const peaks: number[] = []
+  let loudest = 0
+  for (let i = 0; i < PEAK_COUNT; i++) {
+    const a = Math.floor((i / PEAK_COUNT) * frames)
+    const b = Math.max(a + 1, Math.floor(((i + 1) / PEAK_COUNT) * frames))
+    let peak = 0
+    for (let f = a; f < b && f < frames; f++) if (rms[f] > peak) peak = rms[f]
+    peaks.push(peak)
+    if (peak > loudest) loudest = peak
+  }
+  for (let i = 0; i < peaks.length; i++) {
+    peaks[i] = loudest > 0 ? Math.round((peaks[i] / loudest) * 1000) / 1000 : 0
+  }
+
   return {
     file: path.split(/[\\/]/).pop() ?? path,
     seconds: Math.round(seconds * 10) / 10,
@@ -509,6 +576,7 @@ export function analyseWav(path: string): AudioAnalysis {
     bits: format.bits,
     bpm: overall,
     sections,
+    peaks,
     analysedInMs: Date.now() - started,
   }
 }

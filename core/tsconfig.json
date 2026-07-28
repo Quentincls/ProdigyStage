@@ -11,5 +11,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["effects.ts"]
+  "include": [
+    "effects.ts",
+    "vocabulary.ts"
+  ]
 }

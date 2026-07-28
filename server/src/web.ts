@@ -49,6 +49,9 @@ export interface WebOptions {
   listMusic: () => unknown
   controlMusic: (action: string, file?: string) => unknown
   musicPath: (file: string) => string | null
+  /** Compose: the draft that proposes a show, before Edit owns it. */
+  readCompose: () => string
+  controlCompose: (action: string, payload: unknown) => unknown
   openBrowser?: boolean
 }
 
@@ -144,6 +147,27 @@ export function startWebServer(options: WebOptions): { server: Server; wss: WebS
       return
     }
 
+    if (url === '/api/compose' && req.method === 'POST') {
+      collectBody(
+        req,
+        res,
+        (body) => {
+          const { action, payload } = JSON.parse(body) as { action: string; payload?: unknown }
+          return options.controlCompose(action, payload)
+        },
+        // A draft carries the waveform and every section's intention: roomier
+        // than the other endpoints, still nowhere near the audio itself.
+        8_000_000,
+      )
+      return
+    }
+
+    if (url === '/api/compose') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(options.readCompose())
+      return
+    }
+
     // The audio itself. Range matters: without it the browser can play the
     // track but not seek inside it, and seeking is most of what editing is.
     if (url.startsWith('/music/')) {
@@ -223,11 +247,12 @@ function collectBody(
   req: import('node:http').IncomingMessage,
   res: import('node:http').ServerResponse,
   handle: (body: string) => unknown,
+  limit = 1_000_000,
 ): void {
   let body = ''
   req.on('data', (chunk) => {
     body += chunk
-    if (body.length > 1_000_000) req.destroy()
+    if (body.length > limit) req.destroy()
   })
   req.on('end', () => {
     try {

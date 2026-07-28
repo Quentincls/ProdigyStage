@@ -33,6 +33,18 @@ on site — plays those scenes on the real fixtures as a man-in-the-middle.
       ~0.2 ms, scene substitution with a 0.5 s crossfade (the `/core` engine
       runs server-side too), blackout, 250 ms watchdog, press-and-hold to arm.
       **Built and tested off site — commissioning at the venue is next.**
+- [x] **COMPOSE — the third space.** The product now reads
+      `COMPOSE → EDIT → LIVE`: Compose proposes, Edit decides and owns the
+      result, Watch runs it. Compose imports a track, shows the whole set at
+      once as a waveform cut into chapters, and asks the one thing an analyser
+      cannot know — what each part is *for*. Palette, mood, energy (with ramps),
+      movement, density, and which look families are allowed; no speeds, no
+      sizes, no timecodes. Changing any of those recomposes in under a second
+      and the previz follows immediately. **Compose deliberately cannot zoom**:
+      the whole track always fits the width, which is the line that stops it
+      becoming a second Edit. `Send to Edit` writes the composition into the
+      show, after which nothing distinguishes a generated scene from a
+      hand-made one.
 - [x] **Phase 7, first step — the show, proposed from the music.** Drop the
       set's WAV into `data/music`, and the Music panel plays it in sync with
       the timeline (scrubbing the playhead scrubs the track) and reads it: where
@@ -119,6 +131,10 @@ http://localhost:4480.
 
 - `/core` — shared deterministic effect engine, an npm workspace consumed by
   both the browser previz and the server output. Pure TS, zero dependencies.
+  `vocabulary.ts` holds the words Compose thinks in (palettes, moods, movement,
+  density, look families) and the numbers they become — shared because the
+  server composes with them and the interface offers them, and a colour table
+  copied into two files is a colour table that will disagree with itself.
 - `/server` — Art-Net reception (hand-rolled ArtDMX parser), state, WebSocket
   bridge, and `output.ts`: the one and only module that transmits to the rig.
 - `/ui` — 3D previz, timeline, scene editor, DMX monitor.

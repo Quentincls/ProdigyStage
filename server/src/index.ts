@@ -16,6 +16,7 @@ import { timecodeToSeconds } from './artnet.js'
 import { analyseWav, type AudioAnalysis } from './audio.js'
 import { ArtnetListener } from './listener.js'
 import { ArtnetOutput, type OutputMode } from './output.js'
+import { compose, sectionsFromAnalysis, type ComposeSection } from './compose.js'
 import { proposeShow } from './showFromAudio.js'
 import { loadPatch, patchPath } from './patch.js'
 import { Recorder } from './recorder.js'
@@ -35,6 +36,7 @@ const showPath = join(dataDir, 'show.json')
 const outputConfigPath = join(dataDir, 'output.json')
 const recordingsDir = join(dataDir, 'recordings')
 const musicDir = join(dataDir, 'music')
+const composePath = join(dataDir, 'compose.json')
 
 const listener = new ArtnetListener(SHOW_UNIVERSES)
 listener.start()
@@ -109,6 +111,14 @@ console.log(
 // Analysing a mastered set takes seconds, not milliseconds, and the answer for
 // a given file never changes -- so it is computed once and kept.
 const analysisCache = new Map<string, AudioAnalysis>()
+
+/** What Compose is working on: a track, what was heard in it, and the intent
+ *  the operator has put on each part. Never the show -- that is Edit's. */
+interface ComposeDraft {
+  file: string
+  analysis: AudioAnalysis
+  sections: ComposeSection[]
+}
 
 function musicFile(name: string): string | null {
   const safe = basename(name)
@@ -195,6 +205,48 @@ const { wss } = startWebServer({
   },
   listMusic,
   musicPath: musicFile,
+  readCompose: () => (existsSync(composePath) ? readFileSync(composePath, 'utf8') : 'null'),
+  controlCompose: (action, payload) => {
+    if (action === 'analyse') {
+      const file = (payload as { file?: string } | undefined)?.file
+      if (!file) throw new Error('missing file')
+      const path = musicFile(file)
+      if (!path) throw new Error(`not a readable WAV in data/music: ${file}`)
+      const name = basename(file)
+      let analysis = analysisCache.get(name)
+      if (!analysis) {
+        console.log(`compose: analysing ${name}…`)
+        analysis = analyseWav(path)
+        analysisCache.set(name, analysis)
+      }
+      const draft = {
+        file: name,
+        analysis,
+        sections: sectionsFromAnalysis(analysis, () => randomUUID()),
+      }
+      writeFileSync(composePath, JSON.stringify(draft, null, 2) + '\n')
+      return draft
+    }
+    if (action === 'save') {
+      const draft = payload as ComposeDraft
+      if (!draft || !Array.isArray(draft.sections)) throw new Error('invalid draft')
+      writeFileSync(composePath, JSON.stringify(draft, null, 2) + '\n')
+      return { ok: true }
+    }
+    if (action === 'generate') {
+      const draft = payload as ComposeDraft
+      if (!draft || !draft.analysis || !Array.isArray(draft.sections)) {
+        throw new Error('invalid draft')
+      }
+      writeFileSync(composePath, JSON.stringify(draft, null, 2) + '\n')
+      return compose(draft.analysis, draft.sections, () => randomUUID())
+    }
+    if (action === 'clear') {
+      if (existsSync(composePath)) writeFileSync(composePath, 'null\n')
+      return { ok: true }
+    }
+    throw new Error(`unknown compose action: ${action}`)
+  },
   controlMusic: (action, file) => {
     if (action === 'list') return listMusic()
     if (!file) throw new Error('missing file')

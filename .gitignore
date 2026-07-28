@@ -4,6 +4,8 @@ dist-package/
 data/recordings/
 # The show's audio: hundreds of megabytes that belong to the client, not here.
 data/music/*
+# The Compose draft: tied to an audio file that is not in the repo.
+data/compose.json
 !data/music/.gitkeep
 *.log
 .DS_Store

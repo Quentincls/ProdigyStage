@@ -12,6 +12,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { analyseWav } from './audio.js'
+import { compose, sectionsFromAnalysis } from './compose.js'
 import { proposeShow } from './showFromAudio.js'
 
 const SR = 44100
@@ -168,9 +169,72 @@ try {
   const ids = new Set(proposal.scenes.flatMap((s) => [s.id, ...s.tracks.map((t) => t.id)]))
   assert(ids.size === 10, 'the proposal reused an id')
 
+  // ----- Compose ----------------------------------------------------------
+  // The beat phase is what lets a composition land on bars instead of near
+  // them, so it is checked against where the kicks were actually written.
+  const build = analysis.sections[1]
+  assert(build.beatPhase !== null, 'the build reported no beat phase')
+  const firstKick = Math.ceil(INTRO_END / BEAT) * BEAT
+  assert(
+    Math.abs((build.beatPhase ?? 0) - firstKick) < 0.05,
+    `beat phase ${build.beatPhase} is not on the kick at ${firstKick}`,
+  )
+
+  let composeCounter = 0
+  const newId = (): string => `c-${composeCounter++}`
+  const sections = sectionsFromAnalysis(analysis, newId)
+  assert(sections.length === 5, `compose read ${sections.length} sections`)
+  assert(
+    sections.every((section) => section.intent.families.length > 0),
+    'a section was handed an intention with no look family',
+  )
+
+  composeCounter = 0
+  const first = compose(analysis, sections, newId)
+  composeCounter = 0
+  const again = compose(analysis, sections, newId)
+  // Determinism is the promise Regenerate depends on: without it, changing a
+  // palette would silently reshuffle everything else too.
+  assert(
+    JSON.stringify(first) === JSON.stringify(again),
+    'composing the same intention twice gave two different shows',
+  )
+
+  composeCounter = 0
+  const varied = compose(
+    analysis,
+    sections.map((section, index) => (index === 2 ? { ...section, variant: 1 } : section)),
+    newId,
+  )
+  assert(
+    JSON.stringify(varied) !== JSON.stringify(first),
+    'bumping a variant changed nothing -- Regenerate would do nothing',
+  )
+
+  for (let i = 1; i < first.scenes.length; i++) {
+    assert(
+      first.scenes[i].start >= first.scenes[i - 1].end - 0.001,
+      `composed scenes ${i - 1} and ${i} overlap`,
+    )
+  }
+
+  // Blocks inside a section with a tempo must sit on bar lines.
+  const bar = (60 / BPM) * 4
+  const dropScenes = first.scenes.filter((scene) => scene.name.startsWith('Drop 1'))
+  assert(dropScenes.length > 1, 'the drop was composed as a single block at high density')
+  for (const scene of dropScenes.slice(1)) {
+    const offset = (scene.start - (build.beatPhase ?? 0)) % bar
+    const distance = Math.min(offset, bar - offset)
+    assert(distance < 0.15, `a block starts at ${scene.start}s, ${distance.toFixed(2)}s off the bar`)
+  }
+
   console.log(
     `audio selftest: OK (${analysis.sections.length} sections found at the right seconds, ` +
       `${analysis.bpm} BPM, ${analysis.analysedInMs} ms for ${DURATION}s)`,
+  )
+  console.log(
+    `compose selftest: OK (${first.scenes.length} scenes on the bar grid, deterministic, ` +
+      `variants differ)`,
   )
 } finally {
   rmSync(dir, { recursive: true, force: true })

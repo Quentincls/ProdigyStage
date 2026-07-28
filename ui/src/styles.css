@@ -2057,3 +2057,232 @@ select:focus {
 .music-section.build .music-section-kind { color: var(--warn); }
 .music-section.break .music-section-kind,
 .music-section.intro .music-section-kind { color: var(--accent-bright); }
+
+/* ============================================================= COMPOSE ====
+   The intention layer. Same DNA as the rest -- black, hairlines, one accent --
+   but allowed to be more visual, because what is manipulated here is colour
+   and feeling rather than numbers. */
+
+.compose-dock {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  height: 208px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+.compose-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+  height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.compose-clock {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  min-width: 62px;
+}
+
+.compose-track {
+  font-size: 12px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+.compose-busy {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-bright);
+}
+
+.compose-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.tl-action.plain::before {
+  content: '';
+}
+
+/* The whole track, always. No zoom here on purpose -- see the note at the top
+   of Compose.tsx: zoom is what would turn this into a second Edit. */
+.compose-canvas {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  touch-action: none;
+}
+
+.ins-preview.compact {
+  width: auto;
+  gap: 8px;
+  padding: 7px 14px;
+}
+
+.ins-preview.compact .ins-preview-glyph {
+  font-size: 11px;
+}
+
+.ins-preview:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ins-title-static {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.compose-when-value {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.compose-foot .ins-button {
+  flex: 1;
+}
+
+/* ----- palettes -----
+   Chosen by looking at them, like the Looks: three bands of the real colours,
+   named underneath. */
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+}
+
+.palette-strip {
+  display: flex;
+  height: 22px;
+  border-radius: 4px;
+  overflow: hidden;
+  outline: 1px solid transparent;
+  outline-offset: 1px;
+  transition: outline-color 130ms ease;
+}
+
+.palette-strip span {
+  flex: 1;
+}
+
+.palette:hover .palette-strip {
+  outline-color: var(--border-strong);
+}
+
+.palette.active .palette-strip {
+  outline-color: var(--text);
+}
+
+.palette-name {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette.active .palette-name {
+  color: var(--text);
+}
+
+/* ----- choices -----
+   Mood, movement, density: a word, picked from a few. Not a dropdown -- seeing
+   the alternatives is most of how you choose between them. */
+
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.choice-item {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 5px 10px;
+}
+
+.choice-item:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
+.choice-item.active {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+/* ----- look families ----- */
+
+.family-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.family {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 5px 5px 0;
+  padding: 7px 10px;
+}
+
+.family b {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-faint);
+}
+
+.family em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
+.family:hover {
+  background: var(--panel-2);
+}
+
+.family.active {
+  background: var(--panel-2);
+  border-left-color: var(--accent);
+}
+
+.family.active b {
+  color: var(--text);
+}
