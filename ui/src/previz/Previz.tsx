@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Patch } from '../patch'
-import { PrevizScene, VIEWS } from './PrevizScene'
+import { MAX_AIM, PrevizScene, readAim, VIEWS } from './PrevizScene'
 
 interface PrevizProps {
   patch: Patch
@@ -16,6 +16,7 @@ export default function Previz({ patch, selection, onPick }: PrevizProps) {
   onPickRef.current = onPick
   // Mirrors the scene's camera so the corner buttons can show which one is on.
   const [activeView, setActiveView] = useState(1)
+  const [aim, setAim] = useState(readAim)
 
   useEffect(() => {
     const container = containerRef.current!
@@ -80,6 +81,29 @@ export default function Previz({ patch, selection, onPick }: PrevizProps) {
             {view.name}
           </button>
         ))}
+        {/* Where the battens rest when no console is telling them. It changes
+            the picture and nothing else -- the rig is never sent a tilt from
+            here -- but a room lit by lights pointing somewhere they are not is
+            worse than no previz at all. */}
+        <span className="previz-sep" />
+        <label className="previz-aim" title="Where the battens point when the console is silent">
+          <span className="previz-aim-label">Aim</span>
+          <input
+            type="range"
+            min={-MAX_AIM}
+            max={MAX_AIM}
+            step={5}
+            value={aim}
+            onChange={(event) => {
+              const next = event.target.valueAsNumber
+              setAim(next)
+              sceneRef.current?.setAim(next)
+            }}
+          />
+          <span className="previz-aim-value">
+            {aim === 0 ? 'down' : `${aim > 0 ? 'in' : 'out'} ${Math.abs(aim)}°`}
+          </span>
+        </label>
       </div>
     </div>
   )

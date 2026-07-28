@@ -282,6 +282,46 @@ body {
   background: rgba(var(--surface-rgb), 0.7);
 }
 
+/* The aim control lives with the camera buttons because it is the same kind of
+   thing: it changes how the room is looked at, never what the room does. Faint
+   until wanted, like everything else in this corner. */
+.previz-sep {
+  width: 1px;
+  height: 13px;
+  margin: 0 7px;
+  align-self: center;
+  background: var(--border-strong);
+}
+
+.previz-aim {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  opacity: 0.45;
+  transition: opacity 130ms ease;
+}
+
+.previz-aim:hover,
+.previz-aim:focus-within {
+  opacity: 1;
+}
+
+.previz-aim-label {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.previz-aim input[type='range'] {
+  width: 84px;
+}
+
+.previz-aim-value {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  min-width: 42px;
+}
+
 .previz-view.active {
   color: var(--text);
 }

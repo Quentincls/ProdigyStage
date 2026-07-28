@@ -66,9 +66,32 @@ interface TiltSlot {
   universe: number
   tilt: number // 0-based absolute coarse channel
   tiltFine: number | null
-  baseMatrix: THREE.Matrix4
+  /** Radians last applied. NaN until the first pose, so it always runs once. */
+  lastAngle: number
+}
+
+/** Where a fixture sits before it is aimed: position and rotation from the
+ *  patch, plus where each of its pixels sits along it. */
+interface Pose {
+  base: THREE.Matrix4
   pixelOffsets: THREE.Matrix4[]
-  lastValue: number
+}
+
+const AIM_KEY = 'lumenstage.beamAim'
+/** Degrees, positive towards the middle of the room. Zero is straight down --
+ *  a batten resting level, which is what a rig does when nothing is telling it
+ *  otherwise, and what anyone looking at the previz expects to see. */
+export const DEFAULT_AIM = 0
+export const MAX_AIM = 60
+
+export function readAim(): number {
+  try {
+    const stored = Number(localStorage.getItem(AIM_KEY))
+    if (Number.isFinite(stored) && Math.abs(stored) <= MAX_AIM) return stored
+  } catch {
+    // Storage unavailable: the default is fine.
+  }
+  return DEFAULT_AIM
 }
 
 export class PrevizScene {
@@ -92,7 +115,12 @@ export class PrevizScene {
   private fixtures: Fixture[] = []
   private pixelSlots: PixelSlot[] = []
   private tiltSlots: TiltSlot[] = []
+  private poses: Pose[] = []
   private tiltRange = 0 // radians of full travel
+  // Where the battens point when no console is saying. Local radians, negated
+  // from the degrees the operator sets because a positive local rotation sends
+  // a hanging fixture away from the room, not into it.
+  private aim = (-readAim() * Math.PI) / 180
   private selected = new Set<string>()
 
   private lastVersion = -1
@@ -339,6 +367,7 @@ export class PrevizScene {
       wallSizes.set(group, wall.length * pixelsPerFixture)
     }
 
+    this.poses = []
     this.fixtures.forEach((fixture: Fixture, fixtureIndex: number) => {
       dummy.position.set(...fixture.position)
       dummy.rotation.set(
@@ -392,6 +421,8 @@ export class PrevizScene {
         this.pixelSlots.push(slot)
       }
 
+      this.poses.push({ base: dummy.matrix.clone(), pixelOffsets })
+
       const tiltChannel = this.tiltRange > 0 ? abs('tilt') : null
       if (tiltChannel !== null) {
         this.tiltSlots.push({
@@ -399,9 +430,7 @@ export class PrevizScene {
           universe: fixture.universe,
           tilt: tiltChannel,
           tiltFine: abs('tiltFine'),
-          baseMatrix: dummy.matrix.clone(),
-          pixelOffsets,
-          lastValue: -1,
+          lastAngle: Number.NaN,
         })
       }
 
@@ -413,16 +442,6 @@ export class PrevizScene {
       glows.setMatrixAt(fixtureIndex, dummy.matrix)
       glows.setColorAt(fixtureIndex, black)
       halos.setColorAt(fixtureIndex, black)
-
-      // The sheet hangs from the batten, leaning towards the room centre.
-      // Rotating by +x sends local -Y towards -Z, so the left wall (at -Z,
-      // throwing towards +Z) needs the negative angle -- same convention as
-      // the floor pool above, which offsets +Z for wall-left.
-      const lean = beamLean(fixture.group)
-      dummy.position.fromArray(fixture.position)
-      dummy.rotation.set(lean, 0, 0)
-      dummy.updateMatrix()
-      beams.setMatrixAt(fixtureIndex, dummy.matrix)
       beams.setColorAt(fixtureIndex, black)
     })
 
@@ -431,6 +450,10 @@ export class PrevizScene {
     this.glows = glows
     this.halos = halos
     this.beams = beams
+    // Bar, pixels and haze are aimed in one place, from one angle -- see
+    // poseFixture. Nothing else in here is allowed to decide where a fixture
+    // points.
+    for (let index = 0; index < this.fixtures.length; index++) this.poseFixture(index, this.aim)
     this.fixtureGroup.add(bars, pixels, glows, halos, beams)
     this.applySelectionTint()
     this.lastVersion = -1 // force a recolor on the next frame
@@ -563,56 +586,90 @@ export class PrevizScene {
     halos.instanceMatrix.needsUpdate = true
   }
 
-  // Re-pose bars and their pixels when the motorized tilt moves. DMX is the
-  // truth: 0-65535 spans the full mechanical travel, mid-course = level.
+  /**
+   * Point one fixture, everything at once: the bar, the pixels riding on it,
+   * and the sheet of haze coming off it. One angle, one place -- the haze used
+   * to carry a fixed lean of its own on top of the tilt, which meant the light
+   * in the air was always aimed some thirty degrees away from the thing
+   * emitting it.
+   */
+  private poseFixture(fixtureIndex: number, angle: number): void {
+    const pose = this.poses[fixtureIndex]
+    if (!pose || !this.bars || !this.pixels) return
+    const posed = new THREE.Matrix4().multiplyMatrices(
+      pose.base,
+      new THREE.Matrix4().makeRotationX(angle),
+    )
+    this.bars.setMatrixAt(fixtureIndex, posed)
+    const pixelMatrix = new THREE.Matrix4()
+    pose.pixelOffsets.forEach((offset, p) => {
+      pixelMatrix.multiplyMatrices(posed, offset)
+      this.pixels!.setMatrixAt(fixtureIndex * pose.pixelOffsets.length + p, pixelMatrix)
+    })
+    // The haze hangs from the same matrix, so it can only ever point where the
+    // fixture points.
+    if (this.beams) this.beams.setMatrixAt(fixtureIndex, posed)
+  }
+
+  /** Where the battens rest when no console is driving them. Degrees, positive
+   *  towards the middle of the room; zero is straight down. */
+  setAim(degrees: number): void {
+    const clamped = Math.max(-MAX_AIM, Math.min(MAX_AIM, degrees))
+    this.aim = (-clamped * Math.PI) / 180
+    try {
+      localStorage.setItem(AIM_KEY, String(clamped))
+    } catch {
+      // Storage refused: the choice simply will not be remembered.
+    }
+    // Fixtures with a tilt channel are left to updateTilt, which decides
+    // between the console and this and runs on the very next frame -- posing
+    // them here as well would flash the new aim across a rig the console is
+    // driving. Fixtures without one have no other opinion to wait for.
+    const motorised = new Set(this.tiltSlots.map((slot) => slot.fixtureIndex))
+    for (let index = 0; index < this.fixtures.length; index++) {
+      if (!motorised.has(index)) this.poseFixture(index, this.aim)
+    }
+    for (const slot of this.tiltSlots) slot.lastAngle = Number.NaN
+    this.lastTiltVersion = -1
+    this.markPosesDirty()
+  }
+
+  private markPosesDirty(): void {
+    if (this.bars) this.bars.instanceMatrix.needsUpdate = true
+    if (this.pixels) this.pixels.instanceMatrix.needsUpdate = true
+    if (this.beams) this.beams.instanceMatrix.needsUpdate = true
+  }
+
+  // Re-pose bars and their pixels when the motorized tilt moves. A console
+  // driving the universe is the truth: 0-65535 spans the full mechanical
+  // travel, mid-course = level, and it replaces the resting aim rather than
+  // adding to it.
   private updateTilt(): void {
     if (!this.bars || !this.pixels || this.tiltSlots.length === 0) return
     if (feed.version === this.lastTiltVersion) return
     this.lastTiltVersion = feed.version
 
-    const posed = new THREE.Matrix4()
-    const rotation = new THREE.Matrix4()
-    const pixelMatrix = new THREE.Matrix4()
-    const beamMatrix = new THREE.Matrix4()
-    const beamPosition = new THREE.Vector3()
-    const beamEuler = new THREE.Euler()
-    const beamQuaternion = new THREE.Quaternion()
-    const beamScale = new THREE.Vector3(1, 1, 1)
     let dirty = false
     for (const slot of this.tiltSlots) {
       const buffer = feed.universes.get(slot.universe)
-      if (!buffer) continue
-      const raw =
-        slot.tiltFine !== null
-          ? buffer[slot.tilt] * 256 + buffer[slot.tiltFine]
-          : buffer[slot.tilt] * 257
-      if (raw === slot.lastValue) continue
-      slot.lastValue = raw
+      // A universe nobody is sending is not a universe saying zero. Zero is
+      // one end of the mechanical travel, so reading a silent console as data
+      // aimed every batten a hundred and ten degrees away from level -- which
+      // is why the light in the previz used to come out sideways, on a rig
+      // that was simply switched off.
+      const live = buffer !== undefined && feed.active.get(slot.universe) === true
+      const raw = live
+        ? slot.tiltFine !== null
+          ? buffer![slot.tilt] * 256 + buffer![slot.tiltFine]
+          : buffer![slot.tilt] * 257
+        : 0
+      const angle = live ? (raw / 65535 - 0.5) * this.tiltRange : this.aim
+      if (angle === slot.lastAngle) continue
+      slot.lastAngle = angle
       dirty = true
-      const angle = (raw / 65535 - 0.5) * this.tiltRange
-      rotation.makeRotationX(angle)
-      posed.multiplyMatrices(slot.baseMatrix, rotation)
-      this.bars.setMatrixAt(slot.fixtureIndex, posed)
-      slot.pixelOffsets.forEach((offset, p) => {
-        pixelMatrix.multiplyMatrices(posed, offset)
-        this.pixels!.setMatrixAt(slot.fixtureIndex * slot.pixelOffsets.length + p, pixelMatrix)
-      })
-      // The haze must follow where the fixture is actually pointing, or the
-      // light lands somewhere the beam never went.
-      const fixture = this.fixtures[slot.fixtureIndex]
-      if (this.beams && fixture) {
-        beamPosition.fromArray(fixture.position)
-        beamEuler.set(beamLean(fixture.group) + angle, 0, 0)
-        beamQuaternion.setFromEuler(beamEuler)
-        beamMatrix.compose(beamPosition, beamQuaternion, beamScale)
-        this.beams.setMatrixAt(slot.fixtureIndex, beamMatrix)
-      }
+      this.poseFixture(slot.fixtureIndex, angle)
     }
-    if (dirty) {
-      this.bars.instanceMatrix.needsUpdate = true
-      this.pixels.instanceMatrix.needsUpdate = true
-      if (this.beams) this.beams.instanceMatrix.needsUpdate = true
-    }
+    if (dirty) this.markPosesDirty()
   }
 
   // ----- framing ----------------------------------------------------------
@@ -796,11 +853,4 @@ function makeBeamTexture(): THREE.Texture {
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   return texture
-}
-
-// Lean of a fixture's haze sheet, in radians about X. A +x rotation sends
-// local -Y towards -Z, so the wall sitting at -Z (throwing towards the room
-// centre at +Z) takes the negative angle.
-function beamLean(group: string): number {
-  return group === 'wall-left' ? -0.62 : 0.62
 }
