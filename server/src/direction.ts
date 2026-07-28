@@ -53,6 +53,22 @@ export interface DirectionResult {
 // ----- what the model is allowed to answer -----------------------------------
 // Generated from the vocabulary, so the schema and the composer can never
 // disagree about which words exist.
+//
+// Only the keywords in SCHEMA_KEYWORDS may appear here. The API accepts the
+// structural half of JSON Schema and rejects the counting half outright --
+// `minimum` on an integer is a 400, not a warning -- so a range is said in the
+// description and enforced by applyDirection() below, which had to clamp it
+// anyway. `assertSchemaIsSendable` walks this object at every start-up so the
+// rule cannot quietly come back.
+const SCHEMA_KEYWORDS = new Set([
+  'type',
+  'properties',
+  'items',
+  'required',
+  'additionalProperties',
+  'enum',
+  'description',
+])
 
 const SCHEMA = {
   type: 'object',
@@ -74,20 +90,22 @@ const SCHEMA = {
           why: { type: 'string', description: 'One short sentence for the operator.' },
           palette: { type: 'string', enum: Object.keys(PALETTES) },
           mood: { type: 'string', enum: Object.keys(MOODS) },
-          energy: { type: 'integer', minimum: 0, maximum: 100 },
+          energy: {
+            type: 'integer',
+            description: 'How the part starts, from 0 to 100, in steps of five.',
+          },
           energyEnd: {
             type: 'integer',
-            minimum: 0,
-            maximum: 100,
-            description: 'Equal to energy for a part that holds; higher for one that climbs.',
+            description:
+              'How the part ends, from 0 to 100, in steps of five. Equal to energy for a part ' +
+              'that holds; higher for one that climbs, lower for one that falls away.',
           },
           movement: { type: 'string', enum: Object.keys(MOVEMENTS) },
           density: { type: 'string', enum: Object.keys(DENSITIES) },
           families: {
             type: 'array',
             items: { type: 'string', enum: Object.keys(FAMILIES) },
-            minItems: 1,
-            maxItems: 3,
+            description: 'One to three, in order of importance.',
           },
         },
         required: [
@@ -109,6 +127,39 @@ const SCHEMA = {
   required: ['arc', 'sections'],
   additionalProperties: false,
 } as const
+
+/**
+ * Refuse to send a schema the API will refuse to read. This exists because it
+ * already happened: `minimum` and `maximum` looked harmless, went out to a
+ * real key for the first time in a venue, and came back as a 400 that meant
+ * nothing to the person reading it. A schema is data, so it can be checked
+ * like data -- here, at start-up, rather than in front of an operator.
+ */
+export function assertSchemaIsSendable(node: unknown, path = 'schema'): void {
+  if (Array.isArray(node)) {
+    node.forEach((item, index) => assertSchemaIsSendable(item, `${path}[${index}]`))
+    return
+  }
+  if (node === null || typeof node !== 'object') return
+  for (const [keyword, value] of Object.entries(node)) {
+    // Inside `properties` the keys are field names, not keywords.
+    if (path.endsWith('.properties')) {
+      assertSchemaIsSendable(value, `${path}.${keyword}`)
+      continue
+    }
+    if (!SCHEMA_KEYWORDS.has(keyword)) {
+      throw new Error(
+        `direction: ${path}.${keyword} is not a keyword the API accepts in an output schema ` +
+          `(allowed: ${[...SCHEMA_KEYWORDS].join(', ')})`,
+      )
+    }
+    if (keyword !== 'enum' && keyword !== 'required' && keyword !== 'description') {
+      assertSchemaIsSendable(value, `${path}.${keyword}`)
+    }
+  }
+}
+
+assertSchemaIsSendable(SCHEMA)
 
 // ----- the brief the model works from ----------------------------------------
 
@@ -307,10 +358,12 @@ function families(value: unknown, fallback: LookFamily[]): LookFamily[] {
   return unique.length > 0 ? unique : fallback
 }
 
+/** An energy, clamped and snapped to the step the sliders move in -- so every
+ *  level a direction proposes is one the operator could have set by hand. */
 function number(value: unknown, fallback: number): number {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return fallback
-  return Math.max(0, Math.min(100, Math.round(parsed)))
+  return Math.max(0, Math.min(100, Math.round(parsed / 5) * 5))
 }
 
 function text(value: unknown, limit: number): string {

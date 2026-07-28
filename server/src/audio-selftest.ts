@@ -14,7 +14,7 @@ import { join } from 'node:path'
 import { DENSITIES, MOODS, MOVEMENTS, PALETTES } from '@prodigy-stage/core/vocabulary'
 import { analyseWav } from './audio.js'
 import { compose, sectionsFromAnalysis } from './compose.js'
-import { applyDirection } from './direction.js'
+import { applyDirection, assertSchemaIsSendable } from './direction.js'
 import { proposeShow } from './showFromAudio.js'
 
 const SR = 44100
@@ -231,7 +231,20 @@ try {
   }
 
   // ----- the artistic direction --------------------------------------------
-  // Only the half that must hold when the answer is wrong is tested here: no
+  // Importing direction.ts has already checked its own schema -- the module
+  // refuses to load with a keyword the API would reject. This proves the check
+  // works rather than merely runs, because a guard nobody has seen fail is not
+  // a guard. `minimum` is the exact keyword that reached a real key and came
+  // back a 400.
+  let refused = ''
+  try {
+    assertSchemaIsSendable({ type: 'object', properties: { n: { type: 'integer', minimum: 0 } } })
+  } catch (error) {
+    refused = (error as Error).message
+  }
+  assert(refused.includes('minimum'), 'the schema guard let `minimum` through')
+
+  // Only the half that must hold when the answer is wrong is tested below: no
   // network, no key, no model. A direction arrives as JSON from somewhere else
   // and this is the door it comes through, so the door is what gets tested.
   const good = applyDirection(sections, analysis, {
