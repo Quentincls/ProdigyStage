@@ -278,7 +278,7 @@ export default function App() {
         </div>
         <div className="statusline">
           <WallClock />
-          <span className={`status-pill ${dotClass}`}>
+          <span className={`status-line ${dotClass}`}>
             <span className={`dot ${dotClass}`} />
             {statusText}
           </span>
@@ -391,17 +391,14 @@ export default function App() {
                 onSelect={setSelectedSceneId}
               />
             )}
+            {/* Nothing to look at yet: say so in the middle of the empty room
+                rather than in a card floating over it. */}
             {(!connected || (totalPps === 0 && stats?.udp.listening)) && (
-              <div className="welcome">
-                <h2>LumenStage</h2>
-                <div className="welcome-row">
-                  <span className={`dot ${connected ? 'idle' : 'down'}`} />
-                  <span>{connected ? 'Server connected' : 'Connecting to server…'}</span>
-                </div>
-                <div className="welcome-row">
-                  <span className="dot idle" />
-                  <span>Waiting for the console or a test show — nothing is ever sent.</span>
-                </div>
+              <div className="stage-empty">
+                <span className="stage-empty-title">
+                  {connected ? 'Waiting for the console' : 'Connecting to the server'}
+                </span>
+                <span className="stage-empty-note">Nothing is ever sent to the lights.</span>
               </div>
             )}
           </>

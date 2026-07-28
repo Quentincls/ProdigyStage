@@ -1,6 +1,11 @@
-// Scene editor panel, radically simple (brief + Phase 5.5 UX pass):
-// presets first, then ONE visible look (walls + effect + a few controls).
-// Fades and extra layered looks live behind Advanced. No DMX anywhere.
+// The inspector: how the selected scene behaves.
+//
+// Flat on purpose. The information is structured with type, spacing and
+// hairlines rather than with nested cards -- a settings panel made of boxes
+// inside boxes reads as configuration, and this is meant to read as an
+// instrument. Order follows what the eye should hit: what this scene is, the
+// one action, the look it plays, the handful of things worth adjusting, then
+// everything else behind Advanced.
 
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -81,12 +86,7 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
     updateScene({
       tracks: [
         { ...main, target: 'wall-left' },
-        {
-          ...main,
-          id: crypto.randomUUID(),
-          target: 'wall-right',
-          params: { ...main.params },
-        },
+        { ...main, id: crypto.randomUUID(), target: 'wall-right', params: { ...main.params } },
       ],
     })
   }
@@ -126,7 +126,11 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
       name: `${source.name} copy`,
       start: slot.start,
       end: slot.end,
-      tracks: source.tracks.map((track) => ({ ...track, id: crypto.randomUUID(), params: { ...track.params } })),
+      tracks: source.tracks.map((track) => ({
+        ...track,
+        id: crypto.randomUUID(),
+        params: { ...track.params },
+      })),
     }
     onChange({ ...show, scenes: [...show.scenes, copy] })
     onSelect(copy.id)
@@ -146,84 +150,79 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
     currentPreset?.name ?? `${EFFECTS.find((e) => e.type === mainLook?.effect)?.label ?? 'Custom'} (edited)`
 
   return (
-    <aside className="panel panel-wide">
-      {/* Identity: what this scene is and when it happens. */}
-      <header className="panel-header scene-header">
-        <div className="scene-identity">
-          {/* Auto names like "Scene 3" say nothing. The placeholder invites
-              naming the moment of the show this covers. */}
-          <input
-            className="scene-name"
-            value={scene.name}
-            placeholder="Name this moment"
-            title="A scene is one moment of the show. Name it after what happens then."
-            onChange={(e) => updateScene({ name: e.target.value })}
-          />
-          <div className="scene-when">
-            <TimeInput
-              value={scene.start}
-              onCommit={(v) =>
-                updateScene({ start: clampTrimStart(show.scenes, sceneId, scene.start, scene.end, v) })
-              }
-            />
-            <span className="scene-when-sep">→</span>
-            <TimeInput
-              value={scene.end}
-              onCommit={(v) =>
-                updateScene({ end: clampTrimEnd(show.scenes, sceneId, scene.start, scene.end, v) })
-              }
-            />
-            <span className="scene-duration">{formatDuration(scene.end - scene.start)}</span>
-          </div>
-        </div>
-        <button className="icon-close" onClick={onClose} aria-label="Close">
+    <aside className="inspector">
+      <header className="ins-head">
+        <input
+          className="ins-title"
+          value={scene.name}
+          placeholder="Name this moment"
+          title="A scene is one moment of the show. Name it after what happens then."
+          onChange={(e) => updateScene({ name: e.target.value })}
+        />
+        <button className="ins-close" onClick={onClose} aria-label="Close">
           ✕
         </button>
       </header>
 
-      {/* The one action on this screen. */}
+      <div className="ins-when">
+        <TimeInput
+          value={scene.start}
+          onCommit={(v) =>
+            updateScene({ start: clampTrimStart(show.scenes, sceneId, scene.start, scene.end, v) })
+          }
+        />
+        <span className="ins-when-sep">→</span>
+        <TimeInput
+          value={scene.end}
+          onCommit={(v) =>
+            updateScene({ end: clampTrimEnd(show.scenes, sceneId, scene.start, scene.end, v) })
+          }
+        />
+        <span className="ins-duration">{formatDuration(scene.end - scene.start)}</span>
+      </div>
+
       <button
-        className={`button block ${previewing ? '' : 'primary'}`}
+        className={`ins-preview ${previewing ? 'on' : ''}`}
         onClick={() => (previewing ? backToLive() : startPreview(scene.id))}
       >
-        {previewing ? '■ Stop preview' : '▶ Preview this scene'}
+        {previewing ? 'Stop preview' : 'Preview this scene'}
       </button>
 
-      {/* What it looks like. The library is one click away, not always open,
-          so the panel is about this scene rather than about the catalogue. */}
-      <section className="panel-group">
-        <span className="panel-label">Look</span>
-        {mainLook && (
-          <div className="current-look">
-            <LookThumb type={mainLook.effect} params={mainLook.params} width={240} height={26} />
-            <div className="current-look-row">
-              <span className="current-look-name">{lookName}</span>
-              <button className="chip" onClick={() => setLibraryOpen(!libraryOpen)}>
-                {libraryOpen ? 'Done' : 'Change'}
-              </button>
-            </div>
-          </div>
-        )}
-        {libraryOpen && (
-          <div className="preset-grid">
-            {library.map((preset) => (
-              <button
-                key={preset.id}
-                className={`preset-card ${currentPreset?.id === preset.id ? 'active' : ''}`}
-                onClick={() => applyPreset(preset)}
-              >
-                <LookThumb type={preset.effect} params={preset.params} />
-                <span>{preset.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Fine tuning of the chosen look. */}
+      {/* The look, shown rather than named. The library opens in place instead
+          of sitting permanently open: the panel is about this scene, not about
+          the catalogue. */}
       {mainLook && (
-        <section className="panel-group">
-          <span className="panel-label">{splitByWall ? 'Adjust — left wall' : 'Adjust'}</span>
+        <section className="ins-section">
+          <div className="ins-section-head">
+            <span className="ins-label">Look</span>
+            <button className="ins-link" onClick={() => setLibraryOpen(!libraryOpen)}>
+              {libraryOpen ? 'Close' : 'Browse'}
+            </button>
+          </div>
+          <LookThumb type={mainLook.effect} params={mainLook.params} width={300} height={46} />
+          <span className="ins-look-name">{lookName}</span>
+
+          {libraryOpen && (
+            <div className="look-grid">
+              {library.map((preset) => (
+                <button
+                  key={preset.id}
+                  className={`look-card ${currentPreset?.id === preset.id ? 'active' : ''}`}
+                  onClick={() => applyPreset(preset)}
+                >
+                  <LookThumb type={preset.effect} params={preset.params} width={132} height={30} />
+                  <span>{preset.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Only the handful of parameters this look actually has. */}
+      {mainLook && (
+        <section className="ins-section">
+          {splitByWall && <span className="ins-label">Left wall</span>}
           <LookControls
             look={mainLook}
             onUpdate={(update) => updateTrack(mainLook.id, update)}
@@ -233,15 +232,16 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
         </section>
       )}
 
-      <button className="ghost-button advanced-toggle" onClick={() => setAdvanced(!advanced)}>
-        {advanced ? '▾ Advanced' : '▸ Advanced'}
+      <button className="ins-disclosure" onClick={() => setAdvanced(!advanced)}>
+        <span className={`ins-caret ${advanced ? 'open' : ''}`}>›</span>
+        Advanced
       </button>
 
       {advanced && (
-        <>
+        <div className="ins-advanced">
           {mainLook && (
-            <div className="panel-section">
-              <span className="panel-label">Effect type</span>
+            <section className="ins-section">
+              <span className="ins-label">Effect</span>
               <div className="effect-picker">
                 {EFFECTS.map((def) => (
                   <EffectChip
@@ -258,61 +258,63 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
                   />
                 ))}
               </div>
-            </div>
+            </section>
           )}
 
           {mainLook && (
-            <div className="panel-section">
-              <span className="panel-label">Fades (s)</span>
-              <div className="field-row">
-                <label className="field">
-                  <span>Fade in</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.1}
-                    value={mainLook.fadeIn}
-                    onChange={(e) =>
-                      updateTrack(mainLook.id, {
-                        fadeIn: round1(Math.max(0, e.target.valueAsNumber || 0)),
-                      })
-                    }
-                  />
-                </label>
-                <label className="field">
-                  <span>Fade out</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.1}
-                    value={mainLook.fadeOut}
-                    onChange={(e) =>
-                      updateTrack(mainLook.id, {
-                        fadeOut: round1(Math.max(0, e.target.valueAsNumber || 0)),
-                      })
-                    }
-                  />
-                </label>
+            <section className="ins-section">
+              <span className="ins-label">Fades</span>
+              <div className="param">
+                <span className="param-label">In</span>
+                <input
+                  className="param-number"
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={mainLook.fadeIn}
+                  onChange={(e) =>
+                    updateTrack(mainLook.id, {
+                      fadeIn: round1(Math.max(0, e.target.valueAsNumber || 0)),
+                    })
+                  }
+                />
+                <span className="param-unit">s</span>
               </div>
-            </div>
+              <div className="param">
+                <span className="param-label">Out</span>
+                <input
+                  className="param-number"
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={mainLook.fadeOut}
+                  onChange={(e) =>
+                    updateTrack(mainLook.id, {
+                      fadeOut: round1(Math.max(0, e.target.valueAsNumber || 0)),
+                    })
+                  }
+                />
+                <span className="param-unit">s</span>
+              </div>
+            </section>
           )}
 
           {/* A scene shows at most one look per wall: the engine applies the
-              last look matching a wall, so a second look on the same wall
-              would simply hide the first. Split by wall or not at all. */}
-          <div className="panel-section">
-            <span className="panel-label">Walls</span>
+              last look matching a wall, so a second look on the same wall would
+              simply hide the first. Split by wall or not at all. */}
+          <section className="ins-section">
+            <span className="ins-label">Walls</span>
             {splitByWall ? (
               <>
-                <span className="muted-note">
-                  Left and right walls run their own look. The one above is the left wall.
-                </span>
+                <p className="ins-note">
+                  Each wall runs its own look. The one above is the left wall.
+                </p>
                 {extraLooks[0] && (
-                  <div className="panel-section track">
-                    <div className="track-head">
-                      <span className="panel-label">Right wall</span>
-                      <button className="chip" onClick={() => saveAsPreset(extraLooks[0])}>
-                        Save preset
+                  <>
+                    <div className="ins-section-head">
+                      <span className="ins-label">Right wall</span>
+                      <button className="ins-link" onClick={() => saveAsPreset(extraLooks[0])}>
+                        Save as look
                       </button>
                     </div>
                     <LookControls
@@ -320,38 +322,38 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
                       onUpdate={(update) => updateTrack(extraLooks[0].id, update)}
                       showEffects
                     />
-                  </div>
+                  </>
                 )}
-                <button className="button" onClick={mergeWalls}>
+                <button className="ins-button" onClick={mergeWalls}>
                   Use one look for both walls
                 </button>
               </>
             ) : (
-              <button className="button" onClick={splitWalls}>
+              <button className="ins-button" onClick={splitWalls}>
                 Give each wall its own look
               </button>
             )}
-          </div>
+          </section>
 
           <ManagePresets show={show} onChange={onChange} />
-        </>
+        </div>
       )}
 
-      <footer className="panel-footer">
-        <button className="button" onClick={duplicateScene}>
+      <footer className="ins-foot">
+        <button className="ins-button" onClick={duplicateScene}>
           Duplicate
         </button>
-        <button className="button danger" onClick={deleteScene}>
-          Delete scene
+        <button className="ins-button danger" onClick={deleteScene}>
+          Delete
         </button>
       </footer>
     </aside>
   )
 }
 
-// Which walls, and the few parameters of the chosen look. The effect *type*
-// is picked from the look library, so its raw picker only shows under
-// Advanced -- two ways to choose a look side by side just made people guess.
+// Which walls, and the few parameters of the chosen look. The effect *type* is
+// picked from the look library, so its raw picker only shows under Advanced --
+// two ways to choose a look side by side just made people guess.
 function LookControls({
   look,
   onUpdate,
@@ -366,12 +368,12 @@ function LookControls({
   hideWalls?: boolean
 }) {
   return (
-    <div className="panel-section">
+    <>
       {!hideWalls && (
-        <label className="param-row">
-          <span>Walls</span>
+        <label className="param">
+          <span className="param-label">Walls</span>
           <select
-            className="recording-select"
+            className="param-select"
             value={look.target}
             onChange={(e) => onUpdate({ target: e.target.value as TrackTarget })}
           >
@@ -399,10 +401,11 @@ function LookControls({
       )}
 
       {EFFECTS.find((e) => e.type === look.effect)?.params.map((param) => (
-        <label className="param-row" key={param.key}>
-          <span>{param.label}</span>
+        <label className="param" key={param.key}>
+          <span className="param-label">{param.label}</span>
           {param.type === 'color' ? (
             <input
+              className="param-color"
               type="color"
               value={String(look.params[param.key] ?? param.default)}
               onChange={(e) => onUpdate({ params: { ...look.params, [param.key]: e.target.value } })}
@@ -426,25 +429,19 @@ function LookControls({
       ))}
 
       {onSavePreset && (
-        <button className="ghost-button save-preset" onClick={onSavePreset}>
-          Save this look as a preset
+        <button className="ins-link left" onClick={onSavePreset}>
+          Save as a look
         </button>
       )}
-    </div>
+    </>
   )
 }
 
-function ManagePresets({
-  show,
-  onChange,
-}: {
-  show: ShowFile
-  onChange: (show: ShowFile) => void
-}) {
+function ManagePresets({ show, onChange }: { show: ShowFile; onChange: (show: ShowFile) => void }) {
   if (show.presets.length === 0) return null
   return (
-    <div className="panel-section">
-      <span className="panel-label">Manage presets</span>
+    <section className="ins-section">
+      <span className="ins-label">Your looks</span>
       {show.presets.map((preset) => (
         <div className="preset-row" key={preset.id}>
           <input
@@ -459,21 +456,22 @@ function ManagePresets({
             }
           />
           <button
-            className="chip"
+            className="ins-icon"
+            title="Delete this look"
             onClick={() =>
               onChange({ ...show, presets: show.presets.filter((p) => p.id !== preset.id) })
             }
           >
-            ×
+            ✕
           </button>
         </div>
       ))}
-    </div>
+    </section>
   )
 }
 
-// Animated strip rendered by the real engine, so a look is chosen by seeing
-// it rather than by reading parameter names.
+// Animated strip rendered by the real engine, so a look is chosen by seeing it
+// rather than by reading parameter names.
 export function LookThumb({
   type,
   params,
@@ -503,7 +501,7 @@ export function LookThumb({
     return () => clearInterval(interval)
   }, [type, paramsKey, width, height])
 
-  return <canvas ref={canvasRef} width={width} height={height} />
+  return <canvas className="look-thumb" ref={canvasRef} width={width} height={height} />
 }
 
 // Same effect strip, with the effect's default parameters.
@@ -520,7 +518,7 @@ function EffectChip({
 }) {
   return (
     <button className={`effect-chip ${active ? 'active' : ''}`} onClick={onClick}>
-      <LookThumb type={type} params={defaultParams(type)} />
+      <LookThumb type={type} params={defaultParams(type)} width={64} height={12} />
       <span>{label}</span>
     </button>
   )

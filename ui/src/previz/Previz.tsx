@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Patch } from '../patch'
 import { PrevizScene, VIEWS } from './PrevizScene'
 
@@ -14,6 +14,8 @@ export default function Previz({ patch, selection, onPick }: PrevizProps) {
   const sceneRef = useRef<PrevizScene | null>(null)
   const onPickRef = useRef(onPick)
   onPickRef.current = onPick
+  // Mirrors the scene's camera so the corner buttons can show which one is on.
+  const [activeView, setActiveView] = useState(1)
 
   useEffect(() => {
     const container = containerRef.current!
@@ -34,6 +36,7 @@ export default function Previz({ patch, selection, onPick }: PrevizProps) {
       const view = Number(event.key)
       if (VIEWS[view] && !event.metaKey && !event.ctrlKey && !event.altKey) {
         scene.setView(view)
+        setActiveView(view)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -60,13 +63,23 @@ export default function Previz({ patch, selection, onPick }: PrevizProps) {
   return (
     <div className="previz" ref={containerRef}>
       <canvas ref={canvasRef} />
-      <div className="previz-hint">
+      {/* Camera, in the corner and out of the way. These used to be a legend
+          telling you which key to press; they are the buttons now, and the key
+          still works. */}
+      <div className="previz-views">
         {Object.entries(VIEWS).map(([key, view]) => (
-          <span key={key}>
-            <b>{key}</b> {view.name}
-          </span>
+          <button
+            key={key}
+            className={`previz-view ${activeView === Number(key) ? 'active' : ''}`}
+            title={`${view.name} view — key ${key}`}
+            onClick={() => {
+              sceneRef.current?.setView(Number(key))
+              setActiveView(Number(key))
+            }}
+          >
+            {view.name}
+          </button>
         ))}
-        <span className="muted">drag to orbit · wheel to zoom</span>
       </div>
     </div>
   )

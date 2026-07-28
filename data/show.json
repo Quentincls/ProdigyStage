@@ -5,6 +5,12 @@
       "name": "Section 1",
       "start": 330,
       "end": 390
+    },
+    {
+      "id": "82e14f16-813a-4913-97da-031ebbcbe7a8",
+      "name": "Section 2",
+      "start": 216.9,
+      "end": 276.9
     }
   ],
   "scenes": [

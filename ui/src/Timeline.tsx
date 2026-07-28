@@ -1,8 +1,14 @@
-// Read-only show timeline (Phase 4): time ruler, live playhead driven by the
-// Art-Net timecode, zoom/scroll, hand-placed section markers saved in
-// data/show.json, and the run recorder / replayer controls.
-// The canvas is drawn in a rAF loop reading feed.timecode directly; React only
-// renders the chrome (buttons, selected-marker editor) at interaction rate.
+// The show's timeline: the editor's centre of gravity, not a widget parked at
+// the bottom of the screen.
+//
+// Layout follows an NLE rather than a dashboard: one toolbar carrying the
+// transport, the position and the actions, then a track gutter naming the
+// lanes, then the lanes themselves. Sections are the show's structure and are
+// drawn as structure -- a thin, quiet band. Scenes are the material and are
+// drawn as material -- solid blocks carrying their look's colour.
+//
+// The canvas is painted in a rAF loop reading feed.timecode directly; React
+// only renders the chrome, at interaction rate.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { activeScene, hexToRgb, type SceneSpec } from '../../core/effects'
@@ -33,14 +39,19 @@ interface TimelineProps {
 }
 
 const RULER_STEPS = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]
-const RULER_H = 22
-const MARKER_TOP = 26
-const MARKER_BOTTOM = 44
-const SCENE_TOP = 48
+
+// The track gutter: lane names live here instead of floating over the lanes
+// they name. It is also what makes the two lanes read as a hierarchy.
+const GUTTER = 84
+const RULER_H = 24
+const SECTION_TOP = 30
+const SECTION_BOTTOM = 52
+const SCENE_TOP = 60
+const SCENE_BAND_MAX = 150
+const EDGE_PX = 6
 // How close to the playhead counts as grabbing it. Matches the trim handles,
 // and is what makes the line itself draggable instead of the ruler only.
 const PLAYHEAD_GRAB_PX = 8
-const SCENE_BAND_MAX = 170
 
 export default function Timeline({
   show,
@@ -61,10 +72,10 @@ export default function Timeline({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [, setOverridden] = useState(false)
   const fitRef = useRef<() => void>(() => {})
+  const zoomRef = useRef<(factor: number) => void>(() => {})
 
-  // Dock height: the lanes were cramped at a fixed 132px, and how much room
-  // the timeline deserves depends on the show and the screen. Kept across
-  // sessions -- resizing it every night would be its own annoyance.
+  // Dock height: how much room the timeline deserves depends on the show and
+  // the screen, so it is the operator's call. Kept across sessions.
   const [dockHeight, setDockHeight] = useState(readDockHeight)
   const [resizing, setResizing] = useState(false)
 
@@ -139,8 +150,9 @@ export default function Timeline({
     const canvas = canvasRef.current!
     const wrap = wrapRef.current!
 
-    const timeAt = (x: number) => view.current.start + x / view.current.pxPerSec
-    const xOf = (t: number) => (t - view.current.start) * view.current.pxPerSec
+    // Time lives to the right of the gutter; everything left of it is chrome.
+    const timeAt = (x: number) => view.current.start + (x - GUTTER) / view.current.pxPerSec
+    const xOf = (t: number) => GUTTER + (t - view.current.start) * view.current.pxPerSec
 
     let raf = 0
     const draw = () => {
@@ -148,6 +160,7 @@ export default function Timeline({
       const width = canvas.clientWidth
       const height = canvas.clientHeight
       if (width === 0) return
+      const laneWidth = width - GUTTER
       const dpr = Math.min(devicePixelRatio, 2)
       if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
         canvas.width = width * dpr
@@ -165,13 +178,24 @@ export default function Timeline({
       // Follow the playhead unless the user recently panned/zoomed.
       if (showTime !== null && performance.now() > state.followPausedUntil) {
         const x = xOf(showTime)
-        if (x > width * 0.88 || x < 0) state.start = showTime - (width * 0.15) / state.pxPerSec
+        if (x > GUTTER + laneWidth * 0.88 || x < GUTTER) {
+          state.start = showTime - (laneWidth * 0.15) / state.pxPerSec
+        }
       }
 
       ctx.clearRect(0, 0, width, height)
 
-      // Ruler.
-      const step = RULER_STEPS.find((s) => s * state.pxPerSec >= 72) ?? 3600
+      const sceneBottom = Math.min(height - 4, SCENE_TOP + SCENE_BAND_MAX)
+
+      // Everything time-based is clipped to the lanes, so nothing ever slides
+      // under the gutter.
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(GUTTER, 0, laneWidth, height)
+      ctx.clip()
+
+      // Ruler: hairline grid down the lanes, labels along the top.
+      const step = RULER_STEPS.find((s) => s * state.pxPerSec >= 76) ?? 3600
       ctx.font = '10px Inter, sans-serif'
       ctx.textBaseline = 'top'
       const first = Math.floor(state.start / step) * step
@@ -179,88 +203,34 @@ export default function Timeline({
         const x = Math.round(xOf(t)) + 0.5
         // The show starts at 0: formatTime clamps negatives, so ticks before
         // the start all read "0:00" and stack up on the left.
-        if (x < 0 || t < 0) continue
-        ctx.strokeStyle = theme.border
+        if (x < GUTTER || t < 0) continue
+        ctx.strokeStyle = rgba(theme.text, 0.05)
         ctx.beginPath()
         ctx.moveTo(x, RULER_H)
         ctx.lineTo(x, height)
         ctx.stroke()
-        ctx.fillStyle = theme.textDim
-        ctx.fillText(formatTime(t), x + 4, 3)
+        ctx.fillStyle = rgba(theme.textDim, 0.85)
+        ctx.fillText(formatTime(t), x + 5, 6)
       }
 
-      // Section markers (slim band) then scenes (main band, tinted by their
-      // main look's color so the timeline reads at a glance).
-      // Sections carry trim handles too, now that they move and resize.
-      drawBand(
-        ctx,
-        markersRef.current,
-        selectedRef.current,
-        MARKER_TOP,
-        MARKER_BOTTOM,
-        width,
-        {
-          fill: rgba(theme.accentBright, 0.16),
-          fillSelected: rgba(theme.accentBright, 0.34),
-          stroke: rgba(theme.accentBright, 0.5),
-          strokeSelected: theme.accentBright,
-        },
-        undefined,
-        true,
-      )
-      // The scene lane takes the height the operator gave the dock, but stops
-      // growing once a block is comfortable to grab: past that it is just a
-      // coloured slab, and the room below reads as breathing space.
-      const sceneBottom = Math.min(height - 6, SCENE_TOP + SCENE_BAND_MAX)
-      drawBand(
-        ctx,
-        scenesRef.current,
-        selectedSceneRef.current,
-        SCENE_TOP,
-        sceneBottom,
-        width,
-        {
-          fill: rgba(theme.edit, 0.16),
-          fillSelected: rgba(theme.edit, 0.38),
-          stroke: rgba(theme.edit, 0.5),
-          strokeSelected: theme.edit,
-        },
-        (item) => sceneTint(item as SceneSpec),
-        true,
-      )
+      // Sections: the show's structure. Drawn as a rule with a title sitting on
+      // it rather than as a block, so it never competes with the scenes below.
+      drawSections(ctx, width)
 
-      // Name the two lanes. Sections and scenes looked like the same object
-      // in two colours; only a label says one is a bookmark and the other
-      // actually takes the lights over.
-      ctx.font = '9px Inter, sans-serif'
-      ctx.textBaseline = 'middle'
-      // A block that starts before the view used to run its own name under the
-      // lane name. A short fade of the dock's background keeps the label
-      // legible without hiding anything that begins inside the view.
-      const laneLabel = (text: string, y: number, color: string): void => {
-        const fadeWidth = ctx.measureText(text).width + 22
-        const fade = ctx.createLinearGradient(0, 0, fadeWidth, 0)
-        fade.addColorStop(0, rgba(theme.panel, 0.95))
-        fade.addColorStop(0.65, rgba(theme.panel, 0.95))
-        fade.addColorStop(1, rgba(theme.panel, 0))
-        ctx.fillStyle = fade
-        ctx.fillRect(0, y - 7, fadeWidth, 14)
-        ctx.fillStyle = color
-        ctx.fillText(text, 6, y)
-      }
-      laneLabel('SECTIONS', (MARKER_TOP + MARKER_BOTTOM) / 2, rgba(theme.textDim, 0.6))
-      laneLabel('SCENES', SCENE_TOP + 9, rgba(theme.edit, 0.6))
-      ctx.textBaseline = 'top'
+      // Scenes: the material of the show. The lane takes the height the
+      // operator gave the dock, but stops growing once a block is comfortable
+      // to grab -- past that it is just a slab of colour.
+      drawScenes(ctx, width, sceneBottom)
 
-      // First-time hint in edit mode.
+      // First-time hint.
       if (modeRef.current === 'edit' && scenesRef.current.length === 0) {
         ctx.fillStyle = rgba(theme.textDim, 0.8)
         ctx.font = '12px Inter, sans-serif'
         ctx.textBaseline = 'middle'
         ctx.textAlign = 'center'
         ctx.fillText(
-          'Press + Scene to create your first scene at the playhead',
-          width / 2,
+          'Add a scene to take the lights over for a moment of the show',
+          GUTTER + laneWidth / 2,
           (SCENE_TOP + sceneBottom) / 2,
         )
         ctx.textAlign = 'left'
@@ -269,37 +239,38 @@ export default function Timeline({
 
       replayingRef.current = feed.stats?.replay.replaying ?? false
 
-      // Playhead: green live, orange replay, violet preview/scrub. It carries a
-      // head in the ruler -- a line one pixel wide reads as decoration, and
-      // nobody thinks to drag it.
+      // Playhead: green live, orange replay, violet parked. It carries a head
+      // in the ruler -- a line one pixel wide reads as decoration, and nobody
+      // thinks to drag it.
       playheadXRef.current = showTime === null ? null : xOf(showTime)
       if (showTime !== null) {
         const x = Math.round(xOf(showTime)) + 0.5
-        if (x >= -10 && x <= width + 10) {
+        if (x >= GUTTER - 12 && x <= width + 12) {
           const color = timeOverridden ? theme.edit : replayingRef.current ? theme.warn : theme.ok
           ctx.strokeStyle = color
-          ctx.lineWidth = 1.5
+          ctx.lineWidth = 1
           ctx.beginPath()
-          ctx.moveTo(x, RULER_H - 4)
+          ctx.moveTo(x, RULER_H - 6)
           ctx.lineTo(x, height)
           ctx.stroke()
-          ctx.lineWidth = 1
 
           ctx.fillStyle = color
-          const headWidth = 22
-          const headHeight = RULER_H - 5
-          roundedRect(ctx, x - headWidth / 2, 1, headWidth, headHeight, 3)
+          const headWidth = 20
+          const headHeight = RULER_H - 7
+          roundedRect(ctx, x - headWidth / 2, 2, headWidth, headHeight, 3)
           ctx.fill()
-          // Two grip lines on the head, the universal "this one moves".
-          ctx.strokeStyle = rgba(theme.panel, 0.85)
+          ctx.strokeStyle = rgba(theme.panel, 0.9)
           ctx.beginPath()
-          ctx.moveTo(x - 3.5, 5)
-          ctx.lineTo(x - 3.5, headHeight - 3)
-          ctx.moveTo(x + 3.5, 5)
-          ctx.lineTo(x + 3.5, headHeight - 3)
+          ctx.moveTo(x - 3, 6)
+          ctx.lineTo(x - 3, headHeight - 1)
+          ctx.moveTo(x + 3, 6)
+          ctx.lineTo(x + 3, headHeight - 1)
           ctx.stroke()
         }
       }
+      ctx.restore()
+
+      drawGutter(ctx, height, sceneBottom)
 
       // Timecode readout (imperative, outside React).
       if (tcRef.current) {
@@ -316,26 +287,25 @@ export default function Timeline({
       if (tcSubRef.current) {
         // Same words as the transport buttons, so the readout never invents
         // vocabulary of its own.
-        const state = transportState()
+        const transport = transportState()
         tcSubRef.current.textContent =
-          state === 'preview'
-            ? 'PREVIEW LOOP'
-            : state === 'playing'
-              ? 'PLAYING'
-              : state === 'paused'
-                ? 'PAUSED'
+          transport === 'preview'
+            ? 'preview loop'
+            : transport === 'playing'
+              ? 'playing'
+              : transport === 'paused'
+                ? 'paused'
                 : tc.receiving
-                  ? `${tc.fps} fps · ${replayingRef.current ? 'REPLAY' : 'LIVE'}`
+                  ? `${tc.fps} fps · ${replayingRef.current ? 'replay' : 'live'}`
                   : 'no timecode'
       }
       if (nowPlayingRef.current) {
         const playing = showTime !== null ? activeScene(editor.scenes, showTime) : null
-        // "Scene 1" on its own read as a stray control; say what it is.
-        const label = playing ? `Now: ${playing.name}` : ''
+        const label = playing ? playing.name : ''
         if (nowPlayingRef.current.textContent !== label) nowPlayingRef.current.textContent = label
       }
 
-      drawMinimap(showTime, timeOverridden, width)
+      drawMinimap(showTime, timeOverridden, laneWidth)
     }
     draw()
 
@@ -351,14 +321,139 @@ export default function Timeline({
 
     fitRef.current = () => {
       const extent = extentOf()
-      const width = canvas.clientWidth
-      if (width === 0) return
-      view.current.pxPerSec = clamp(width / extent, 0.05, 400)
+      const laneWidth = canvas.clientWidth - GUTTER
+      if (laneWidth <= 0) return
+      view.current.pxPerSec = clamp(laneWidth / extent, 0.05, 400)
       view.current.start = 0
       view.current.followPausedUntil = performance.now() + 4000
     }
 
-    function drawMinimap(showTime: number | null, timeOverridden: boolean, mainWidth: number): void {
+    // Zoom around the centre of the view: the keyboard-free way to do what the
+    // wheel does, for anyone on a trackpad or a touchscreen.
+    zoomRef.current = (factor: number) => {
+      const laneWidth = canvas.clientWidth - GUTTER
+      if (laneWidth <= 0) return
+      const centre = view.current.start + laneWidth / 2 / view.current.pxPerSec
+      view.current.pxPerSec = clamp(view.current.pxPerSec * factor, 0.05, 400)
+      view.current.start = centre - laneWidth / 2 / view.current.pxPerSec
+      view.current.followPausedUntil = performance.now() + 4000
+    }
+
+    // ----- painting ---------------------------------------------------------
+
+    function drawGutter(ctx: CanvasRenderingContext2D, height: number, sceneBottom: number): void {
+      ctx.fillStyle = theme.panel
+      ctx.fillRect(0, 0, GUTTER, height)
+      ctx.strokeStyle = rgba(theme.text, 0.08)
+      ctx.beginPath()
+      ctx.moveTo(GUTTER - 0.5, 0)
+      ctx.lineTo(GUTTER - 0.5, height)
+      ctx.stroke()
+
+      ctx.font = '9px Inter, sans-serif'
+      ctx.textBaseline = 'middle'
+      ctx.textAlign = 'left'
+      // Sections read as the quieter of the two: they organise, they do not
+      // change the lights.
+      ctx.fillStyle = rgba(theme.textDim, 0.75)
+      ctx.fillText('SECTIONS', 14, (SECTION_TOP + SECTION_BOTTOM) / 2)
+      ctx.fillStyle = rgba(theme.edit, 0.9)
+      ctx.fillText('SCENES', 14, SCENE_TOP + 10)
+      // A tick of the lane's own colour, so the eye can pair the gutter row
+      // with the band beside it without reading a word.
+      ctx.fillStyle = rgba(theme.textDim, 0.35)
+      ctx.fillRect(0, SECTION_TOP, 2, SECTION_BOTTOM - SECTION_TOP)
+      ctx.fillStyle = rgba(theme.edit, 0.5)
+      ctx.fillRect(0, SCENE_TOP, 2, Math.max(0, sceneBottom - SCENE_TOP))
+      ctx.textBaseline = 'top'
+    }
+
+    function drawSections(ctx: CanvasRenderingContext2D, width: number): void {
+      const y = SECTION_TOP
+      const h = SECTION_BOTTOM - SECTION_TOP
+      for (const marker of markersRef.current) {
+        const x1 = xOf(marker.start)
+        const x2 = xOf(marker.end)
+        if (x2 < GUTTER || x1 > width) continue
+        const isSelected = marker.id === selectedRef.current
+        const w = Math.max(2, x2 - x1)
+        ctx.fillStyle = rgba(theme.text, isSelected ? 0.09 : 0.045)
+        ctx.fillRect(x1, y, w, h)
+        // A rule across the top and a tick at each end: the vocabulary of a
+        // chapter marker, not of a block you would drag around by mistake.
+        ctx.fillStyle = isSelected ? theme.accentBright : rgba(theme.text, 0.28)
+        ctx.fillRect(x1, y, w, 1)
+        ctx.fillRect(x1, y, 1, h)
+        ctx.fillRect(x2 - 1, y, 1, h)
+        if (isSelected) {
+          ctx.fillRect(x1, y + h / 2 - 5, 3, 10)
+          ctx.fillRect(x2 - 3, y + h / 2 - 5, 3, 10)
+        }
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(x1 + 2, y, Math.max(0, w - 4), h)
+        ctx.clip()
+        ctx.font = '10px Inter, sans-serif'
+        ctx.textBaseline = 'middle'
+        ctx.fillStyle = isSelected ? theme.text : rgba(theme.text, 0.62)
+        ctx.fillText(marker.name.toUpperCase(), x1 + 8, y + h / 2 + 1)
+        ctx.restore()
+        ctx.textBaseline = 'top'
+      }
+    }
+
+    function drawScenes(ctx: CanvasRenderingContext2D, width: number, bottom: number): void {
+      const top = SCENE_TOP
+      const h = bottom - top
+      if (h <= 0) return
+      for (const scene of scenesRef.current) {
+        const x1 = xOf(scene.start)
+        const x2 = xOf(scene.end)
+        if (x2 < GUTTER || x1 > width) continue
+        const isSelected = scene.id === selectedSceneRef.current
+        const tint = sceneTint(scene) ?? theme.edit
+        const w = Math.max(2, x2 - x1)
+
+        // The colour reads as a label along the top of the block rather than a
+        // flat field: a solid tint turns the lane into one slab of colour.
+        const wash = ctx.createLinearGradient(0, top, 0, bottom)
+        wash.addColorStop(0, rgba(tint, isSelected ? 0.42 : 0.24))
+        wash.addColorStop(1, rgba(tint, isSelected ? 0.12 : 0.06))
+        ctx.fillStyle = wash
+        roundedRect(ctx, x1, top, w, h, 3)
+        ctx.fill()
+        ctx.strokeStyle = rgba(tint, isSelected ? 0.95 : 0.4)
+        ctx.stroke()
+        // The look's colour, stated once, at full strength.
+        ctx.fillStyle = tint
+        ctx.fillRect(x1 + 1, top + 1, Math.max(1, w - 2), 2)
+
+        if (isSelected) {
+          ctx.fillStyle = tint
+          const notch = top + h / 2 - 7
+          ctx.fillRect(x1 + 1.5, notch, 3, 14)
+          ctx.fillRect(x2 - 4.5, notch, 3, 14)
+        }
+
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(x1 + 2, top, Math.max(0, w - 4), h)
+        ctx.clip()
+        ctx.font = isSelected ? '600 11px Inter, sans-serif' : '11px Inter, sans-serif'
+        ctx.textBaseline = 'top'
+        ctx.fillStyle = isSelected ? theme.text : rgba(theme.text, 0.72)
+        ctx.fillText(scene.name, x1 + 8, top + 9)
+        // Duration only when the block can hold it without crowding the name.
+        if (w > 130 && h > 34) {
+          ctx.font = '10px Inter, sans-serif'
+          ctx.fillStyle = rgba(theme.text, 0.4)
+          ctx.fillText(formatDuration(scene.end - scene.start), x1 + 8, top + 26)
+        }
+        ctx.restore()
+      }
+    }
+
+    function drawMinimap(showTime: number | null, timeOverridden: boolean, laneWidth: number): void {
       const minimap = minimapRef.current
       if (!minimap) return
       const w = minimap.clientWidth
@@ -375,8 +470,12 @@ export default function Timeline({
       const extent = extentOf()
       const mx = (t: number) => (t / extent) * w
 
+      for (const marker of markersRef.current) {
+        mctx.fillStyle = rgba(theme.text, 0.14)
+        mctx.fillRect(mx(marker.start), 0, Math.max(1, mx(marker.end) - mx(marker.start)), h)
+      }
       for (const scene of scenesRef.current) {
-        mctx.fillStyle = rgba(sceneTint(scene) ?? theme.edit, 0.85)
+        mctx.fillStyle = rgba(sceneTint(scene) ?? theme.edit, 0.9)
         mctx.fillRect(mx(scene.start), h / 2 - 2, Math.max(2, mx(scene.end) - mx(scene.start)), 4)
       }
       if (showTime !== null) {
@@ -385,72 +484,17 @@ export default function Timeline({
       }
       const state = view.current
       const vx1 = mx(state.start)
-      const vx2 = mx(state.start + mainWidth / state.pxPerSec)
+      const vx2 = mx(state.start + laneWidth / state.pxPerSec)
       mctx.fillStyle = rgba(theme.text, 0.07)
-      mctx.strokeStyle = rgba(theme.textDim, 0.8)
+      mctx.strokeStyle = rgba(theme.text, 0.35)
       mctx.fillRect(vx1, 0.5, Math.max(8, vx2 - vx1), h - 1)
       mctx.strokeRect(vx1 + 0.5, 0.5, Math.max(8, vx2 - vx1), h - 1)
     }
 
-    function drawBand(
-      ctx: CanvasRenderingContext2D,
-      items: { id: string; name: string; start: number; end: number }[],
-      selectedId: string | null,
-      top: number,
-      bottom: number,
-      width: number,
-      colors: { fill: string; fillSelected: string; stroke: string; strokeSelected: string },
-      colorOf?: (item: unknown) => string | null,
-      handles = false,
-    ): void {
-      for (const item of items) {
-        const x1 = xOf(item.start)
-        const x2 = xOf(item.end)
-        if (x2 < 0 || x1 > width) continue
-        const isSelected = item.id === selectedId
-        const tint = colorOf?.(item) ?? null
-        if (tint) {
-          // The colour reads as a label along the top of the block rather than
-          // a flat field: now that blocks can be tall, a solid tint turned the
-          // lane into one large slab of colour.
-          const wash = ctx.createLinearGradient(0, top, 0, bottom)
-          wash.addColorStop(0, rgba(tint, isSelected ? 0.5 : 0.28))
-          wash.addColorStop(1, rgba(tint, isSelected ? 0.16 : 0.07))
-          ctx.fillStyle = wash
-        } else {
-          ctx.fillStyle = isSelected ? colors.fillSelected : colors.fill
-        }
-        ctx.strokeStyle = tint
-          ? rgba(tint, isSelected ? 1 : 0.55)
-          : isSelected
-            ? colors.strokeSelected
-            : colors.stroke
-        roundedRect(ctx, x1, top, Math.max(2, x2 - x1), bottom - top, 4)
-        ctx.fill()
-        ctx.stroke()
-        // Trim handles on the selected block: two notches at the edges.
-        if (handles && isSelected) {
-          ctx.fillStyle = tint ? rgba(tint, 1) : colors.strokeSelected
-          const notchTop = top + (bottom - top) / 2 - 6
-          ctx.fillRect(x1 + 1.5, notchTop, 3, 12)
-          ctx.fillRect(x2 - 4.5, notchTop, 3, 12)
-        }
-        ctx.fillStyle = isSelected ? theme.text : rgba(theme.text, 0.68)
-        ctx.font = '11px Inter, sans-serif'
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(x1 + 2, top, Math.max(0, x2 - x1 - 4), bottom - top)
-        ctx.clip()
-        ctx.fillText(item.name, x1 + 7, top + 4)
-        ctx.restore()
-      }
-    }
-
-    // Interactions, borrowed from simple video editors (iMovie / Cut page):
-    // direct manipulation. In Edit: drag a scene block to move it, drag its
-    // edges to trim, click empty space or the ruler to scrub, shift+drag to
-    // pan. In Watch: drag pans, nothing else. Wheel zooms, horizontal wheel
-    // pans, everywhere.
+    // ----- interactions -----------------------------------------------------
+    // Direct manipulation, borrowed from video editors: drag a scene to move
+    // it, drag its edges to trim, grab the playhead anywhere, drag empty space
+    // to pan. Wheel zooms, horizontal wheel pans.
     type Drag =
       | { type: 'pan'; x: number; viewStart: number; moved?: boolean; deselect?: boolean }
       | { type: 'scrub' }
@@ -465,7 +509,6 @@ export default function Timeline({
           end: number
         }
     let drag: Drag | null = null
-    const EDGE_PX = 6
 
     const sceneHit = (t: number, y: number): SceneSpec | null => {
       if (y < SCENE_TOP) return null
@@ -525,33 +568,24 @@ export default function Timeline({
       const x = event.clientX - rect.left
       const y = event.clientY - rect.top
       const t = timeAt(x)
+      // The gutter names the lanes; it is not a surface you edit on.
+      if (x < GUTTER) return
       canvas.setPointerCapture(event.pointerId)
 
-      if (modeRef.current === 'watch') {
-        drag = { type: 'pan', x: event.clientX, viewStart: view.current.start }
-        return
-      }
-      if (event.shiftKey) {
+      if (modeRef.current === 'watch' || event.shiftKey) {
         drag = { type: 'pan', x: event.clientX, viewStart: view.current.start }
         return
       }
       // The playhead comes first, at any height: it is the control the operator
-      // reaches for most, and it used to be catchable only in the ruler strip.
-      // A scene edge sitting exactly under it can still be trimmed -- move the
-      // playhead off it first.
-      if (onPlayhead(x)) {
+      // reaches for most. A scene edge sitting exactly under it can still be
+      // trimmed -- move the playhead off it first.
+      if (onPlayhead(x) || y < RULER_H) {
         drag = { type: 'scrub' }
         scrubTo(event.clientX)
         return
       }
-      if (y < RULER_H) {
-        drag = { type: 'scrub' }
-        scrubTo(event.clientX)
-        return
-      }
-      // Sections are the table of contents: they move and trim like scenes,
-      // and a plain click on one travels to it.
-      if (y >= MARKER_TOP && y <= MARKER_BOTTOM) {
+      // Sections move and trim like scenes, and a plain click travels to one.
+      if (y >= SECTION_TOP && y <= SECTION_BOTTOM) {
         const tolerance = EDGE_PX / view.current.pxPerSec
         const hit = [...markersRef.current]
           .reverse()
@@ -591,17 +625,19 @@ export default function Timeline({
             }
         return
       }
-      // Empty area: drag pans (natural editor gesture); a plain click deselects.
+      // Empty area: drag pans; a plain click deselects.
       drag = { type: 'pan', x: event.clientX, viewStart: view.current.start, deselect: true }
     }
 
     const onPointerMove = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect()
       if (!drag) {
-        // Hover feedback in edit mode: scrub cursor on the ruler, trim cursor
-        // on scene edges.
+        const x = event.clientX - rect.left
+        if (x < GUTTER) {
+          canvas.style.cursor = 'default'
+          return
+        }
         if (modeRef.current === 'edit') {
-          const x = event.clientX - rect.left
           const t = timeAt(x)
           const y = event.clientY - rect.top
           if (onPlayhead(x)) {
@@ -611,7 +647,7 @@ export default function Timeline({
           const scene = sceneHit(t, y)
           const tolerance = EDGE_PX / view.current.pxPerSec
           const marker =
-            y >= MARKER_TOP && y <= MARKER_BOTTOM
+            y >= SECTION_TOP && y <= SECTION_BOTTOM
               ? [...markersRef.current]
                   .reverse()
                   .find((m) => t >= m.start - tolerance && t <= m.end + tolerance)
@@ -646,14 +682,10 @@ export default function Timeline({
           scrubTo(event.clientX)
           break
         case 'pending-scene':
-          if (Math.abs(event.clientX - drag.x) > 4) {
-            drag = { ...drag, type: 'move' }
-          }
+          if (Math.abs(event.clientX - drag.x) > 4) drag = { ...drag, type: 'move' }
           break
         case 'pending-marker':
-          if (Math.abs(event.clientX - drag.x) > 4) {
-            drag = { ...drag, type: 'marker-move' }
-          }
+          if (Math.abs(event.clientX - drag.x) > 4) drag = { ...drag, type: 'marker-move' }
           break
         case 'marker-move': {
           const duration = drag.end - drag.start
@@ -735,11 +767,11 @@ export default function Timeline({
         view.current.followPausedUntil = performance.now() + 4000
         return
       }
-      const cursorX = event.clientX - rect.left
+      const cursorX = Math.max(GUTTER, event.clientX - rect.left)
       const cursorTime = timeAt(cursorX)
       const factor = Math.pow(1.0015, -event.deltaY)
-      view.current.pxPerSec = clamp(view.current.pxPerSec * factor, 0.2, 400)
-      view.current.start = cursorTime - cursorX / view.current.pxPerSec
+      view.current.pxPerSec = clamp(view.current.pxPerSec * factor, 0.05, 400)
+      view.current.start = cursorTime - (cursorX - GUTTER) / view.current.pxPerSec
       view.current.followPausedUntil = performance.now() + 4000
     }
 
@@ -754,7 +786,7 @@ export default function Timeline({
       minimap.setPointerCapture(event.pointerId)
       const t = minimapTime(event.clientX)
       const state = view.current
-      const viewSeconds = canvas.clientWidth / state.pxPerSec
+      const viewSeconds = (canvas.clientWidth - GUTTER) / state.pxPerSec
       if (t >= state.start && t <= state.start + viewSeconds) {
         minimapDrag = { grabOffset: t - state.start }
       } else {
@@ -796,12 +828,14 @@ export default function Timeline({
     }
   }, [])
 
+  function viewCentre(): number {
+    const canvas = canvasRef.current!
+    return view.current.start + (canvas.clientWidth - GUTTER) / 2 / view.current.pxPerSec
+  }
+
   function addSection(): void {
     const tc = feed.timecode
-    const canvas = canvasRef.current!
-    const viewCenter =
-      view.current.start + canvas.clientWidth / 2 / view.current.pxPerSec
-    const start = Math.max(0, tc.receiving ? tc.total : viewCenter)
+    const start = Math.max(0, tc.receiving ? tc.total : viewCentre())
     const marker: Marker = {
       id: crypto.randomUUID(),
       name: `Section ${show.markers.length + 1}`,
@@ -829,120 +863,121 @@ export default function Timeline({
   }
 
   return (
-    <footer className="dock" style={{ height: dockHeight }}>
+    <footer className="timeline" style={{ height: dockHeight }}>
       <div
-        className={`dock-grip ${resizing ? 'dragging' : ''}`}
+        className={`timeline-grip ${resizing ? 'dragging' : ''}`}
         title="Drag to resize the timeline"
         onPointerDown={startResize}
       />
-      <div className="tc-block">
-        <span className="tc-readout" ref={tcRef}>
-          --:--:--:--
-        </span>
-        <span className="tc-sub" ref={tcSubRef}>
-          no timecode
-        </span>
-        <span className="now-playing" ref={nowPlayingRef} />
+
+      {/* One bar: where we are, what it is doing, and what can be done to it.
+          The transport used to sit in a box of its own, which read as a
+          separate module parked next to the timeline rather than part of it. */}
+      <div className="timeline-bar">
         <Transport markers={show.markers} />
-      </div>
-
-      <div className="timeline-wrap" ref={wrapRef}>
-        {/* The show's table of contents, above the timeline: every section in
-            order, click to travel there. Editing happens here too instead of
-            floating over the lanes it is meant to line up with. */}
-        {mode === 'edit' && (
-          <div className="section-bar">
-            <div className="section-chips">
-              {show.markers.length === 0 && (
-                <span className="section-empty">
-                  No sections yet — add one to split the show into parts
-                </span>
-              )}
-              {[...show.markers]
-                .sort((a, b) => a.start - b.start)
-                .map((marker) => (
-                  <button
-                    key={marker.id}
-                    className={`section-chip ${selectedId === marker.id ? 'active' : ''}`}
-                    title={`Go to ${formatTime(marker.start)}`}
-                    onClick={() => {
-                      setSelectedId(marker.id)
-                      onSelectScene(null)
-                      seekTo(marker.start)
-                      setOverridden(true)
-                    }}
-                  >
-                    <span className="section-chip-time">{formatTime(marker.start)}</span>
-                    {marker.name}
-                  </button>
-                ))}
-            </div>
-            {selected && (
-              <div className="marker-editor">
-                <input
-                  className="marker-name"
-                  value={selected.name}
-                  onChange={(e) => updateSelected({ name: e.target.value })}
-                />
-                <label>
-                  <span>Start</span>
-                  <TimeInput value={selected.start} onCommit={(v) => updateSelected({ start: v })} />
-                </label>
-                <label>
-                  <span>End</span>
-                  <TimeInput value={selected.end} onCommit={(v) => updateSelected({ end: v })} />
-                </label>
-                <button className="button" onClick={deleteSelected}>
-                  Delete
-                </button>
-                <button className="button" onClick={() => setSelectedId(null)}>
-                  Close
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-        <canvas className="timeline-main" ref={canvasRef} />
-        <canvas className="timeline-minimap" ref={minimapRef} />
-      </div>
-
-      {mode === 'edit' ? (
-        <div className="dock-controls">
-          <button
-            className="button primary"
-            onClick={() => {
-              const canvas = canvasRef.current!
-              const tc = feed.timecode
-              const center = view.current.start + canvas.clientWidth / 2 / view.current.pxPerSec
-              onAddScene(Math.max(0, round1(tc.receiving ? tc.total : center)))
-            }}
-            title="A scene takes the lights over for a moment of the show"
-          >
-            + Scene
-          </button>
-          <button
-            className="button"
-            onClick={addSection}
-            title="A section is just a bookmark on the timeline. It never changes the lights."
-          >
-            + Section
-          </button>
-          {/* Returning to live is the transport's LIVE button -- one control,
-              one place, rather than two buttons doing the same thing. */}
-          <button className="button subtle" onClick={() => fitRef.current()}>
-            Fit
-          </button>
-          <span className={`save-state ${saveState}`}>
-            {saveState === 'saving' ? 'saving…' : saveState === 'saved' ? 'saved' : saveState === 'error' ? 'save failed' : ''}
+        <div className="tl-clock">
+          <span className="tl-time" ref={tcRef}>
+            --:--:--:--
+          </span>
+          <span className="tl-state" ref={tcSubRef}>
+            no timecode
           </span>
         </div>
-      ) : (
-        <div className="dock-controls">
-          <button className="button subtle" onClick={() => fitRef.current()}>
+        <span className="tl-now" ref={nowPlayingRef} />
+        <div className="tl-actions">
+          <span className={`tl-save ${saveState}`}>
+            {saveState === 'saving'
+              ? 'saving'
+              : saveState === 'saved'
+                ? 'saved'
+                : saveState === 'error'
+                  ? 'save failed'
+                  : ''}
+          </span>
+          {mode === 'edit' && (
+            <>
+              <button
+                className="tl-action"
+                onClick={() => {
+                  const tc = feed.timecode
+                  onAddScene(Math.max(0, round1(tc.receiving ? tc.total : viewCentre())))
+                }}
+                title="A scene takes the lights over for a moment of the show"
+              >
+                Scene
+              </button>
+              <button
+                className="tl-action"
+                onClick={addSection}
+                title="A section is a chapter of the show. It never changes the lights."
+              >
+                Section
+              </button>
+              <span className="tl-sep" />
+            </>
+          )}
+          <button className="tl-icon" title="Zoom out" onClick={() => zoomRef.current(1 / 1.5)}>
+            −
+          </button>
+          <button className="tl-icon" title="Zoom in" onClick={() => zoomRef.current(1.5)}>
+            +
+          </button>
+          <button className="tl-icon text" title="Fit the whole show" onClick={() => fitRef.current()}>
             Fit
           </button>
         </div>
+      </div>
+
+      {/* The show's table of contents. Aligned with the gutter so the list and
+          the lane it summarises line up. */}
+      {mode === 'edit' && (
+        <div className="section-bar">
+          <span className="section-bar-label">Sections</span>
+          <div className="section-chips">
+            {show.markers.length === 0 && (
+              <span className="section-empty">none yet — add one to split the show into parts</span>
+            )}
+            {[...show.markers]
+              .sort((a, b) => a.start - b.start)
+              .map((marker) => (
+                <button
+                  key={marker.id}
+                  className={`section-chip ${selectedId === marker.id ? 'active' : ''}`}
+                  title={`Go to ${formatTime(marker.start)}`}
+                  onClick={() => {
+                    setSelectedId(marker.id)
+                    onSelectScene(null)
+                    seekTo(marker.start)
+                    setOverridden(true)
+                  }}
+                >
+                  <span className="section-chip-time">{formatTime(marker.start)}</span>
+                  {marker.name}
+                </button>
+              ))}
+          </div>
+          {selected && (
+            <div className="marker-editor">
+              <input
+                className="marker-name"
+                value={selected.name}
+                onChange={(e) => updateSelected({ name: e.target.value })}
+              />
+              <TimeInput value={selected.start} onCommit={(v) => updateSelected({ start: v })} />
+              <span className="marker-editor-sep">→</span>
+              <TimeInput value={selected.end} onCommit={(v) => updateSelected({ end: v })} />
+              <button className="tl-icon" title="Delete this section" onClick={deleteSelected}>
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
       )}
+
+      <div className="timeline-lanes" ref={wrapRef}>
+        <canvas className="timeline-canvas" ref={canvasRef} />
+      </div>
+      <canvas className="timeline-minimap" ref={minimapRef} />
     </footer>
   )
 }
@@ -952,9 +987,9 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 const DOCK_HEIGHT_KEY = 'lumenstage.dockHeight'
-const DOCK_MIN = 132
-const DOCK_DEFAULT = 190
-const DOCK_MAX = 320
+const DOCK_MIN = 150
+const DOCK_DEFAULT = 224
+const DOCK_MAX = 360
 
 // Never more than half the window, and never past the point where the extra
 // height stops buying anything: the previz is what the screen is for.
@@ -986,6 +1021,11 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`
 }
 
+function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds))
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+}
+
 function roundedRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -1005,15 +1045,15 @@ function roundedRect(
 
 // Transport. The show normally runs on the console's timecode, but editing
 // needs the timeline to hold still -- and to be reviewable with the console
-// stopped. Three states, always visible: following the console (Live),
-// parked, or playing on this machine's clock.
+// stopped. Three states, always visible: following the console (Live), parked,
+// or playing on this machine's clock.
 function Transport({ markers }: { markers: Marker[] }) {
   const [state, setState] = useState(transportState())
   const markersRef = useRef(markers)
   markersRef.current = markers
 
-  // The editor store is mutable and read at 60 fps by the canvases; polling
-  // it four times a second is enough to keep three buttons honest.
+  // The editor store is mutable and read at 60 fps by the canvases; polling it
+  // four times a second is enough to keep four buttons honest.
   useEffect(() => {
     const id = setInterval(() => setState(transportState()), 250)
     return () => clearInterval(id)
@@ -1035,18 +1075,10 @@ function Transport({ markers }: { markers: Marker[] }) {
 
   return (
     <div className="transport">
-      <button
-        className="transport-button"
-        title="Previous section"
-        onClick={() => jumpSection(-1)}
-      >
+      <button className="transport-button" title="Previous section" onClick={() => jumpSection(-1)}>
         |◀
       </button>
-      <button
-        className="transport-button"
-        title="Back to the start"
-        onClick={() => seekTo(0)}
-      >
+      <button className="transport-button" title="Back to the start" onClick={() => seekTo(0)}>
         ◀◀
       </button>
       <button
@@ -1054,13 +1086,9 @@ function Transport({ markers }: { markers: Marker[] }) {
         title={playing ? 'Pause' : 'Play the timeline'}
         onClick={() => (playing ? pauseAt(liveTime()) : playLocal(liveTime()))}
       >
-        {playing ? '‖' : '▶'}
+        {playing ? '❚❚' : '▶'}
       </button>
-      <button
-        className="transport-button"
-        title="Next section"
-        onClick={() => jumpSection(1)}
-      >
+      <button className="transport-button" title="Next section" onClick={() => jumpSection(1)}>
         ▶|
       </button>
       <button

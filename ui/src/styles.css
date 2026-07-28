@@ -1,10 +1,20 @@
-/* Drawn for the room it runs in: a screen in a dark venue, most of it OLED.
-   The background is true black so unlit pixels stay off; surfaces separate
-   with hairlines rather than with lightness, and the only saturated colour on
-   screen is the primary action -- plus the four states that mean something.
+/* PRODIGY STAGE — the interface behind the show.
+ *
+ * Three zones, one tool: the TIMELINE says what happens and when, the VIEWPORT
+ * shows what it looks like, the INSPECTOR says how the selected thing behaves.
+ * Everything here serves that reading.
+ *
+ * Rules the file keeps to:
+ *   - True black. The screen runs in a dark venue, most of it OLED, and the
+ *     brightest thing in the room should be the light on the walls.
+ *   - Structure comes from type, spacing and hairlines. Not from cards. A
+ *     border is a last resort, a nested border is a mistake.
+ *   - One saturated colour on screen: the primary action. Everything else is
+ *     state -- ok, idle, down, parked -- or the show's own colour.
+ *   - Every colour is a token. Canvas painters read these same variables
+ *     through theme.ts, so the palette has exactly one definition.
+ */
 
-   Every colour lives here. Canvas painters read these same variables through
-   theme.ts, so the palette has exactly one definition. */
 :root {
   color-scheme: dark;
 
@@ -12,11 +22,12 @@
   --panel: #08090b;
   --panel-2: #101217;
   --panel-3: #191c23;
-  /* Channels, so translucent surfaces can be derived instead of re-typed. */
+  /* Channels, so translucent surfaces are derived instead of re-typed. */
   --surface-rgb: 8, 9, 11;
 
   --text: #f4f5f7;
   --text-dim: #858b96;
+  --text-faint: #5b616b;
 
   --accent: #2563ff;
   --accent-hover: #3d78ff;
@@ -30,15 +41,20 @@
   --warn-rgb: 245, 166, 35;
   --down: #e5484d;
   --down-rgb: 229, 72, 77;
-  /* Anything the operator is overriding by hand. */
+  /* Anything the operator is holding by hand: a parked playhead, a scene. */
   --edit: #a78bfa;
   --edit-rgb: 167, 139, 250;
 
-  --border: #1c1f26;
-  --border-strong: #2c313b;
-  --shadow: 0 14px 44px rgba(0, 0, 0, 0.8);
-  --accent-glow: 0 4px 20px rgba(37, 99, 255, 0.3);
+  --border: #15171c;
+  --border-strong: #272b33;
+  --shadow: 0 16px 48px rgba(0, 0, 0, 0.85);
+  --accent-glow: 0 4px 20px rgba(37, 99, 255, 0.28);
+
   --mono: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;
+  /* The timeline's track gutter. The canvas paints its own copy of this at the
+     same width -- the two must agree or the lanes stop lining up. */
+  --gutter: 84px;
+  --inspector-w: 328px;
 }
 
 * {
@@ -46,37 +62,35 @@
   box-sizing: border-box;
 }
 
-button,
-select,
-input {
-  transition:
-    background-color 150ms ease,
-    border-color 150ms ease,
-    color 150ms ease;
-}
-
 button {
   cursor: pointer;
 }
 
+button,
+select,
+input {
+  font: inherit;
+  transition:
+    background-color 130ms ease,
+    border-color 130ms ease,
+    color 130ms ease,
+    opacity 130ms ease;
+}
+
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 1px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 5px;
-}
-
-::-webkit-scrollbar-thumb:hover {
   background: var(--border-strong);
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -96,12 +110,8 @@ button {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family:
-    'Inter',
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -112,107 +122,95 @@ body {
   flex-direction: column;
 }
 
+/* ============================================================ TOP BAR =====
+   A thin rule of context. It names the tool, holds the two modes, and states
+   what the software is doing -- then gets out of the way. */
+
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 20px;
+  flex: none;
+  height: 44px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  background: var(--bg);
 }
 
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 18px;
 }
 
 .brand h1 {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+  white-space: nowrap;
 }
 
+/* Two words and a rule under the live one. A segmented pill would be one more
+   box on a screen that is trying to have none. */
 .tabs {
   display: flex;
-  gap: 4px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 3px;
+  gap: 2px;
 }
 
 .tabs button {
-  font: inherit;
   font-size: 12px;
-  color: var(--text-dim);
+  font-weight: 500;
+  color: var(--text-faint);
   background: none;
   border: none;
-  border-radius: 6px;
-  padding: 4px 12px;
-  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 4px 2px;
+  margin-right: 12px;
 }
 
 .tabs button:hover {
-  color: var(--text);
+  color: var(--text-dim);
 }
 
 .tabs button.active {
   color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  padding: 3px 11px;
-}
-
-.ghost-button:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-}
-
-.ghost-button {
-  font: inherit;
-  font-size: 12px;
-  color: var(--text-dim);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 5px 12px;
-  cursor: pointer;
-}
-
-.ghost-button.active {
-  color: var(--accent-bright);
-  border-color: var(--accent);
-}
-
-.dirty-badge {
-  font-size: 11px;
-  color: var(--warn);
-  border: 1px solid rgba(var(--warn-rgb), 0.35);
-  border-radius: 999px;
-  padding: 3px 10px;
+  border-bottom-color: var(--text);
 }
 
 .statusline {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-dim);
+  gap: 16px;
 }
 
-.statusline .muted {
+.status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
   color: var(--text-dim);
-  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* Driving real fixtures is the one status that earns colour. */
+.status-line.live {
+  color: var(--down);
+  font-weight: 500;
+}
+
+.wall-clock {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--down);
   flex: none;
@@ -220,23 +218,31 @@ body {
 
 .dot.ok {
   background: var(--ok);
-  box-shadow: 0 0 6px rgba(var(--ok-rgb), 0.6);
+  box-shadow: 0 0 6px rgba(var(--ok-rgb), 0.55);
 }
 
 .dot.idle {
   background: var(--warn);
 }
 
+.dot.live {
+  background: var(--down);
+  box-shadow: 0 0 7px rgba(var(--down-rgb), 0.7);
+}
+
+.dirty-badge {
+  font-size: 11px;
+  color: var(--warn);
+}
+
+/* ============================================================ VIEWPORT ====
+   The room, in real time. It owns the screen: no frame, no padding, nothing
+   sitting on it that does not have to be there. */
+
 .content {
   flex: 1;
   position: relative;
   min-height: 0;
-}
-
-.monitor-wrap {
-  padding: 20px;
-  height: 100%;
-  overflow-y: auto;
 }
 
 .previz {
@@ -251,76 +257,910 @@ body {
   height: 100%;
 }
 
-.previz-hint {
+.previz-views {
   position: absolute;
+  left: 14px;
   bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
-  gap: 16px;
-  font-size: 12px;
+  gap: 2px;
+}
+
+.previz-view {
+  font-size: 11px;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 9px;
+}
+
+.previz-view:hover {
   color: var(--text-dim);
-  background: rgba(var(--surface-rgb), 0.85);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 14px;
+  background: rgba(var(--surface-rgb), 0.7);
+}
+
+.previz-view.active {
+  color: var(--text);
+}
+
+.stage-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.stage-empty-title {
+  font-size: 15px;
+  color: var(--text-dim);
+  letter-spacing: 0.01em;
+}
+
+.stage-empty-note {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+}
+
+/* ============================================================ TIMELINE ====
+   The editor's centre of gravity. One toolbar, one gutter naming the lanes,
+   then the lanes. Sections are structure and are drawn thin; scenes are the
+   material and are drawn solid. */
+
+.timeline {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+/* Drag the top edge for more room. The grab area is taller than the line it
+   draws: an edge you can only hit within two pixels is an edge nobody finds. */
+.timeline-grip {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timeline-grip::after {
+  content: '';
+  width: 40px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  opacity: 0;
+  transition: opacity 130ms ease;
+}
+
+.timeline-grip:hover::after,
+.timeline-grip.dragging::after {
+  opacity: 1;
+}
+
+.timeline-grip.dragging::after {
+  background: var(--accent);
+}
+
+.timeline-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: none;
+  height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ----- transport ----- */
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.transport-button {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 7px 8px;
+}
+
+.transport-button:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.transport-button.play {
+  min-width: 32px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.transport-button.live {
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+
+.transport-button.live.active {
+  color: var(--ok);
+}
+
+/* ----- position ----- */
+
+.tl-clock {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 118px;
+}
+
+.tl-time {
+  font-family: var(--mono);
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-state {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* What is on the walls right now, named. */
+.tl-now {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--edit);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.previz-hint b {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.previz-hint .muted {
-  opacity: 0.7;
-}
-
-.welcome {
-  position: absolute;
-  top: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+.tl-actions {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  background: rgba(var(--surface-rgb), 0.92);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 18px 24px;
-  min-width: 380px;
-  box-shadow: var(--shadow);
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
 
-.welcome h2 {
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+.tl-action {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 10px;
 }
 
-.welcome-row {
+.tl-action::before {
+  content: '+ ';
+  color: var(--text-faint);
+}
+
+.tl-action:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.tl-icon {
+  min-width: 26px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 7px;
+}
+
+.tl-icon:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.tl-icon.text {
+  font-size: 11px;
+}
+
+.tl-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 6px;
+  background: var(--border);
+}
+
+.tl-save {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-right: 6px;
+}
+
+.tl-save.error {
+  color: var(--down);
+}
+
+/* ----- sections: the show's table of contents ----- */
+
+.section-bar {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 13px;
-  color: var(--text-dim);
+  flex: none;
+  height: 34px;
+  padding-right: 14px;
+  border-bottom: 1px solid var(--border);
 }
 
+/* Lines up with the canvas gutter, so the list and the lane it summarises sit
+   in the same column. */
+.section-bar-label {
+  width: var(--gutter);
+  flex: none;
+  padding-left: 14px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.section-chips {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.section-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.section-empty {
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* Text, not pills: a chapter list reads as a list. */
+.section-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex: none;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 3px 0;
+  white-space: nowrap;
+}
+
+.section-chip:hover {
+  color: var(--text);
+}
+
+.section-chip.active {
+  color: var(--text);
+  border-bottom-color: var(--accent-bright);
+}
+
+.section-chip-time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.marker-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+}
+
+.marker-editor input {
+  font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  padding: 2px 2px;
+  width: 62px;
+}
+
+.marker-editor input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.marker-editor .marker-name {
+  width: 118px;
+}
+
+.marker-editor-sep {
+  color: var(--text-faint);
+}
+
+/* ----- lanes ----- */
+
+.timeline-lanes {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.timeline-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.timeline-minimap {
+  display: block;
+  width: 100%;
+  height: 16px;
+  flex: none;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* =========================================================== INSPECTOR ====
+   How the selected scene behaves. A rail flush with the right edge, not a card
+   floating over the room. Structure comes from labels and hairlines. */
+
+.inspector,
 .panel {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  bottom: 16px;
-  width: 300px;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--inspector-w);
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: rgba(var(--surface-rgb), 0.96);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
+  padding: 16px 16px 14px;
+  background: rgba(var(--surface-rgb), 0.94);
+  border-left: 1px solid var(--border);
   overflow-y: auto;
-  box-shadow: var(--shadow);
+  z-index: 3;
+}
+
+.ins-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ins-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 0 0 2px;
+}
+
+.ins-title:hover {
+  border-bottom-color: var(--border-strong);
+}
+
+.ins-title:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.ins-close,
+.ins-icon {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 6px;
+  flex: none;
+}
+
+.ins-close:hover,
+.ins-icon:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.ins-when {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: -8px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.ins-when input {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 1px 0;
+  width: 48px;
+}
+
+.ins-when input:hover {
+  color: var(--text);
+  border-bottom-color: var(--border-strong);
+}
+
+.ins-when input:focus {
+  outline: none;
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.ins-when-sep {
+  opacity: 0.6;
+}
+
+.ins-duration {
+  margin-left: auto;
+}
+
+/* The one action on this panel. */
+.ins-preview {
+  width: 100%;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 7px;
+  padding: 10px 14px;
+  box-shadow: var(--accent-glow);
+}
+
+.ins-preview:hover {
+  background: var(--accent-hover);
+}
+
+.ins-preview.on {
+  color: var(--text);
+  background: var(--panel-3);
+  box-shadow: none;
+}
+
+.ins-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.ins-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ins-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.ins-look-name {
+  font-size: 12.5px;
+  color: var(--text);
+  margin-top: -4px;
+}
+
+.ins-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+.ins-link {
+  font-size: 11px;
+  color: var(--accent-bright);
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.ins-link:hover {
+  color: var(--text);
+}
+
+.ins-link.left {
+  align-self: flex-start;
+}
+
+.ins-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  padding: 4px 0;
+}
+
+.ins-disclosure:hover {
+  color: var(--text-dim);
+}
+
+.ins-caret {
+  display: inline-block;
+  transition: transform 130ms ease;
+}
+
+.ins-caret.open {
+  transform: rotate(90deg);
+}
+
+.ins-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ins-button {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 7px 12px;
+}
+
+.ins-button:hover {
+  color: var(--text);
+  background: var(--panel-3);
+}
+
+.ins-button.danger {
+  color: var(--down);
+  border-color: transparent;
+  background: none;
+}
+
+.ins-button.danger:hover {
+  background: rgba(var(--down-rgb), 0.12);
+}
+
+.ins-foot {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.ins-foot .ins-button {
+  flex: 1;
+}
+
+/* ----- parameters -----
+   Label, control, value. One line each, aligned down the panel: the eye should
+   be able to run down the values without reading the labels again. */
+
+.param {
+  display: grid;
+  grid-template-columns: 58px 1fr 34px;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+}
+
+.param-label {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.param-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.param-unit {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.param-select {
+  font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  padding: 3px 0;
+  grid-column: 2 / span 2;
+}
+
+.param-select:hover {
+  border-bottom-color: var(--text-faint);
+}
+
+.param-select:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.param-number {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  padding: 3px 0;
+  width: 100%;
+}
+
+.param-number:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.param-color {
+  grid-column: 2 / span 2;
+  justify-self: start;
+  width: 46px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.param-color::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.param-color::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 18px;
+  background: none;
+  cursor: pointer;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--text);
+  border: none;
+  transition: transform 120ms ease;
+}
+
+input[type='range']:hover::-webkit-slider-thumb {
+  transform: scale(1.18);
+}
+
+input[type='range']:active::-webkit-slider-thumb {
+  background: var(--accent-bright);
+}
+
+input[type='range']::-moz-range-track {
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: none;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+/* ----- looks -----
+   A look is a behaviour, so it is chosen by watching it: every thumbnail is
+   the real engine, running. */
+
+.look-thumb {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+}
+
+/* The whole panel scrolls, so the library never gets its own scrollbar -- a
+   grid clipped mid-thumbnail reads as broken rather than as scrollable. */
+.look-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 8px;
+  padding: 2px 1px 4px;
+}
+
+.look-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  text-align: left;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 0;
+}
+
+.look-card span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.look-card:hover {
+  color: var(--text);
+}
+
+.look-card .look-thumb {
+  outline: 1px solid transparent;
+  outline-offset: 1px;
+}
+
+.look-card:hover .look-thumb {
+  outline-color: var(--border-strong);
+}
+
+.look-card.active {
+  color: var(--text);
+}
+
+.look-card.active .look-thumb {
+  outline-color: var(--accent);
+}
+
+.effect-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.effect-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  text-align: left;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.effect-chip:hover {
+  color: var(--text);
+}
+
+.effect-chip.active {
+  color: var(--text);
+}
+
+.effect-chip.active .look-thumb {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preset-row input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 3px 0;
+}
+
+.preset-row input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+/* ======================================================== TOOL PANELS =====
+   Placement, runs, live output, diagnostics. Same rail as the inspector, so
+   opening one never feels like a different application. */
+
+.panel-wide {
+  width: 356px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .panel-header h2 {
@@ -328,9 +1168,11 @@ body {
   font-weight: 600;
 }
 
-.panel-header .muted {
-  font-size: 11px;
-  color: var(--text-dim);
+.panel-header .muted,
+.muted-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
 }
 
 .panel-section {
@@ -340,11 +1182,188 @@ body {
 }
 
 .panel-label {
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.panel-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.scene-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.scene-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.icon-close {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 6px;
+  flex: none;
+}
+
+.icon-close:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+/* ----- shared controls ----- */
+
+.button {
+  font-size: 12px;
   color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 7px 12px;
+}
+
+.button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-3);
+}
+
+.button.primary {
+  color: #fff;
+  font-weight: 600;
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--accent-glow);
+}
+
+.button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.button.primary:disabled {
+  box-shadow: none;
+}
+
+.button.block {
+  width: 100%;
+  padding: 9px 14px;
+}
+
+.button.subtle {
+  color: var(--text-faint);
+  background: none;
+  border-color: transparent;
+}
+
+.button.subtle:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.button.compact {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+.button.danger {
+  color: var(--down);
+  border-color: rgba(var(--down-rgb), 0.4);
+  background: none;
+}
+
+.button.danger:hover:not(:disabled) {
+  background: rgba(var(--down-rgb), 0.12);
+}
+
+.button.blackout {
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  background: rgba(var(--down-rgb), 0.22);
+  border-color: rgba(var(--down-rgb), 0.5);
+}
+
+.button.record.on {
+  color: #fff;
+  background: rgba(var(--down-rgb), 0.25);
+  border-color: var(--down);
+}
+
+.button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ghost-button {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 5px 11px;
+}
+
+.ghost-button:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
+.ghost-button.active {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+}
+
+.icon-button {
+  border: none;
+  border-radius: 5px;
+  padding: 6px 8px;
+  color: var(--text-faint);
+}
+
+.icon-button:hover {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: transparent;
+}
+
+.chip {
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.chip:hover {
+  color: var(--text);
+  background: var(--panel-3);
+}
+
+.chip.active {
+  color: #fff;
+  background: rgba(var(--accent-rgb), 0.25);
+  border-color: var(--accent);
 }
 
 .chip-row {
@@ -353,34 +1372,16 @@ body {
   flex-wrap: wrap;
 }
 
+/* Eight per row, matching the rig. minmax(0,…) lets the chips shrink instead
+   of pushing the last column off the panel. */
 .fixture-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 4px;
 }
 
-.chip {
-  font: inherit;
-  font-size: 11px;
-  color: var(--text-dim);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 6px;
-  cursor: pointer;
-  text-align: center;
-}
-
-.chip:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-  background: var(--panel-3);
-}
-
-.chip.active {
-  color: #fff;
-  background: rgba(var(--accent-rgb), 0.25);
-  border-color: var(--accent);
+.fixture-grid .chip {
+  padding: 4px 2px;
 }
 
 .field-row {
@@ -397,72 +1398,26 @@ body {
 
 .field span {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--text-faint);
 }
 
-.field input {
-  font: inherit;
-  font-size: 13px;
+.field input,
+.text-input,
+select {
+  font-size: 12.5px;
   color: var(--text);
   background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
   padding: 6px 8px;
   width: 100%;
 }
 
-.field input:focus {
+.field input:focus,
+.text-input:focus,
+select:focus {
   outline: none;
   border-color: var(--accent);
-}
-
-.panel-footer {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.button {
-  font: inherit;
-  font-size: 12px;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 14px;
-  cursor: pointer;
-}
-
-.button:hover:not(:disabled) {
-  background: var(--panel-3);
-  border-color: var(--border-strong);
-}
-
-/* The primary action is the only lit surface on a black screen: it should
-   read as the thing to press from across the room. */
-.button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  font-weight: 600;
-  box-shadow: var(--accent-glow);
-}
-
-.button.primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  box-shadow: 0 6px 24px rgba(var(--accent-rgb), 0.42);
-}
-
-.button.primary:disabled {
-  box-shadow: none;
-}
-
-.button:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .error-text {
@@ -470,394 +1425,21 @@ body {
   color: var(--down);
 }
 
-/* ----- timeline dock ----- */
-
-.dock {
-  position: relative;
-  display: flex;
-  align-items: stretch;
-  gap: 14px;
-  height: 190px;
-  padding: 10px 16px;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
-  flex: none;
-}
-
-/* Drag the dock's top edge to give the lanes more room. The grab area is
-   taller than the line it draws: an edge you can only hit within two pixels
-   is an edge nobody finds. */
-.dock-grip {
-  position: absolute;
-  top: -4px;
-  left: 0;
-  right: 0;
-  height: 10px;
-  cursor: ns-resize;
-  touch-action: none;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.dock-grip::after {
-  content: '';
-  width: 44px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--border-strong);
-  opacity: 0;
-  transition: opacity 150ms ease;
-}
-
-.dock-grip:hover::after,
-.dock-grip.dragging::after {
-  opacity: 1;
-}
-
-.dock-grip.dragging::after {
-  background: var(--accent);
-}
-
-.tc-block {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  min-width: 150px;
-  padding-right: 14px;
-  border-right: 1px solid var(--border);
-}
-
-.tc-readout {
-  font-family: var(--mono);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
-}
-
-.tc-sub {
-  font-size: 11px;
-  color: var(--text-dim);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.timeline-wrap {
-  position: relative;
-  display: flex;
-  flex-direction: column;
+.run-name {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel-2);
-  overflow: hidden;
-}
-
-.timeline-main {
-  display: block;
-  width: 100%;
-  flex: 1;
-  min-height: 0;
-  cursor: grab;
-  touch-action: none;
-}
-
-.timeline-minimap {
-  display: block;
-  width: 100%;
-  height: 14px;
-  flex: none;
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-  cursor: pointer;
-  touch-action: none;
-}
-
-.fit-button {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  font: inherit;
-  font-size: 10px;
-  color: var(--text-dim);
-  background: rgba(var(--surface-rgb), 0.85);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 2px 8px;
-  cursor: pointer;
-}
-
-.fit-button:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-}
-
-.now-playing {
-  font-size: 11px;
-  color: var(--edit);
-  min-height: 14px;
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 150px;
 }
 
-.marker-editor input {
-  font: inherit;
-  font-size: 12px;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 7px;
-  width: 64px;
-}
-
-.marker-editor input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.marker-editor .marker-name {
-  width: 130px;
-}
-
-.marker-editor label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.dock-controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(96px, auto));
-  align-content: center;
-  align-items: center;
-  gap: 6px;
-}
-
-.dock-controls .button {
-  padding: 5px 10px;
-  font-size: 12px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.dock-controls .save-state {
-  grid-column: span 2;
-  text-align: right;
-}
-
-.button.record.on {
-  color: #fff;
-  background: rgba(var(--down-rgb), 0.25);
-  border-color: var(--down);
-  animation: rec-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes rec-pulse {
-  50% { border-color: rgba(var(--down-rgb), 0.35); }
-}
-
-.recording-select {
-  font: inherit;
-  font-size: 12px;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 5px 8px;
-  max-width: 220px;
-}
-
-.save-state {
-  font-size: 11px;
-  color: var(--text-dim);
-  min-height: 14px;
-}
-
-.save-state.error {
-  color: var(--down);
-}
-
-/* ----- scene editor ----- */
-
-.panel-wide {
-  width: 340px;
-}
-
-.scene-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.scene-name {
-  flex: 1;
-  min-width: 0;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 4px 6px;
-}
-
-.scene-name:hover,
-.scene-name:focus {
-  border-color: var(--border);
-  background: var(--panel-2);
-  outline: none;
-}
-
-.track {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px;
-  background: rgba(var(--surface-rgb), 0.5);
-}
-
-.track-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.track-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.effect-picker {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
-}
-
-.effect-chip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  font: inherit;
-  font-size: 10px;
-  color: var(--text-dim);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 3px;
-  cursor: pointer;
-}
-
-.effect-chip:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-}
-
-.effect-chip.active {
-  color: #fff;
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.14);
-}
-
-.effect-chip canvas {
-  width: 100%;
-  height: 10px;
-  border-radius: 2px;
-  background: #000;
-}
-
-.param-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.param-row > span:first-child {
-  width: 56px;
-  flex: none;
-}
-
-.param-row input[type='range'] {
-  flex: 1;
-  accent-color: var(--accent);
-}
-
-.param-row input[type='color'] {
-  width: 44px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel-2);
-  cursor: pointer;
-}
-
-.param-value {
-  width: 30px;
-  text-align: right;
-  font-family: var(--mono);
-  font-size: 10px;
-}
-
-.preset-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.preset-row input {
-  flex: 1;
-  min-width: 0;
-  font: inherit;
-  font-size: 12px;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 7px;
-}
-
-.muted-note {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.button.danger {
-  color: var(--down);
-  border-color: rgba(var(--down-rgb), 0.4);
-}
-
-.button.danger:hover:not(:disabled) {
-  background: rgba(var(--down-rgb), 0.12);
-  border-color: var(--down);
-}
-
-.live-button {
-  color: var(--ok);
-  border-color: rgba(var(--ok-rgb), 0.4);
-}
-
-/* ----- tools menu + phase 5.5 chrome ----- */
+/* ========================================================= TOOLS MENU =====
+   Each entry says what it is for: a bare list of nouns made people click to
+   find out. */
 
 .tools {
   position: relative;
-}
-
-.icon-button {
-  font-size: 14px;
-  padding: 4px 9px;
-  line-height: 1;
 }
 
 .menu-backdrop {
@@ -868,89 +1450,156 @@ body {
 
 .tools-menu {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   right: 0;
-  z-index: 50;
+  z-index: 41;
   display: flex;
   flex-direction: column;
-  min-width: 210px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 5px;
+  gap: 1px;
+  min-width: 292px;
+  padding: 6px;
+  background: var(--panel-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
   box-shadow: var(--shadow);
 }
 
+.menu-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 6px 8px 4px;
+}
+
 .tools-menu button {
-  font: inherit;
-  font-size: 12.5px;
-  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  color: var(--text-dim);
   background: none;
   border: none;
   border-radius: 6px;
-  padding: 8px 10px;
-  text-align: left;
-  cursor: pointer;
+  padding: 8px;
 }
 
 .tools-menu button:hover {
-  background: var(--panel-3);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tools-menu button b {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.tools-menu button em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.tools-menu button.on b {
+  color: var(--accent-bright);
+}
+
+.menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 5px 6px;
+}
+
+.menu-live {
+  margin-left: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--down);
+}
+
+.danger-item b {
+  color: var(--text);
+}
+
+/* ====================================================== LIVE OUTPUT =======
+   The one panel that can reach the rig. It states what it is doing in a
+   sentence before it offers a single control. */
+
+.output-state {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.output-state.armed,
+.output-state.blackout {
+  color: var(--down);
+  font-weight: 500;
+}
+
+.output-warning {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--warn);
+}
+
+.hold-button {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  color: #fff;
+  font-weight: 600;
+  background: rgba(var(--down-rgb), 0.18);
+  border: 1px solid rgba(var(--down-rgb), 0.5);
+  border-radius: 7px;
+  padding: 11px 14px;
+}
+
+.hold-fill {
+  position: absolute;
+  inset: 0;
+  background: rgba(var(--down-rgb), 0.55);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.hold-label {
+  position: relative;
+}
+
+/* ======================================================= SIGNAL MONITOR ===
+   Advanced, and honest about it: this is where raw values belong. */
+
+.monitor-wrap {
+  position: absolute;
+  inset: 0;
+  padding: 18px;
+  overflow-y: auto;
 }
 
 .monitor-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 1500px;
-  margin: 0 auto 14px;
+  margin-bottom: 16px;
 }
 
 .monitor-header h2 {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-}
-
-.advanced-toggle {
-  text-align: left;
-  border: none;
-  padding: 4px 0;
-}
-
-.save-preset {
-  align-self: flex-start;
-  border: none;
-  padding: 2px 0;
-  font-size: 11px;
-  color: var(--accent-bright);
-}
-
-.run-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.loading {
-  color: var(--text-dim);
-  font-size: 14px;
-  padding: 40px;
-  text-align: center;
 }
 
 .monitor {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
-  gap: 16px;
-  max-width: 1500px;
-  margin: 0 auto;
+  grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+  gap: 14px;
 }
 
 .universe-card {
-  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
@@ -958,42 +1607,41 @@ body {
 
 .universe-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
 }
 
-.universe-header h2 {
-  font-size: 13px;
+.universe-header b {
+  font-size: 12.5px;
   font-weight: 600;
 }
 
 .universe-range {
-  color: var(--text-dim);
-  font-weight: 500;
-  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
 .pps {
-  font-size: 11px;
-  color: var(--text-dim);
+  margin-left: auto;
   font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
 .universe-body {
   position: relative;
   display: flex;
-  gap: 16px;
-  padding: 14px;
   align-items: flex-start;
   flex-wrap: wrap;
+  gap: 16px;
+  padding: 14px;
 }
 
 .universe-body canvas {
   display: block;
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--panel-2);
 }
 
@@ -1007,6 +1655,8 @@ body {
   flex: none;
 }
 
+/* Covers the whole card when a universe goes quiet: a frozen heatmap looks
+   exactly like a live one, which is how you end up debugging the wrong thing. */
 .no-signal {
   position: absolute;
   inset: 0;
@@ -1023,595 +1673,46 @@ body {
   display: flex;
 }
 
-/* ----- Phase 6: live output ---------------------------------------------
-   Visual weight matches consequence: armed and blackout are impossible to
-   miss, everything else stays as quiet as the rest of the chrome. */
-
-.dot.live {
-  background: var(--down);
-  box-shadow: 0 0 8px rgba(var(--down-rgb), 0.8);
-  animation: live-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes live-pulse {
-  50% { opacity: 0.35; }
-}
-
-.output-state {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--border-strong);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
-.output-state.spectator {
-  border-left-color: var(--ok);
-}
-
-.output-state.armed {
-  border-left-color: var(--down);
-  background: rgba(var(--down-rgb), 0.12);
-}
-
-.output-state.blackout {
-  border-left-color: var(--warn);
-  background: rgba(var(--warn-rgb), 0.12);
-}
-
-.output-warning {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--warn);
-  background: rgba(var(--warn-rgb), 0.1);
-  border: 1px solid rgba(var(--warn-rgb), 0.35);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-
-/* Press and hold: the fill is the feedback, so no separate progress bar. */
-.hold-button {
-  position: relative;
-  overflow: hidden;
-  padding: 11px 14px;
-  font-weight: 600;
-  border-color: rgba(var(--down-rgb), 0.5);
-  user-select: none;
-  touch-action: none;
-}
-
-.hold-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: rgba(var(--down-rgb), 0.45);
-  pointer-events: none;
-}
-
-.hold-label {
-  position: relative;
-}
-
-.button.blackout {
-  color: #fff;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  background: rgba(var(--down-rgb), 0.22);
-  border-color: var(--down);
-}
-
-.button.blackout:hover:not(:disabled) {
-  background: var(--down);
-}
-
-.button.blackout.compact {
-  padding: 4px 10px;
-  font-size: 11px;
-}
-
-/* ----- Transport --------------------------------------------------------
-   Following the console, parked, or playing on this machine's clock. */
-
-.transport {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.transport-button {
-  font: inherit;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--text-dim);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 9px;
-  cursor: pointer;
-}
-
-.transport-button:hover {
-  color: var(--text);
-  background: var(--panel-3);
-  border-color: var(--border-strong);
-}
-
-.transport-button.play {
-  min-width: 34px;
-  font-size: 12px;
-  color: var(--text);
-}
-
-.transport-button.live {
-  font-weight: 600;
-  letter-spacing: 0.06em;
-}
-
-.transport-button.live.active {
-  color: var(--ok);
-  border-color: rgba(var(--ok-rgb), 0.45);
-  background: rgba(var(--ok-rgb), 0.12);
-}
-
-/* ----- Look library -----------------------------------------------------
-   Looks are picked by sight: every card renders the real engine output. */
-
-.preset-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.preset-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: stretch;
-  font: inherit;
-  font-size: 11px;
-  color: var(--text-dim);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 8px;
-  cursor: pointer;
-  text-align: left;
-}
-
-.preset-card:hover {
-  color: var(--text);
-  background: var(--panel-3);
-  border-color: var(--border-strong);
-}
-
-.preset-card.active {
-  color: var(--text);
-  border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.12);
-}
-
-.preset-card canvas {
-  width: 100%;
-  height: 12px;
-  border-radius: 3px;
-  display: block;
-}
-
-/* ----- Panel hierarchy --------------------------------------------------
-   Four levels, in order of what the eye should hit first: the scene's
-   identity, the one action, the grouped sections, then Advanced. */
-
-.panel-group {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-
-.panel-group > .panel-label {
-  margin-bottom: -2px;
-}
-
-.scene-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.scene-identity {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  flex: 1;
-}
-
-.scene-name {
-  font: inherit;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
-  background: none;
-  border: none;
-  border-bottom: 1px solid transparent;
-  border-radius: 0;
-  padding: 1px 0;
-  width: 100%;
-}
-
-.scene-name:hover {
-  border-bottom-color: var(--border-strong);
-}
-
-.scene-name:focus {
-  outline: none;
-  border-bottom-color: var(--accent);
-}
-
-.scene-when {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.scene-when input {
-  font: inherit;
-  font-size: 12px;
+.console {
   font-family: var(--mono);
-  color: var(--text-dim);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  padding: 2px 4px;
-  width: 56px;
 }
 
-.scene-when input:hover {
-  border-color: var(--border);
-  color: var(--text);
-}
-
-.scene-when input:focus {
-  outline: none;
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.scene-when-sep {
-  opacity: 0.5;
-}
-
-.scene-duration {
-  margin-left: auto;
-  font-size: 11px;
-  opacity: 0.75;
-}
-
-.icon-close {
-  font: inherit;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--text-dim);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 5px 7px;
-  cursor: pointer;
-  flex: none;
-}
-
-.icon-close:hover {
-  color: var(--text);
-  background: var(--panel-2);
-  border-color: var(--border);
-}
-
-.button.block {
-  width: 100%;
-  padding: 9px 14px;
-  font-weight: 600;
-}
-
-/* The chosen look, shown big enough to recognise at a glance. */
-.current-look {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 9px 10px;
-}
-
-.current-look canvas {
-  width: 100%;
-  height: 26px;
-  border-radius: 4px;
-  display: block;
-}
-
-.current-look-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.current-look-name {
-  font-size: 12.5px;
-  color: var(--text);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The tools menu floats over the scene panel: it needs its own elevation,
-   otherwise two identical surfaces overlap and neither reads. */
-.tools-menu {
-  background: var(--panel-3);
-  box-shadow: var(--shadow);
-}
-
-.param-row select {
-  flex: 1;
-  min-width: 0;
-}
-
-/* ----- Chrome: top bar, dock ---------------------------------------------
-   Three groups the eye can name: what mode am I in, what is the show doing,
-   what can I do about it. Each one gets a surface of its own. */
-
-.topbar {
-  padding: 10px 16px;
-}
-
-.brand h1 {
-  font-size: 13px;
-  opacity: 0.9;
-}
-
-/* Segmented control, Figma/Linear style: the active half is raised, the
-   inactive one recedes. */
-.tabs {
-  padding: 2px;
-  border-radius: 9px;
-  background: var(--bg);
-}
-
-.tabs button {
-  font-size: 12px;
-  font-weight: 500;
-  padding: 5px 14px;
-  border-radius: 7px;
-}
-
-.tabs button.active {
-  color: var(--text);
-  background: var(--panel-3);
-  border: none;
-  padding: 5px 14px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12.5px;
-  color: var(--text-dim);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 5px 12px 5px 10px;
-  white-space: nowrap;
-}
-
-.status-pill.live {
-  color: var(--text);
-  border-color: rgba(var(--down-rgb), 0.45);
-  background: rgba(var(--down-rgb), 0.12);
-}
-
-.icon-button {
-  border-radius: 8px;
-}
-
-/* The player: timecode, what it is doing, and the transport, as one object
-   instead of three stacked strings. */
-.dock {
-  gap: 12px;
-  padding: 12px 16px;
-}
-
-/* Readout at the top, transport at the bottom: the block is resizable now, and
-   centred content left it floating in the middle of its own box. */
-.tc-block {
-  gap: 6px;
-  min-width: 178px;
-  padding: 10px 12px;
-  justify-content: flex-start;
-  border-right: none;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.tc-readout {
-  font-size: 21px;
-  line-height: 1.05;
-}
-
-.tc-sub {
-  font-size: 10px;
-  font-weight: 600;
-  opacity: 0.85;
-}
-
-.now-playing {
-  max-width: 100%;
-}
-
-.transport {
-  margin-top: auto;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-}
-
-.transport-button {
-  flex: 1;
-  text-align: center;
-}
-
-/* Actions, in a column: the primary one first and full width. */
-.dock-controls {
-  display: flex;
-  flex-direction: column;
-  align-content: initial;
-  align-items: stretch;
-  justify-content: center;
-  gap: 6px;
-  min-width: 132px;
-}
-
-.dock-controls .button {
-  text-align: center;
-}
-
-.button.subtle {
-  color: var(--text-dim);
-  background: none;
-}
-
-.button.subtle:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--panel-2);
-}
-
-.save-state {
-  text-align: center;
-  font-size: 11px;
-  color: var(--text-dim);
-  min-height: 13px;
-}
-
-.timeline-wrap {
-  border-radius: 10px;
-}
-
-/* ----- Tools menu -------------------------------------------------------
-   Four nouns told you nothing about what each one did, and the one that can
-   drive real fixtures looked like the other three. */
-
-.tools-menu {
-  min-width: 288px;
-  padding: 6px;
-  gap: 1px;
-}
-
-.menu-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  padding: 6px 10px 4px;
-}
-
-.tools-menu button {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px;
-}
-
-.tools-menu button b {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  font-weight: 500;
-}
-
-.tools-menu button em {
-  font-style: normal;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.tools-menu button.on b {
-  color: var(--accent-bright);
-}
-
-.menu-sep {
-  height: 1px;
-  background: var(--border);
-  margin: 5px 6px;
-}
-
-.tools-menu button.danger-item:hover {
-  background: rgba(var(--down-rgb), 0.12);
-}
-
-.menu-live {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: #fff;
-  background: var(--down);
-  border-radius: 4px;
-  padding: 1px 5px;
-}
-
-.scene-name::placeholder {
-  color: var(--text-dim);
-  opacity: 0.6;
-  font-weight: 500;
-}
-
-/* ----- Watch mode -------------------------------------------------------
-   A show monitor: where we are, what is on the walls, what comes next.
-   Sized to be read from across a control room, not from a chair. */
+/* ========================================================== WATCH MODE ====
+   Not the editor with its buttons hidden: a show monitor. Where we are, what
+   is on the walls, what comes next. */
 
 .watchbar {
   display: flex;
-  align-items: stretch;
-  gap: 20px;
-  padding: 14px 20px;
+  align-items: center;
+  gap: 28px;
+  flex: none;
+  height: 92px;
+  padding: 0 24px;
   border-top: 1px solid var(--border);
   background: var(--panel);
-  flex: none;
 }
 
 .watch-time {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  min-width: 236px;
+  gap: 4px;
+  min-width: 240px;
 }
 
 .watch-clock {
   font-family: var(--mono);
-  font-size: 40px;
-  font-weight: 600;
+  font-size: 38px;
+  font-weight: 300;
   line-height: 1;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
 }
 
 .watch-state {
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: 10px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text-faint);
 }
 
 .watch-track {
@@ -1619,254 +1720,93 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   gap: 8px;
 }
 
 .watch-progress {
   position: relative;
-  height: 10px;
-  border-radius: 5px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  overflow: hidden;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--panel-3);
+  overflow: visible;
 }
 
 .watch-progress-fill {
   position: absolute;
-  inset: 0 auto 0 0;
-  background: rgba(var(--ok-rgb), 0.28);
-}
-
-.watch-tick {
-  position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(var(--edit-rgb), 0.75);
+  left: 0;
+  border-radius: 2px;
+  background: var(--ok);
+}
+
+/* Where the scenes sit in the show, marked above the track: two meanings on
+   one 3px line would read as neither. Width comes from the scene's duration. */
+.watch-tick {
+  position: absolute;
+  top: -7px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--edit);
+  opacity: 0.65;
 }
 
 .watch-section {
   font-size: 12px;
   color: var(--text-dim);
-  min-height: 15px;
 }
 
 .watch-cues {
   display: flex;
-  gap: 26px;
-  align-items: center;
-  padding-left: 20px;
-  border-left: 1px solid var(--border);
+  gap: 36px;
+  flex: none;
 }
 
 .watch-cue {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  min-width: 150px;
+  min-width: 132px;
 }
 
 .watch-cue-label {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text-faint);
 }
 
+/* Our scene, or the console's own show: worth telling apart at a glance. */
 .watch-now-value {
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.watch-now-value.console {
-  color: var(--text-dim);
-  font-weight: 500;
+  font-size: 15px;
+  color: var(--text);
 }
 
 .watch-now-value.scene {
   color: var(--edit);
 }
 
+.watch-now-value.console {
+  color: var(--text-dim);
+}
+
 .watch-next-value {
-  font-size: 13px;
-  color: var(--text-dim);
-  line-height: 1.3;
-}
-
-/* Wall clock: the show's timecode is not the time of day, and a control
-   room needs both. */
-.wall-clock {
-  font-family: var(--mono);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-  opacity: 0.85;
-  letter-spacing: 0.02em;
-}
-
-/* Five transport buttons now: section, start, play, section, live. */
-.transport {
-  gap: 3px;
-}
-
-.transport-button {
-  padding: 6px 6px;
-  font-size: 10px;
-}
-
-.transport-button.live {
-  font-size: 10px;
-  padding: 6px 8px;
-}
-
-/* Watch: the section is the show's structure, so it leads the readout. */
-.watch-section {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  min-height: 18px;
-}
-
-
-/* ----- Section bar ------------------------------------------------------
-   The show's table of contents, above the timeline and aligned with it:
-   every section in order, click to travel there. Editing happens in the
-   same row instead of floating over the lanes it lines up against. */
-
-.section-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
-  min-height: 34px;
-}
-
-.section-chips {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.section-chips::-webkit-scrollbar {
-  display: none;
-}
-
-.section-empty {
-  font-size: 11px;
-  color: var(--text-dim);
-  white-space: nowrap;
-}
-
-.section-chip {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex: none;
-  font: inherit;
-  font-size: 12px;
-  color: var(--text-dim);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.section-chip:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-  background: var(--panel-3);
-}
-
-.section-chip.active {
-  color: #fff;
-  background: rgba(var(--accent-rgb), 0.22);
-  border-color: var(--accent);
-}
-
-.section-chip-time {
-  font-family: var(--mono);
-  font-size: 10px;
-  opacity: 0.7;
-}
-
-.marker-editor {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  padding-left: 10px;
-  border-left: 1px solid var(--border);
-}
-
-.marker-editor .marker-name {
-  width: 128px;
-}
-
-.marker-editor label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--text-dim);
 }
 
-.marker-editor input {
-  font-size: 12px;
-  padding: 3px 6px;
-}
+/* ========================================================= DIAGNOSTICS ====
+   State first, in colour; the paste-able report folded under it, so what you
+   read and what you send stay the same text. */
 
-.marker-editor .button {
-  padding: 4px 9px;
-  font-size: 11px;
-}
-
-.timeline-main {
-  flex: 1;
-  min-height: 0;
-}
-
-/* Diagnostics: a report you select and paste, not a dashboard to read. */
-.diag-text {
-  flex: 1;
-  min-height: 260px;
-  width: 100%;
-  resize: none;
-  font-family: var(--mono);
-  font-size: 11px;
-  line-height: 1.55;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px;
-  white-space: pre;
-  overflow: auto;
-}
-
-.diag-text:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-/* Diagnostics: state first, in colour; the paste-able text folded under it
-   so what you read and what you send stay the same thing. */
 .diag-rows {
   display: flex;
   flex-direction: column;
   gap: 1px;
   background: var(--border);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -1879,23 +1819,23 @@ body {
   font-size: 12.5px;
 }
 
-/* The dot and the label sit on the value's first line, whatever it wraps to. */
-.diag-row .dot,
-.diag-row-label {
-  margin-top: 3px;
-}
-
 .diag-row.down { background: rgba(var(--down-rgb), 0.1); }
 .diag-row.live { background: rgba(var(--down-rgb), 0.14); }
 .diag-row.idle { background: rgba(var(--warn-rgb), 0.08); }
 
+/* The dot and the label sit on the value's first line, whatever it wraps to. */
+.diag-row .dot,
 .diag-row-label {
-  font-size: 11px;
+  margin-top: 4px;
+}
+
+.diag-row-label {
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--text-dim);
-  width: 66px;
+  color: var(--text-faint);
+  width: 62px;
   flex: none;
 }
 
@@ -1914,14 +1854,13 @@ body {
   flex: 0 1 auto;
 }
 
-/* Only the opened dump claims the rest of the panel. */
 .diag-details[open] {
   flex: 1;
 }
 
 .diag-details summary {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--text-faint);
   cursor: pointer;
   padding: 4px 0 8px;
   list-style: none;
@@ -1930,3 +1869,25 @@ body {
 .diag-details summary::before { content: '▸ '; }
 .diag-details[open] summary::before { content: '▾ '; }
 .diag-details summary:hover { color: var(--text); }
+
+.diag-text {
+  flex: 1;
+  min-height: 240px;
+  width: 100%;
+  resize: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  white-space: pre;
+  overflow: auto;
+}
+
+.diag-text:focus {
+  outline: none;
+  border-color: var(--accent);
+}
