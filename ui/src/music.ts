@@ -49,8 +49,15 @@ export interface AudioAnalysis {
 
 export async function listMusic(): Promise<{ dir: string; files: MusicFile[] }> {
   const response = await fetch(apiUrl('/api/music'))
-  if (!response.ok) throw new Error('could not list the music folder')
-  return (await response.json()) as { dir: string; files: MusicFile[] }
+  // Read the body before deciding: the server explains a 404 on an /api path,
+  // and its explanation is more useful than anything guessable from here.
+  const body = (await response.json().catch(() => null)) as
+    | { dir: string; files: MusicFile[]; error?: string }
+    | null
+  if (!response.ok || !body) {
+    throw new Error(body?.error ?? 'could not read the music folder')
+  }
+  return body
 }
 
 async function post<T>(action: string, file?: string): Promise<T> {

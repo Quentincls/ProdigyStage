@@ -212,6 +212,22 @@ export function startWebServer(options: WebOptions): { server: Server; wss: WebS
       return
     }
 
+    // An unknown /api or /music path is not a page, and must never fall through
+    // to the app shell below. Handing index.html to a JSON parser produces
+    // "Unexpected token '<'" somewhere far away, which says nothing about what
+    // actually happened -- and what actually happened, every time, is that the
+    // running server is older than the interface it is serving. The files on
+    // disk were replaced under a process that had already started.
+    if (url.startsWith('/api/') || url.startsWith('/music/')) {
+      res.writeHead(404, { 'Content-Type': 'application/json' })
+      res.end(
+        JSON.stringify({
+          error: `this server has no ${url} — it is running an older build than the interface. Close LumenStage and start it again.`,
+        }),
+      )
+      return
+    }
+
     if (!root) {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
       res.end('PRODIGY STAGE server is running.\nUI build not found - in dev, open http://localhost:3019 (npm run dev).\n')
