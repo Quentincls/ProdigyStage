@@ -26,8 +26,10 @@
   --surface-rgb: 8, 9, 11;
 
   --text: #f4f5f7;
-  --text-dim: #858b96;
-  --text-faint: #5b616b;
+  --text-dim: #8b919c;
+  /* Quiet, but still legible at 10-11px on black: below this the labels stop
+     being readable in a lit room and start being decoration. */
+  --text-faint: #676d78;
 
   --accent: #2563ff;
   --accent-hover: #3d78ff;
@@ -45,8 +47,9 @@
   --edit: #a78bfa;
   --edit-rgb: 167, 139, 250;
 
-  --border: #15171c;
-  --border-strong: #272b33;
+  /* Separations, in two weights only: one you read past, one you read. */
+  --border: #1a1d23;
+  --border-strong: #2a2e37;
   --shadow: 0 16px 48px rgba(0, 0, 0, 0.85);
   --accent-glow: 0 4px 20px rgba(37, 99, 255, 0.28);
 
@@ -526,24 +529,15 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-/* Lines up with the canvas gutter, so the list and the lane it summarises sit
-   in the same column. */
-.section-bar-label {
-  width: var(--gutter);
-  flex: none;
-  padding-left: 14px;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
+/* Indented to the canvas gutter, so the chapter list starts where the lane it
+   summarises starts. */
 .section-chips {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 20px;
   flex: 1;
   min-width: 0;
+  padding-left: var(--gutter);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -558,17 +552,16 @@ body {
   white-space: nowrap;
 }
 
-/* Text, not pills: a chapter list reads as a list. */
+/* A chapter list reads as a list: numbers and names, no pills. */
 .section-chip {
   display: flex;
   align-items: baseline;
-  gap: 7px;
+  gap: 8px;
   flex: none;
   font-size: 12px;
   color: var(--text-dim);
   background: none;
   border: none;
-  border-bottom: 1px solid transparent;
   border-radius: 0;
   padding: 3px 0;
   white-space: nowrap;
@@ -578,15 +571,23 @@ body {
   color: var(--text);
 }
 
-.section-chip.active {
-  color: var(--text);
-  border-bottom-color: var(--accent-bright);
+.section-chip:hover .section-chip-index {
+  color: var(--text-dim);
 }
 
-.section-chip-time {
+.section-chip.active {
+  color: var(--text);
+}
+
+.section-chip.active .section-chip-index {
+  color: var(--text);
+}
+
+.section-chip-index {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--text-faint);
+  transition: color 130ms ease;
 }
 
 .marker-editor {
@@ -748,34 +749,66 @@ body {
 }
 
 .ins-when-sep {
-  opacity: 0.6;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
 .ins-duration {
   margin-left: auto;
 }
 
-/* The one action on this panel. */
+/* The one action on this panel, in the transport's language: an instrument
+   control, not a call to action. Colour arrives on hover and on state, so a
+   resting panel stays as quiet as the room it looks at. */
 .ins-preview {
+  display: flex;
+  align-items: center;
+  gap: 11px;
   width: 100%;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--accent);
-  border: none;
-  border-radius: 7px;
-  padding: 10px 14px;
-  box-shadow: var(--accent-glow);
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 9px 12px;
 }
 
 .ins-preview:hover {
-  background: var(--accent-hover);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.09);
 }
 
+.ins-preview-glyph {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--accent-bright);
+}
+
+.ins-preview-label {
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+}
+
+.ins-preview-key {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* Running: the same violet the parked playhead uses, so "this is you driving,
+   not the console" is one colour across the whole application. */
 .ins-preview.on {
-  color: var(--text);
-  background: var(--panel-3);
-  box-shadow: none;
+  border-color: rgba(var(--edit-rgb), 0.6);
+  background: rgba(var(--edit-rgb), 0.1);
+}
+
+.ins-preview.on:hover {
+  background: rgba(var(--edit-rgb), 0.16);
+}
+
+.ins-preview.on .ins-preview-glyph {
+  color: var(--edit);
 }
 
 .ins-section {
@@ -813,16 +846,20 @@ body {
   color: var(--text-faint);
 }
 
+/* Secondary actions, not web links. Blue is reserved for the things that
+   actually act on the show; these only reveal or store something. */
 .ins-link {
   font-size: 11px;
-  color: var(--accent-bright);
+  color: var(--text-faint);
   background: none;
   border: none;
-  padding: 0;
+  border-bottom: 1px solid transparent;
+  padding: 0 0 1px;
 }
 
 .ins-link:hover {
   color: var(--text);
+  border-bottom-color: var(--border-strong);
 }
 
 .ins-link.left {
@@ -965,25 +1002,31 @@ body {
   border-bottom-color: var(--accent);
 }
 
+/* The colour itself, not a colour field: no frame around it, just the light. */
 .param-color {
   grid-column: 2 / span 2;
   justify-self: start;
-  width: 46px;
-  height: 20px;
+  width: 44px;
+  height: 18px;
   padding: 0;
   background: none;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border: none;
+  border-radius: 3px;
   cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.param-color:hover {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
 
 .param-color::-webkit-color-swatch-wrapper {
-  padding: 2px;
+  padding: 0;
 }
 
 .param-color::-webkit-color-swatch {
   border: none;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
 input[type='range'] {

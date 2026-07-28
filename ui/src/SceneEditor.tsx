@@ -181,11 +181,15 @@ export default function SceneEditor({ show, sceneId, onChange, onClose, onSelect
         <span className="ins-duration">{formatDuration(scene.end - scene.start)}</span>
       </div>
 
+      {/* The one action, in the transport's own language rather than as a
+          coloured slab: this is "play this scene", and Space already does it. */}
       <button
         className={`ins-preview ${previewing ? 'on' : ''}`}
         onClick={() => (previewing ? backToLive() : startPreview(scene.id))}
       >
-        {previewing ? 'Stop preview' : 'Preview this scene'}
+        <span className="ins-preview-glyph">{previewing ? '■' : '▶'}</span>
+        <span className="ins-preview-label">{previewing ? 'Stop' : 'Preview'}</span>
+        <span className="ins-preview-key">Space</span>
       </button>
 
       {/* The look, shown rather than named. The library opens in place instead

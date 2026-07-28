@@ -194,9 +194,10 @@ export default function Timeline({
       ctx.rect(GUTTER, 0, laneWidth, height)
       ctx.clip()
 
-      // Ruler: hairline grid down the lanes, labels along the top.
+      // Ruler: times in the same face the clock uses, and a grid quiet enough
+      // to be read past rather than read.
       const step = RULER_STEPS.find((s) => s * state.pxPerSec >= 76) ?? 3600
-      ctx.font = '10px Inter, sans-serif'
+      ctx.font = '10px "JetBrains Mono", Consolas, monospace'
       ctx.textBaseline = 'top'
       const first = Math.floor(state.start / step) * step
       for (let t = first; xOf(t) < width; t += step) {
@@ -204,23 +205,23 @@ export default function Timeline({
         // The show starts at 0: formatTime clamps negatives, so ticks before
         // the start all read "0:00" and stack up on the left.
         if (x < GUTTER || t < 0) continue
-        ctx.strokeStyle = rgba(theme.text, 0.05)
+        ctx.strokeStyle = rgba(theme.text, 0.035)
         ctx.beginPath()
-        ctx.moveTo(x, RULER_H)
+        ctx.moveTo(x, SECTION_TOP)
         ctx.lineTo(x, height)
         ctx.stroke()
-        ctx.fillStyle = rgba(theme.textDim, 0.85)
-        ctx.fillText(formatTime(t), x + 5, 6)
+        ctx.fillStyle = rgba(theme.text, 0.35)
+        ctx.fillText(formatTime(t), x + 6, 7)
       }
 
-      // Sections: the show's structure. Drawn as a rule with a title sitting on
-      // it rather than as a block, so it never competes with the scenes below.
-      drawSections(ctx, width)
+      // Sections: the show's chapters. Numbered, spanning, and dividing --
+      // their boundaries run the full height of the lanes, so the scenes below
+      // read as belonging to a chapter rather than as a flat sequence.
+      drawSections(ctx, width, sceneBottom)
 
-      // Scenes: the material of the show. The lane takes the height the
-      // operator gave the dock, but stops growing once a block is comfortable
-      // to grab -- past that it is just a slab of colour.
-      drawScenes(ctx, width, sceneBottom)
+      // Scenes: the material. Neutral until they matter -- an inactive scene
+      // states its colour in a single line, the selected one wears it.
+      drawScenes(ctx, width, sceneBottom, showTime)
 
       // First-time hint.
       if (modeRef.current === 'edit' && scenesRef.current.length === 0) {
@@ -270,7 +271,7 @@ export default function Timeline({
       }
       ctx.restore()
 
-      drawGutter(ctx, height, sceneBottom)
+      drawGutter(ctx, height)
 
       // Timecode readout (imperative, outside React).
       if (tcRef.current) {
@@ -341,7 +342,7 @@ export default function Timeline({
 
     // ----- painting ---------------------------------------------------------
 
-    function drawGutter(ctx: CanvasRenderingContext2D, height: number, sceneBottom: number): void {
+    function drawGutter(ctx: CanvasRenderingContext2D, height: number): void {
       ctx.fillStyle = theme.panel
       ctx.fillRect(0, 0, GUTTER, height)
       ctx.strokeStyle = rgba(theme.text, 0.08)
@@ -350,59 +351,85 @@ export default function Timeline({
       ctx.lineTo(GUTTER - 0.5, height)
       ctx.stroke()
 
+      // Two names, and the indent says which contains which. Chapters first,
+      // the material they hold underneath and set in.
       ctx.font = '9px Inter, sans-serif'
       ctx.textBaseline = 'middle'
       ctx.textAlign = 'left'
-      // Sections read as the quieter of the two: they organise, they do not
-      // change the lights.
-      ctx.fillStyle = rgba(theme.textDim, 0.75)
+      ctx.fillStyle = rgba(theme.text, 0.55)
       ctx.fillText('SECTIONS', 14, (SECTION_TOP + SECTION_BOTTOM) / 2)
-      ctx.fillStyle = rgba(theme.edit, 0.9)
-      ctx.fillText('SCENES', 14, SCENE_TOP + 10)
-      // A tick of the lane's own colour, so the eye can pair the gutter row
-      // with the band beside it without reading a word.
-      ctx.fillStyle = rgba(theme.textDim, 0.35)
-      ctx.fillRect(0, SECTION_TOP, 2, SECTION_BOTTOM - SECTION_TOP)
-      ctx.fillStyle = rgba(theme.edit, 0.5)
-      ctx.fillRect(0, SCENE_TOP, 2, Math.max(0, sceneBottom - SCENE_TOP))
+      ctx.fillStyle = rgba(theme.text, 0.3)
+      ctx.fillText('SCENES', 24, SCENE_TOP + 10)
       ctx.textBaseline = 'top'
     }
 
-    function drawSections(ctx: CanvasRenderingContext2D, width: number): void {
+    function drawSections(ctx: CanvasRenderingContext2D, width: number, bottom: number): void {
       const y = SECTION_TOP
       const h = SECTION_BOTTOM - SECTION_TOP
-      for (const marker of markersRef.current) {
+      const ordered = [...markersRef.current].sort((a, b) => a.start - b.start)
+      for (const [index, marker] of ordered.entries()) {
         const x1 = xOf(marker.start)
         const x2 = xOf(marker.end)
         if (x2 < GUTTER || x1 > width) continue
         const isSelected = marker.id === selectedRef.current
         const w = Math.max(2, x2 - x1)
-        ctx.fillStyle = rgba(theme.text, isSelected ? 0.09 : 0.045)
+
+        // The chapter's boundary, carried down through the scenes: this is what
+        // makes a section feel like it contains the show rather than sit above
+        // it. Faint by design -- it is a division, not an object.
+        ctx.strokeStyle = rgba(theme.text, isSelected ? 0.22 : 0.1)
+        ctx.beginPath()
+        ctx.moveTo(Math.round(x1) + 0.5, y)
+        ctx.lineTo(Math.round(x1) + 0.5, bottom)
+        ctx.moveTo(Math.round(x2) + 0.5, y)
+        ctx.lineTo(Math.round(x2) + 0.5, bottom)
+        ctx.stroke()
+
+        // The chapter's own band: a rule it hangs from, and its title on it.
+        ctx.fillStyle = rgba(theme.text, isSelected ? 0.07 : 0.028)
         ctx.fillRect(x1, y, w, h)
-        // A rule across the top and a tick at each end: the vocabulary of a
-        // chapter marker, not of a block you would drag around by mistake.
-        ctx.fillStyle = isSelected ? theme.accentBright : rgba(theme.text, 0.28)
+        ctx.fillStyle = isSelected ? rgba(theme.text, 0.55) : rgba(theme.text, 0.22)
         ctx.fillRect(x1, y, w, 1)
-        ctx.fillRect(x1, y, 1, h)
-        ctx.fillRect(x2 - 1, y, 1, h)
-        if (isSelected) {
-          ctx.fillRect(x1, y + h / 2 - 5, 3, 10)
-          ctx.fillRect(x2 - 3, y + h / 2 - 5, 3, 10)
-        }
+
         ctx.save()
         ctx.beginPath()
         ctx.rect(x1 + 2, y, Math.max(0, w - 4), h)
         ctx.clip()
-        ctx.font = '10px Inter, sans-serif'
+        // Numbered like chapters, because that is what they are. The number is
+        // the constant; the name is whatever the show calls that moment.
         ctx.textBaseline = 'middle'
-        ctx.fillStyle = isSelected ? theme.text : rgba(theme.text, 0.62)
-        ctx.fillText(marker.name.toUpperCase(), x1 + 8, y + h / 2 + 1)
+        const midY = y + h / 2 + 1
+        ctx.font = '10px "JetBrains Mono", Consolas, monospace'
+        ctx.fillStyle = isSelected ? rgba(theme.text, 0.85) : rgba(theme.text, 0.3)
+        const number = String(index + 1).padStart(2, '0')
+        ctx.fillText(number, x1 + 9, midY)
+        ctx.font = '10px Inter, sans-serif'
+        ctx.fillStyle = isSelected ? theme.text : rgba(theme.text, 0.5)
+        ctx.fillText(marker.name.toUpperCase(), x1 + 30, midY)
         ctx.restore()
         ctx.textBaseline = 'top'
+
+        // Grips only on the selected chapter: nothing to grab means nothing to
+        // catch by accident.
+        if (isSelected) {
+          ctx.fillStyle = rgba(theme.text, 0.7)
+          ctx.fillRect(x1, y, 2, h)
+          ctx.fillRect(x2 - 2, y, 2, h)
+        }
       }
     }
 
-    function drawScenes(ctx: CanvasRenderingContext2D, width: number, bottom: number): void {
+    // Colour carries one meaning here: this is the light this scene puts in the
+    // room. A row of blocks each shouting its own hue is decoration, and it
+    // makes the timeline unreadable at a glance -- so an idle scene states its
+    // colour in a single stripe and stays graphite, the scene under the
+    // playhead lifts, and the selected one wears its colour outright.
+    function drawScenes(
+      ctx: CanvasRenderingContext2D,
+      width: number,
+      bottom: number,
+      showTime: number | null,
+    ): void {
       const top = SCENE_TOP
       const h = bottom - top
       if (h <= 0) return
@@ -411,27 +438,33 @@ export default function Timeline({
         const x2 = xOf(scene.end)
         if (x2 < GUTTER || x1 > width) continue
         const isSelected = scene.id === selectedSceneRef.current
+        const isPlaying =
+          showTime !== null && showTime >= scene.start && showTime < scene.end && !isSelected
         const tint = sceneTint(scene) ?? theme.edit
         const w = Math.max(2, x2 - x1)
 
-        // The colour reads as a label along the top of the block rather than a
-        // flat field: a solid tint turns the lane into one slab of colour.
-        const wash = ctx.createLinearGradient(0, top, 0, bottom)
-        wash.addColorStop(0, rgba(tint, isSelected ? 0.42 : 0.24))
-        wash.addColorStop(1, rgba(tint, isSelected ? 0.12 : 0.06))
-        ctx.fillStyle = wash
+        if (isSelected) {
+          const wash = ctx.createLinearGradient(0, top, 0, bottom)
+          wash.addColorStop(0, rgba(tint, 0.34))
+          wash.addColorStop(1, rgba(tint, 0.07))
+          ctx.fillStyle = wash
+        } else {
+          ctx.fillStyle = rgba(theme.text, isPlaying ? 0.08 : 0.035)
+        }
         roundedRect(ctx, x1, top, w, h, 3)
         ctx.fill()
-        ctx.strokeStyle = rgba(tint, isSelected ? 0.95 : 0.4)
+        ctx.strokeStyle = isSelected
+          ? rgba(tint, 0.9)
+          : rgba(theme.text, isPlaying ? 0.28 : 0.09)
         ctx.stroke()
-        // The look's colour, stated once, at full strength.
-        ctx.fillStyle = tint
-        ctx.fillRect(x1 + 1, top + 1, Math.max(1, w - 2), 2)
+
+        // The signature: the scene's colour, once, at the edge it starts on.
+        ctx.fillStyle = rgba(tint, isSelected ? 1 : isPlaying ? 0.85 : 0.6)
+        ctx.fillRect(x1 + 1, top + 1, isSelected ? 3 : 2, h - 2)
 
         if (isSelected) {
-          ctx.fillStyle = tint
+          ctx.fillStyle = rgba(tint, 0.95)
           const notch = top + h / 2 - 7
-          ctx.fillRect(x1 + 1.5, notch, 3, 14)
           ctx.fillRect(x2 - 4.5, notch, 3, 14)
         }
 
@@ -439,15 +472,15 @@ export default function Timeline({
         ctx.beginPath()
         ctx.rect(x1 + 2, top, Math.max(0, w - 4), h)
         ctx.clip()
-        ctx.font = isSelected ? '600 11px Inter, sans-serif' : '11px Inter, sans-serif'
         ctx.textBaseline = 'top'
-        ctx.fillStyle = isSelected ? theme.text : rgba(theme.text, 0.72)
-        ctx.fillText(scene.name, x1 + 8, top + 9)
+        ctx.font = isSelected || isPlaying ? '500 11px Inter, sans-serif' : '11px Inter, sans-serif'
+        ctx.fillStyle = isSelected || isPlaying ? theme.text : rgba(theme.text, 0.58)
+        ctx.fillText(scene.name, x1 + 11, top + 9)
         // Duration only when the block can hold it without crowding the name.
         if (w > 130 && h > 34) {
-          ctx.font = '10px Inter, sans-serif'
-          ctx.fillStyle = rgba(theme.text, 0.4)
-          ctx.fillText(formatDuration(scene.end - scene.start), x1 + 8, top + 26)
+          ctx.font = '10px "JetBrains Mono", Consolas, monospace'
+          ctx.fillStyle = rgba(theme.text, isSelected ? 0.5 : 0.3)
+          ctx.fillText(formatDuration(scene.end - scene.start), x1 + 11, top + 26)
         }
         ctx.restore()
       }
@@ -470,12 +503,17 @@ export default function Timeline({
       const extent = extentOf()
       const mx = (t: number) => (t / extent) * w
 
+      // Same reading as the lanes above, in miniature: chapters as faint
+      // grounds, scenes as their own colour -- this is the one place where the
+      // colours are worth stating together, because finding a scene fast is
+      // exactly what the strip is for.
       for (const marker of markersRef.current) {
-        mctx.fillStyle = rgba(theme.text, 0.14)
+        mctx.fillStyle = rgba(theme.text, 0.07)
         mctx.fillRect(mx(marker.start), 0, Math.max(1, mx(marker.end) - mx(marker.start)), h)
       }
       for (const scene of scenesRef.current) {
-        mctx.fillStyle = rgba(sceneTint(scene) ?? theme.edit, 0.9)
+        const selected = scene.id === selectedSceneRef.current
+        mctx.fillStyle = rgba(sceneTint(scene) ?? theme.edit, selected ? 1 : 0.62)
         mctx.fillRect(mx(scene.start), h / 2 - 2, Math.max(2, mx(scene.end) - mx(scene.start)), 4)
       }
       if (showTime !== null) {
@@ -932,14 +970,17 @@ export default function Timeline({
           the lane it summarises line up. */}
       {mode === 'edit' && (
         <div className="section-bar">
-          <span className="section-bar-label">Sections</span>
+          {/* No heading here: the gutter directly below already names this lane,
+              and the chapter numbers say what the row is. */}
           <div className="section-chips">
             {show.markers.length === 0 && (
-              <span className="section-empty">none yet — add one to split the show into parts</span>
+              <span className="section-empty">
+                No chapters yet — add a section to give the show its structure
+              </span>
             )}
             {[...show.markers]
               .sort((a, b) => a.start - b.start)
-              .map((marker) => (
+              .map((marker, index) => (
                 <button
                   key={marker.id}
                   className={`section-chip ${selectedId === marker.id ? 'active' : ''}`}
@@ -951,7 +992,7 @@ export default function Timeline({
                     setOverridden(true)
                   }}
                 >
-                  <span className="section-chip-time">{formatTime(marker.start)}</span>
+                  <span className="section-chip-index">{String(index + 1).padStart(2, '0')}</span>
                   {marker.name}
                 </button>
               ))}
