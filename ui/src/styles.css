@@ -473,14 +473,51 @@ body {
 /* ----- timeline dock ----- */
 
 .dock {
+  position: relative;
   display: flex;
   align-items: stretch;
   gap: 14px;
-  height: 132px;
+  height: 190px;
   padding: 10px 16px;
   border-top: 1px solid var(--border);
   background: var(--panel);
   flex: none;
+}
+
+/* Drag the dock's top edge to give the lanes more room. The grab area is
+   taller than the line it draws: an edge you can only hit within two pixels
+   is an edge nobody finds. */
+.dock-grip {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dock-grip::after {
+  content: '';
+  width: 44px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.dock-grip:hover::after,
+.dock-grip.dragging::after {
+  opacity: 1;
+}
+
+.dock-grip.dragging::after {
+  background: var(--accent);
 }
 
 .tc-block {
@@ -1392,13 +1429,15 @@ body {
 .dock {
   gap: 12px;
   padding: 12px 16px;
-  height: 140px;
 }
 
+/* Readout at the top, transport at the bottom: the block is resizable now, and
+   centred content left it floating in the middle of its own box. */
 .tc-block {
   gap: 6px;
   min-width: 178px;
   padding: 10px 12px;
+  justify-content: flex-start;
   border-right: none;
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -1421,7 +1460,7 @@ body {
 }
 
 .transport {
-  margin-top: 2px;
+  margin-top: auto;
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }

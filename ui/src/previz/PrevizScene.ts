@@ -119,7 +119,11 @@ export class PrevizScene {
   constructor(canvas: HTMLCanvasElement, patch: Patch) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
-    this.scene.background = new THREE.Color('#000000')
+    // Not flat black: pure black made the room a hole in the screen, with no
+    // sense of depth behind the rig. A barely-lifted centre falling back to
+    // black at the edges reads as air in a dark venue, and still leaves the
+    // corners genuinely off on an OLED panel.
+    this.scene.background = makeBackdropTexture()
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 300)
 
@@ -715,6 +719,31 @@ export class PrevizScene {
     this.composer.dispose()
     this.renderer.dispose()
   }
+}
+
+// The room's backdrop: a near-black wash, lifted just enough at the centre to
+// give the volume somewhere to sit, black again by the corners. Values this low
+// band badly as a flat gradient, so the ramp is drawn once, large, and left to
+// the GPU's linear filtering to smooth.
+function makeBackdropTexture(): THREE.Texture {
+  const size = 512
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(0, 0, size, size)
+  // Centred a little above the middle: that is where the rig hangs, and where
+  // the eye expects the room to open up.
+  const gradient = ctx.createRadialGradient(size / 2, size * 0.42, 0, size / 2, size * 0.42, size * 0.72)
+  gradient.addColorStop(0, '#1b1f27')
+  gradient.addColorStop(0.55, '#0d0f13')
+  gradient.addColorStop(1, '#000000')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, size, size)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
 }
 
 function makeGlowTexture(): THREE.Texture {

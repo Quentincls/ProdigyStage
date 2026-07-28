@@ -33,10 +33,14 @@ interface TimelineProps {
 }
 
 const RULER_STEPS = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]
-const RULER_H = 16
-const MARKER_TOP = 20
-const MARKER_BOTTOM = 38
-const SCENE_TOP = 42
+const RULER_H = 22
+const MARKER_TOP = 26
+const MARKER_BOTTOM = 44
+const SCENE_TOP = 48
+// How close to the playhead counts as grabbing it. Matches the trim handles,
+// and is what makes the line itself draggable instead of the ruler only.
+const PLAYHEAD_GRAB_PX = 8
+const SCENE_BAND_MAX = 170
 
 export default function Timeline({
   show,
@@ -58,6 +62,40 @@ export default function Timeline({
   const [, setOverridden] = useState(false)
   const fitRef = useRef<() => void>(() => {})
 
+  // Dock height: the lanes were cramped at a fixed 132px, and how much room
+  // the timeline deserves depends on the show and the screen. Kept across
+  // sessions -- resizing it every night would be its own annoyance.
+  const [dockHeight, setDockHeight] = useState(readDockHeight)
+  const [resizing, setResizing] = useState(false)
+
+  function startResize(event: React.PointerEvent<HTMLDivElement>): void {
+    event.preventDefault()
+    const startY = event.clientY
+    const startHeight = dockHeight
+    const grip = event.currentTarget
+    grip.setPointerCapture(event.pointerId)
+    setResizing(true)
+    let height = startHeight
+    const onMove = (move: PointerEvent): void => {
+      // Dragging up grows the dock, which is the direction that feels right
+      // for a panel anchored to the bottom.
+      height = clampDockHeight(startHeight - (move.clientY - startY))
+      setDockHeight(height)
+    }
+    const onUp = (): void => {
+      grip.removeEventListener('pointermove', onMove)
+      grip.removeEventListener('pointerup', onUp)
+      setResizing(false)
+      try {
+        localStorage.setItem(DOCK_HEIGHT_KEY, String(height))
+      } catch {
+        // Private browsing or a locked-down profile: not worth failing over.
+      }
+    }
+    grip.addEventListener('pointermove', onMove)
+    grip.addEventListener('pointerup', onUp)
+  }
+
   // Mutable state read by the draw loop and the pointer handlers.
   const view = useRef({ start: -5, pxPerSec: 6, followPausedUntil: 0 })
   const markersRef = useRef(show.markers)
@@ -78,6 +116,9 @@ export default function Timeline({
   onSelectSceneRef.current = onSelectScene
   const replayingRef = useRef(false)
   replayingRef.current = feed.stats?.replay.replaying ?? false
+  // Where the draw loop last put the playhead, so the pointer handlers can hit
+  // it without recomputing the time it stands for.
+  const playheadXRef = useRef<number | null>(null)
 
   useEffect(() => {
     const poll = setInterval(() => setOverridden(isTimeOverridden()), 400)
@@ -167,12 +208,16 @@ export default function Timeline({
         undefined,
         true,
       )
+      // The scene lane takes the height the operator gave the dock, but stops
+      // growing once a block is comfortable to grab: past that it is just a
+      // coloured slab, and the room below reads as breathing space.
+      const sceneBottom = Math.min(height - 6, SCENE_TOP + SCENE_BAND_MAX)
       drawBand(
         ctx,
         scenesRef.current,
         selectedSceneRef.current,
         SCENE_TOP,
-        height - 6,
+        sceneBottom,
         width,
         {
           fill: rgba(theme.edit, 0.16),
@@ -216,7 +261,7 @@ export default function Timeline({
         ctx.fillText(
           'Press + Scene to create your first scene at the playhead',
           width / 2,
-          (SCENE_TOP + height - 6) / 2,
+          (SCENE_TOP + sceneBottom) / 2,
         )
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
@@ -224,17 +269,35 @@ export default function Timeline({
 
       replayingRef.current = feed.stats?.replay.replaying ?? false
 
-      // Playhead: green live, orange replay, violet preview/scrub.
+      // Playhead: green live, orange replay, violet preview/scrub. It carries a
+      // head in the ruler -- a line one pixel wide reads as decoration, and
+      // nobody thinks to drag it.
+      playheadXRef.current = showTime === null ? null : xOf(showTime)
       if (showTime !== null) {
         const x = Math.round(xOf(showTime)) + 0.5
-        if (x >= 0 && x <= width) {
-          ctx.strokeStyle = timeOverridden ? theme.edit : replayingRef.current ? theme.warn : theme.ok
+        if (x >= -10 && x <= width + 10) {
+          const color = timeOverridden ? theme.edit : replayingRef.current ? theme.warn : theme.ok
+          ctx.strokeStyle = color
           ctx.lineWidth = 1.5
           ctx.beginPath()
-          ctx.moveTo(x, 0)
+          ctx.moveTo(x, RULER_H - 4)
           ctx.lineTo(x, height)
           ctx.stroke()
           ctx.lineWidth = 1
+
+          ctx.fillStyle = color
+          const headWidth = 22
+          const headHeight = RULER_H - 5
+          roundedRect(ctx, x - headWidth / 2, 1, headWidth, headHeight, 3)
+          ctx.fill()
+          // Two grip lines on the head, the universal "this one moves".
+          ctx.strokeStyle = rgba(theme.panel, 0.85)
+          ctx.beginPath()
+          ctx.moveTo(x - 3.5, 5)
+          ctx.lineTo(x - 3.5, headHeight - 3)
+          ctx.moveTo(x + 3.5, 5)
+          ctx.lineTo(x + 3.5, headHeight - 3)
+          ctx.stroke()
         }
       }
 
@@ -346,11 +409,17 @@ export default function Timeline({
         if (x2 < 0 || x1 > width) continue
         const isSelected = item.id === selectedId
         const tint = colorOf?.(item) ?? null
-        ctx.fillStyle = tint
-          ? rgba(tint, isSelected ? 0.38 : 0.18)
-          : isSelected
-            ? colors.fillSelected
-            : colors.fill
+        if (tint) {
+          // The colour reads as a label along the top of the block rather than
+          // a flat field: now that blocks can be tall, a solid tint turned the
+          // lane into one large slab of colour.
+          const wash = ctx.createLinearGradient(0, top, 0, bottom)
+          wash.addColorStop(0, rgba(tint, isSelected ? 0.5 : 0.28))
+          wash.addColorStop(1, rgba(tint, isSelected ? 0.16 : 0.07))
+          ctx.fillStyle = wash
+        } else {
+          ctx.fillStyle = isSelected ? colors.fillSelected : colors.fill
+        }
         ctx.strokeStyle = tint
           ? rgba(tint, isSelected ? 1 : 0.55)
           : isSelected
@@ -413,6 +482,10 @@ export default function Timeline({
       if (Math.abs(t - scene.end) <= tolerance) return 'trim-r'
       return null
     }
+    const onPlayhead = (x: number): boolean => {
+      const head = playheadXRef.current
+      return head !== null && Math.abs(x - head) <= PLAYHEAD_GRAB_PX
+    }
     const snap = (t: number): number => {
       const grid = view.current.pxPerSec >= 40 ? 0.1 : 1
       return Math.max(0, Math.round(t / grid) * grid)
@@ -460,6 +533,15 @@ export default function Timeline({
       }
       if (event.shiftKey) {
         drag = { type: 'pan', x: event.clientX, viewStart: view.current.start }
+        return
+      }
+      // The playhead comes first, at any height: it is the control the operator
+      // reaches for most, and it used to be catchable only in the ruler strip.
+      // A scene edge sitting exactly under it can still be trimmed -- move the
+      // playhead off it first.
+      if (onPlayhead(x)) {
+        drag = { type: 'scrub' }
+        scrubTo(event.clientX)
         return
       }
       if (y < RULER_H) {
@@ -519,8 +601,13 @@ export default function Timeline({
         // Hover feedback in edit mode: scrub cursor on the ruler, trim cursor
         // on scene edges.
         if (modeRef.current === 'edit') {
-          const t = timeAt(event.clientX - rect.left)
+          const x = event.clientX - rect.left
+          const t = timeAt(x)
           const y = event.clientY - rect.top
+          if (onPlayhead(x)) {
+            canvas.style.cursor = 'ew-resize'
+            return
+          }
           const scene = sceneHit(t, y)
           const tolerance = EDGE_PX / view.current.pxPerSec
           const marker =
@@ -742,7 +829,12 @@ export default function Timeline({
   }
 
   return (
-    <footer className="dock">
+    <footer className="dock" style={{ height: dockHeight }}>
+      <div
+        className={`dock-grip ${resizing ? 'dragging' : ''}`}
+        title="Drag to resize the timeline"
+        onPointerDown={startResize}
+      />
       <div className="tc-block">
         <span className="tc-readout" ref={tcRef}>
           --:--:--:--
@@ -857,6 +949,28 @@ export default function Timeline({
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
+}
+
+const DOCK_HEIGHT_KEY = 'lumenstage.dockHeight'
+const DOCK_MIN = 132
+const DOCK_DEFAULT = 190
+const DOCK_MAX = 320
+
+// Never more than half the window, and never past the point where the extra
+// height stops buying anything: the previz is what the screen is for.
+function clampDockHeight(height: number): number {
+  const ceiling = Math.max(DOCK_MIN, Math.min(DOCK_MAX, window.innerHeight * 0.5))
+  return Math.round(clamp(height, DOCK_MIN, ceiling))
+}
+
+function readDockHeight(): number {
+  try {
+    const stored = Number(localStorage.getItem(DOCK_HEIGHT_KEY))
+    if (Number.isFinite(stored) && stored > 0) return clampDockHeight(stored)
+  } catch {
+    // Storage unavailable: the default is fine.
+  }
+  return DOCK_DEFAULT
 }
 
 // The color of a scene's main look, used to tint its timeline block.
