@@ -161,7 +161,8 @@ const patch = {
       // NO CHANNEL MAP, deliberately. Ayrton's own charts were unreachable and
       // no GDTF or community definition of the Perseo *Beam* exists that we
       // could find -- the one Ayrton GDTF in the open library is the plain
-      // Perseo, whose Extended mode is 58 channels, not 42. So Stage decodes
+      // Perseo, whose Extended mode counts 58 channels by our own parse of its
+      // description.xml, and is in any case not 42. So Stage decodes
       // nothing from the console for these four fixtures and says so in Debug.
       // Fill this in on site: open Debug, move one fader, watch which number
       // moves. That is a ten-minute job with the desk in the room and pure
@@ -179,6 +180,12 @@ const patch = {
       // it tilts, it zooms. Colour is NOT declared -- whether this model mixes
       // CMY or carries a fixed wheel was never established, and a colour picker
       // that might do nothing is worse than no colour picker.
+      //
+      // panRangeDeg and tiltRangeDeg are deliberately absent: the capability is
+      // declared from what the machine is, the mechanical travel would have to
+      // come from a document. Editing works without them -- a layer aims the
+      // head in the room -- and decoding will need them, which is one more
+      // thing the ten minutes with the desk will settle.
       has: ['intensity', 'pan', 'tilt', 'zoom'],
     },
     'xframe-43ch': {
@@ -191,6 +198,10 @@ const patch = {
       // Transcribed from resources/fixtures/Clay_Paky/Clay-Paky-Sharpy-X-Frame.qxf.
       // Claypaky's own documents were unreachable, so this is corroborating
       // rather than primary: treat it as good until someone opens the manual.
+      // Two caveats an adversarial re-check raised and neither could settle:
+      // the Sharpy X Frame FD may share this 43-channel footprint, and the
+      // fixture ships with beam reducers taking it down to 0.5 degrees, which
+      // the drawn cone does not model.
       //
       // Subtractive: CMY filters over a 550 W discharge lamp, plus a linear CTO
       // and a 14-colour wheel. Nothing here is an RGB emitter.
@@ -282,9 +293,18 @@ const patch = {
       short: 'Smoke',
       kind: 'fog',
       footprint: 1,
-      // The one case where a map is not a guess: a one-channel hazer has one
-      // channel, and it is the output level. The manufacturer's own documents
-      // were not reachable either, but there is nothing here to get wrong.
+      // A one-channel hazer has one channel and it is the output level.
+      //
+      // BUT CHECK THE MACHINES ON SITE. Smoke Factory's own manual (recovered
+      // through search extraction; the PDF itself was unreachable) says the
+      // Captain D presents *two* channels when a fan is fitted: 1 = pump,
+      // 2 = fan. Our six are patched one address apart -- u5/501-502 and
+      // u8/1-4 -- so if any of them has a fan on it, that machine's channel 2
+      // is the next machine's channel 1 and the two fight over it.
+      //
+      // Nothing is transmitted, so this cannot damage anything. It would make
+      // the previz read one hazer's fan as another hazer's output. One look at
+      // the machines settles it faster than any document: fan fitted or not.
       standardMap: { fog: 1 },
       has: ['fog'],
     },

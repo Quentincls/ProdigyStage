@@ -5,6 +5,7 @@
 // Read-only. It reports state, it never changes any.
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { capabilitiesOf, familyName } from '../../core/fixtures'
 import { previzStats } from './previz/PrevizScene'
 import { feed } from './feed'
 import type { Patch } from './patch'
@@ -235,8 +236,41 @@ function buildReport(
   }
   lines.push('')
 
+  // The question anyone asks in a venue: is this family arriving, and does
+  // Stage understand it? Two different answers, and confusing them wastes an
+  // afternoon. "Silent" is a cable or a console setting; "not decoded" is a
+  // channel chart we do not have, and no amount of re-patching will fix it.
+  if (patch) {
+    lines.push('-- Rig reception --')
+    const byType = new Map<string, typeof patch.fixtures>()
+    for (const fixture of patch.fixtures) {
+      const list = byType.get(fixture.type) ?? []
+      list.push(fixture)
+      byType.set(fixture.type, list)
+    }
+    for (const [type, fixtures] of byType) {
+      const profile = patch.fixtureTypes[type]
+      const universes = [...new Set(fixtures.map((f) => f.universe))].sort((a, b) => a - b)
+      const arriving = universes.filter((u) => (stats?.perUniverse?.[u]?.pps ?? 0) > 0)
+      const decoded = profile ? capabilitiesOf(profile) : []
+      const signal =
+        arriving.length === universes.length
+          ? `receiving on ${universes.join(', ')}`
+          : arriving.length === 0
+            ? `SILENT on ${universes.join(', ')}`
+            : `PARTIAL — ${arriving.join(', ')} of ${universes.join(', ')}`
+      const reading =
+        decoded.length > 0 ? `reads ${decoded.join('/')}` : 'NOT DECODED — channel chart unconfirmed'
+      lines.push(
+        `${(familyName(profile) + ' ').padEnd(14)}${String(fixtures.length).padStart(2)}  ${signal.padEnd(28)}${reading}`,
+      )
+    }
+    lines.push('')
+  }
+
   lines.push('-- Show --')
   lines.push(`Fixtures      ${patch?.fixtures.length ?? 0}`)
+  lines.push(`Light layers  ${show?.layers?.length ?? 0}`)
   lines.push(`Scenes        ${show?.scenes.length ?? 0}`)
   for (const scene of show?.scenes ?? []) {
     const look = scene.tracks[0]

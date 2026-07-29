@@ -167,3 +167,58 @@ Deux familles sur six ne sont pas décodées. Elles sont visibles, sélectionnab
 éditables et animables — parce que rien de tout cela n'exige de savoir lire la
 console. Ce qu'elles ne font pas, c'est prétendre montrer ce que la console leur
 demande.
+
+## Ce que la vérification adverse a corrigé
+
+Chaque fiche a été relue par un second agent dont la consigne était de la
+**réfuter**, pas de l'approuver. Résultat honnête : les six ont été réfutées sur
+le point « modèle confirmé », pour la même raison — aucun document constructeur
+n'a pu être ouvert. C'est déjà écrit en haut de ce document, mais il faut le
+redire : rien ici ne repose sur un PDF Claypaky, Ayrton, Luxibel ou Smoke
+Factory.
+
+Ce que la relecture a réellement apporté :
+
+**Captain D — risque d'adressage.** Le manuel Smoke Factory (récupéré par
+extraction de recherche) dit que la machine présente **deux canaux quand un
+ventilateur est monté** : 1 = pompe, 2 = ventilateur. Nos six hazers sont
+patchés à une adresse d'écart — u5/501-502 et u8/1-4 — donc si un ventilateur
+est monté, le canal 2 d'une machine est le canal 1 de la suivante. Quatre
+collisions calculées. Rien n'est émis, donc rien ne peut être endommagé : la
+previz lirait la soufflerie d'un hazer comme la sortie d'un autre. **Un coup
+d'œil aux machines tranche plus vite que n'importe quel document.**
+
+**Perseo — course mécanique absente, exprès.** Le profil déclare `pan` et `tilt`
+sans `panRangeDeg`/`tiltRangeDeg`. La capability vient de ce qu'est la machine ;
+la course, elle, demanderait un document. Éditer marche sans (un layer vise dans
+la salle), décoder en aura besoin.
+
+**Perseo — chiffre corrigé.** Le mode Extended du Perseo simple compte 58 canaux
+d'après notre propre lecture de son `description.xml` ; un jeu de données tiers
+donne 61 pour le Perseo *Profile*. Les deux disent la même chose pour nous : ce
+n'est pas 42, donc ce n'est pas notre machine.
+
+**X-Frame — deux réserves.** Le Sharpy X Frame **FD** pourrait partager le même
+footprint 43 canaux, et la machine embarque des réducteurs de faisceau qui
+descendent à **0,5°** — le cône dessiné ne les modélise pas.
+
+**Tambora — angle de faisceau discuté.** QLC+ donne 4–35°, le marketing Claypaky
+4–50°, des revendeurs 4–53°. Nous affichons 4–35°, la valeur du fichier
+réellement lu.
+
+## Vérifier la réception sur site
+
+`Tools → Diagnostics` affiche une ligne par famille :
+
+```
+Tambora       32  receiving on 1, 2, 3, 4     reads intensity/color/.../tilt/zoom/pixels
+Side Panels   16  SILENT on 6, 7              NOT DECODED — channel chart unconfirmed
+Beams          4  receiving on 5              NOT DECODED — channel chart unconfirmed
+```
+
+Deux colonnes, deux problèmes différents, et les confondre coûte un après-midi :
+
+- **SILENT** = rien n'arrive sur cet univers. C'est un câble, un patch console,
+  ou un univers que la console n'émet pas. Se règle côté console.
+- **NOT DECODED** = ça arrive, mais Stage n'a pas la carte des canaux. Aucun
+  re-patch n'y changera rien ; ça se règle dans Advanced, un fader à la fois.
