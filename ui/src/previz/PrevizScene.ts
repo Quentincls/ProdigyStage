@@ -302,7 +302,14 @@ export class PrevizScene {
     this.pixelSlots = []
     this.tiltSlots = []
     this.lastTiltVersion = -1
-    this.fixtures = patch.fixtures
+    // Battens only, for now. The rest of the plot is in the patch and on the
+    // wire, but a Perseo is not a bar of sixteen pixels and drawing it as one
+    // would be worse than not drawing it: the viewport's job is to be true.
+    // Their own geometry comes next; until then the room looks exactly as it
+    // did, which is the point of adding them in this order.
+    this.fixtures = patch.fixtures.filter(
+      (fixture) => patch.fixtureTypes[fixture.type]?.kind === 'batten',
+    )
     this.measureRig()
 
     const type = patch.fixtureTypes[this.fixtures[0]?.type ?? '']

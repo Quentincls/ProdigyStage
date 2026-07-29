@@ -24,7 +24,11 @@ import { Recorder } from './recorder.js'
 import { Replayer } from './replayer.js'
 import { startWebServer, WEB_PORT } from './web.js'
 
-const SHOW_UNIVERSES = [1, 2, 3, 4]
+// The whole plot: battens on 1-4, and the rest of the rig on 5-8 (blinders,
+// beams, X Frames and stage haze on 5, the tribune panels on 6 and 7, the
+// tribune haze on 8). Listening to a universe costs a 512-byte buffer and
+// nothing else -- what a fixture on it *means* is decided by its profile.
+const SHOW_UNIVERSES = [1, 2, 3, 4, 5, 6, 7, 8]
 const BROADCAST_MS = 25 // ~40 fps target, Windows timers make it ~32 fps: within the 30-44 spec
 const STATS_MS = 1000
 

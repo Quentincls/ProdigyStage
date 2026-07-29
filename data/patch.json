@@ -24,6 +24,34 @@
       "pixelStart": 14,
       "tiltRangeDeg": 220,
       "tiltInvert": false
+    },
+    "blinded1-4ch": {
+      "name": "Luxibel B Blinded1",
+      "kind": "blinder",
+      "footprint": 4
+    },
+    "perseo-ex": {
+      "name": "Ayrton Perseo Beam",
+      "kind": "movinghead",
+      "footprint": 42
+    },
+    "xframe-43ch": {
+      "name": "Clay Paky Sharpy X Frame",
+      "kind": "movinghead",
+      "footprint": 43
+    },
+    "bpanel-3ch": {
+      "name": "Luxibel B Panel 240WW",
+      "kind": "panel",
+      "footprint": 3
+    },
+    "captaind-1ch": {
+      "name": "Smoke Factory Captain D",
+      "kind": "fog",
+      "footprint": 1,
+      "standardMap": {
+        "fog": 1
+      }
     }
   },
   "fixtures": [
@@ -602,6 +630,690 @@
         0
       ],
       "group": "wall-right"
+    },
+    {
+      "id": "PL1",
+      "type": "bpanel-3ch",
+      "head": 301,
+      "universe": 6,
+      "address": 1,
+      "position": [
+        -7.5,
+        2,
+        -4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-left"
+    },
+    {
+      "id": "PR1",
+      "type": "bpanel-3ch",
+      "head": 401,
+      "universe": 7,
+      "address": 1,
+      "position": [
+        -7.5,
+        2,
+        4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-right"
+    },
+    {
+      "id": "PL2",
+      "type": "bpanel-3ch",
+      "head": 302,
+      "universe": 6,
+      "address": 11,
+      "position": [
+        -5.3,
+        2,
+        -4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-left"
+    },
+    {
+      "id": "PR2",
+      "type": "bpanel-3ch",
+      "head": 402,
+      "universe": 7,
+      "address": 11,
+      "position": [
+        -5.3,
+        2,
+        4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-right"
+    },
+    {
+      "id": "PL3",
+      "type": "bpanel-3ch",
+      "head": 303,
+      "universe": 6,
+      "address": 21,
+      "position": [
+        -3.3,
+        2,
+        -4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-left"
+    },
+    {
+      "id": "PR3",
+      "type": "bpanel-3ch",
+      "head": 403,
+      "universe": 7,
+      "address": 21,
+      "position": [
+        -3.3,
+        2,
+        4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-right"
+    },
+    {
+      "id": "PL4",
+      "type": "bpanel-3ch",
+      "head": 304,
+      "universe": 6,
+      "address": 31,
+      "position": [
+        -1,
+        2,
+        -4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-left"
+    },
+    {
+      "id": "PR4",
+      "type": "bpanel-3ch",
+      "head": 404,
+      "universe": 7,
+      "address": 31,
+      "position": [
+        -1,
+        2,
+        4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-right"
+    },
+    {
+      "id": "PL5",
+      "type": "bpanel-3ch",
+      "head": 305,
+      "universe": 6,
+      "address": 41,
+      "position": [
+        1.4,
+        2,
+        -4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-left"
+    },
+    {
+      "id": "PR5",
+      "type": "bpanel-3ch",
+      "head": 405,
+      "universe": 7,
+      "address": 41,
+      "position": [
+        1.4,
+        2,
+        4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-right"
+    },
+    {
+      "id": "PL6",
+      "type": "bpanel-3ch",
+      "head": 306,
+      "universe": 6,
+      "address": 51,
+      "position": [
+        3.3,
+        2,
+        -4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-left"
+    },
+    {
+      "id": "PR6",
+      "type": "bpanel-3ch",
+      "head": 406,
+      "universe": 7,
+      "address": 51,
+      "position": [
+        3.3,
+        2,
+        4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-right"
+    },
+    {
+      "id": "PL7",
+      "type": "bpanel-3ch",
+      "head": 307,
+      "universe": 6,
+      "address": 61,
+      "position": [
+        5.4,
+        2,
+        -4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-left"
+    },
+    {
+      "id": "PR7",
+      "type": "bpanel-3ch",
+      "head": 407,
+      "universe": 7,
+      "address": 61,
+      "position": [
+        5.4,
+        2,
+        4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-right"
+    },
+    {
+      "id": "PL8",
+      "type": "bpanel-3ch",
+      "head": 308,
+      "universe": 6,
+      "address": 71,
+      "position": [
+        7.4,
+        2,
+        -4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-left"
+    },
+    {
+      "id": "PR8",
+      "type": "bpanel-3ch",
+      "head": 408,
+      "universe": 7,
+      "address": 71,
+      "position": [
+        7.4,
+        2,
+        4.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "panel-right"
+    },
+    {
+      "id": "XL",
+      "type": "xframe-43ch",
+      "head": 501,
+      "universe": 5,
+      "address": 401,
+      "position": [
+        -7.5,
+        6,
+        -6.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "xframe"
+    },
+    {
+      "id": "XR",
+      "type": "xframe-43ch",
+      "head": 502,
+      "universe": 5,
+      "address": 451,
+      "position": [
+        -7.5,
+        6,
+        6.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "xframe"
+    },
+    {
+      "id": "B1",
+      "type": "blinded1-4ch",
+      "head": 201,
+      "universe": 5,
+      "address": 1,
+      "position": [
+        -12.3,
+        6,
+        -3.3
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "blinders"
+    },
+    {
+      "id": "B2",
+      "type": "blinded1-4ch",
+      "head": 202,
+      "universe": 5,
+      "address": 5,
+      "position": [
+        -12.3,
+        6,
+        -2
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "blinders"
+    },
+    {
+      "id": "B3",
+      "type": "blinded1-4ch",
+      "head": 203,
+      "universe": 5,
+      "address": 9,
+      "position": [
+        -12.3,
+        6,
+        2
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "blinders"
+    },
+    {
+      "id": "B4",
+      "type": "blinded1-4ch",
+      "head": 204,
+      "universe": 5,
+      "address": 13,
+      "position": [
+        -12.3,
+        6,
+        3.7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "blinders"
+    },
+    {
+      "id": "B5",
+      "type": "blinded1-4ch",
+      "head": 205,
+      "universe": 5,
+      "address": 17,
+      "position": [
+        -11.1,
+        6,
+        -5.3
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "blinders"
+    },
+    {
+      "id": "B6",
+      "type": "blinded1-4ch",
+      "head": 206,
+      "universe": 5,
+      "address": 21,
+      "position": [
+        -11.1,
+        6,
+        -3.7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "blinders"
+    },
+    {
+      "id": "B7",
+      "type": "blinded1-4ch",
+      "head": 207,
+      "universe": 5,
+      "address": 25,
+      "position": [
+        -11.1,
+        6,
+        -2
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "blinders"
+    },
+    {
+      "id": "B8",
+      "type": "blinded1-4ch",
+      "head": 208,
+      "universe": 5,
+      "address": 29,
+      "position": [
+        -11.1,
+        6,
+        2.1
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "blinders"
+    },
+    {
+      "id": "B9",
+      "type": "blinded1-4ch",
+      "head": 209,
+      "universe": 5,
+      "address": 33,
+      "position": [
+        -11.1,
+        6,
+        3.7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "blinders"
+    },
+    {
+      "id": "B10",
+      "type": "blinded1-4ch",
+      "head": 210,
+      "universe": 5,
+      "address": 37,
+      "position": [
+        -11.1,
+        6,
+        5.3
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "blinders"
+    },
+    {
+      "id": "PB1",
+      "type": "perseo-ex",
+      "head": 601,
+      "universe": 5,
+      "address": 41,
+      "position": [
+        -15.2,
+        8,
+        -2.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "beams"
+    },
+    {
+      "id": "PB2",
+      "type": "perseo-ex",
+      "head": 602,
+      "universe": 5,
+      "address": 83,
+      "position": [
+        -15.8,
+        8,
+        -1.2
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "beams"
+    },
+    {
+      "id": "PB3",
+      "type": "perseo-ex",
+      "head": 603,
+      "universe": 5,
+      "address": 125,
+      "position": [
+        -15.8,
+        8,
+        2.1
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "beams"
+    },
+    {
+      "id": "PB4",
+      "type": "perseo-ex",
+      "head": 604,
+      "universe": 5,
+      "address": 167,
+      "position": [
+        -15.2,
+        8,
+        3.7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "beams"
+    },
+    {
+      "id": "SM1",
+      "type": "captaind-1ch",
+      "head": 701,
+      "universe": 5,
+      "address": 501,
+      "position": [
+        -13,
+        0.5,
+        -5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "smoke"
+    },
+    {
+      "id": "SM2",
+      "type": "captaind-1ch",
+      "head": 702,
+      "universe": 5,
+      "address": 502,
+      "position": [
+        -13,
+        0.5,
+        5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "smoke"
+    },
+    {
+      "id": "SM3",
+      "type": "captaind-1ch",
+      "head": 703,
+      "universe": 8,
+      "address": 1,
+      "position": [
+        -4,
+        0.5,
+        -6.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "smoke"
+    },
+    {
+      "id": "SM4",
+      "type": "captaind-1ch",
+      "head": 704,
+      "universe": 8,
+      "address": 2,
+      "position": [
+        -4,
+        0.5,
+        6.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "smoke"
+    },
+    {
+      "id": "SM5",
+      "type": "captaind-1ch",
+      "head": 705,
+      "universe": 8,
+      "address": 3,
+      "position": [
+        4,
+        0.5,
+        -6.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "smoke"
+    },
+    {
+      "id": "SM6",
+      "type": "captaind-1ch",
+      "head": 706,
+      "universe": 8,
+      "address": 4,
+      "position": [
+        4,
+        0.5,
+        6.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "group": "smoke"
     }
   ],
   "groups": [

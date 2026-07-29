@@ -93,10 +93,132 @@ const patch = {
       // fact of the install. Flip this on site if the previz mirrors the room.
       tiltInvert: false,
     },
+
+    // ----- the rest of the plot, universes 5-8 ------------------------------
+    // Addresses, universes, modes and counts are copied from the PATCH LIJST
+    // (III_LIGHT_DOCU_LIGHT_BXL, pp. 28-29). The channel layout *inside* each
+    // mode is not in that document, and is not guessed here: a profile with no
+    // standardMap reads as `known: false` in core/fixtures.ts -- registered,
+    // addressed, and honestly unreadable. Fill one in when its chart is
+    // confirmed, from the manufacturer or from the Debug view against the real
+    // console, and that family comes alive with no other change.
+
+    'blinded1-4ch': {
+      name: 'Luxibel B Blinded1',
+      kind: 'blinder',
+      footprint: 4, // "4 Channel" in the patch list
+    },
+    'perseo-ex': {
+      name: 'Ayrton Perseo Beam',
+      kind: 'movinghead',
+      // Mode "Ex". 42 is the address step in the patch list (41, 83, 125, 167),
+      // which is the footprint whatever the chart turns out to say.
+      footprint: 42,
+    },
+    'xframe-43ch': {
+      name: 'Clay Paky Sharpy X Frame',
+      kind: 'movinghead',
+      footprint: 43,
+    },
+    'bpanel-3ch': {
+      name: 'Luxibel B Panel 240WW',
+      kind: 'panel',
+      // Three channels for a warm-white panel: dimmer plus two more, and which
+      // two is exactly the kind of thing worth being wrong about. Unmapped.
+      footprint: 3,
+    },
+    'captaind-1ch': {
+      name: 'Smoke Factory Captain D',
+      kind: 'fog',
+      footprint: 1,
+      // The one case where a map is not a guess: a one-channel hazer has one
+      // channel, and it is the output level.
+      standardMap: { fog: 1 },
+    },
   },
   fixtures,
+  // The walls, and only the walls. This list is what the effect engine targets
+  // and what the Phase 6 output iterates, so a family that is not in it cannot
+  // be painted by a scene or written to by this software -- which is the right
+  // default for every family whose chart we do not have yet.
   groups: ['wall-left', 'wall-right'],
 }
 
+// ----- positions of the rest of the plot -------------------------------------
+// Read off the LICHTPLAN (p. 5) by locating each symbol on a 300 dpi render,
+// then mapped into the coordinate system the two walls already define: along
+// the room, one batten pitch is one unit; across it, the two walls are 12 units
+// apart. Not a survey -- heights especially are unknown, the plan being a top
+// view -- so these are a starting point to be corrected in Placement mode,
+// which writes this same file.
+const HEIGHT_UNKNOWN = 6 // hung with the walls until someone measures
+
+function add(id, type, universe, address, group, position, head) {
+  fixtures.push({
+    id,
+    type,
+    head,
+    universe,
+    address,
+    position,
+    rotation: [0, 0, 0],
+    group,
+  })
+}
+
+// 16 Luxibel B Panel 240WW: eight a side, inside the walls, under the tribune.
+const PANEL_X = [-7.5, -5.3, -3.3, -1.0, 1.4, 3.3, 5.4, 7.4]
+PANEL_X.forEach((x, i) => {
+  add(`PL${i + 1}`, 'bpanel-3ch', 6, 1 + i * 10, 'panel-left', [x, 2, -4.8], 301 + i)
+  add(`PR${i + 1}`, 'bpanel-3ch', 7, 1 + i * 10, 'panel-right', [x, 2, 4.8], 401 + i)
+})
+
+// 2 Clay Paky Sharpy X Frame, stage end, just outside each wall.
+add('XL', 'xframe-43ch', 5, 401, 'xframe', [-7.5, HEIGHT_UNKNOWN, -6.8], 501)
+add('XR', 'xframe-43ch', 5, 451, 'xframe', [-7.5, HEIGHT_UNKNOWN, 6.8], 502)
+
+// 10 Luxibel B Blinded1, upstage, two rows with a gap in the middle for the
+// stage structure. Addresses run 1, 5, 9 ... 37 in the order the plan reads.
+const BLINDERS = [
+  [-12.3, -3.3],
+  [-12.3, -2.0],
+  [-12.3, 2.0],
+  [-12.3, 3.7],
+  [-11.1, -5.3],
+  [-11.1, -3.7],
+  [-11.1, -2.0],
+  [-11.1, 2.1],
+  [-11.1, 3.7],
+  [-11.1, 5.3],
+]
+BLINDERS.forEach(([x, z], i) => {
+  add(`B${i + 1}`, 'blinded1-4ch', 5, 1 + i * 4, 'blinders', [x, HEIGHT_UNKNOWN, z], 201 + i)
+})
+
+// 4 Ayrton Perseo Beam on the arch, in a shallow V.
+const PERSEO = [
+  [-15.2, -2.8],
+  [-15.8, -1.2],
+  [-15.8, 2.1],
+  [-15.2, 3.7],
+]
+PERSEO.forEach(([x, z], i) => {
+  add(`PB${i + 1}`, 'perseo-ex', 5, 41 + i * 42, 'beams', [x, 8, z], 601 + i)
+})
+
+// 6 Smoke Factory Captain D: two on the stage, four under the tribune. The
+// plan does not place them; these are plausible, not measured.
+add('SM1', 'captaind-1ch', 5, 501, 'smoke', [-13, 0.5, -5], 701)
+add('SM2', 'captaind-1ch', 5, 502, 'smoke', [-13, 0.5, 5], 702)
+add('SM3', 'captaind-1ch', 8, 1, 'smoke', [-4, 0.5, -6.5], 703)
+add('SM4', 'captaind-1ch', 8, 2, 'smoke', [-4, 0.5, 6.5], 704)
+add('SM5', 'captaind-1ch', 8, 3, 'smoke', [4, 0.5, -6.5], 705)
+add('SM6', 'captaind-1ch', 8, 4, 'smoke', [4, 0.5, 6.5], 706)
+
 writeFileSync(OUT, JSON.stringify(patch, null, 2) + '\n')
-console.log(`Wrote ${OUT}: ${fixtures.length} fixtures, universes 1-4`)
+const universes = [...new Set(fixtures.map((f) => f.universe))].sort((a, b) => a - b)
+console.log(`Wrote ${OUT}: ${fixtures.length} fixtures, universes ${universes.join(', ')}`)
+for (const [id, type] of Object.entries(patch.fixtureTypes)) {
+  const count = fixtures.filter((f) => f.type === id).length
+  console.log(`  ${String(count).padStart(3)} x ${type.name}${type.standardMap ? '' : '  (channel map unknown)'}`)
+}

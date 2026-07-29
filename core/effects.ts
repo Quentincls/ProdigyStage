@@ -209,7 +209,11 @@ export function trackAmplitude(track: TrackSpec, scene: SceneSpec, showTime: num
 }
 
 function targetMatches(target: TrackTarget, group: string): boolean {
-  return target === 'both' || target === group
+  // "both" means both walls, not every group in the rig. It read as the latter
+  // while the walls were the only groups there were, and would have let a
+  // scene silently paint the beams and the blinders the day they arrived.
+  if (target === 'both') return group === 'wall-left' || group === 'wall-right'
+  return target === group
 }
 
 // Returns the color a scene gives to a pixel, or null when no track of the

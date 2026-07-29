@@ -1,10 +1,9 @@
-// Self-test for the console -> Tambora pipeline, as it stands before the rig
-// is extended to the rest of the plot.
+// Self-test for the console -> rig pipeline.
 //
 // This is a safety net, not a demonstration. Everything asserted here is a
-// promise the Tambora path already keeps today, written down so that adding
-// forty fixtures on universes 5-8 -- and the registry and adapters that come
-// with them -- cannot quietly break it. Every expectation is derived from
+// promise the software already keeps, written down so that adding families to
+// the plot -- and the registry and adapters that come with them -- cannot
+// quietly break the battens that were working first. Every expectation is derived from
 // data/patch.json and from the official patch list, never from the code the
 // test is checking, so a change to the code makes the test fail rather than
 // agree with itself.
@@ -12,8 +11,9 @@
 // What is pinned, in the order a byte travels:
 //
 //   1. the wire        -- ArtDMX parses, and Art-Net universe N-1 is show N
-//   2. the addressing  -- where the patch says each of the 32 battens lives
-//   3. the channel map -- which channel inside a batten is which function
+//   2. the addressing  -- where the patch says each of the 70 fixtures lives
+//   3. the channel map -- which channel inside a batten is which function,
+//                         and which families honestly admit they have none
 //   4. the read path   -- a frame lands where the previz will look for it
 //   5. the write path  -- mergeUniverse touches those channels and no others
 //   6. silence         -- a universe nobody sends is never mistaken for data
@@ -89,9 +89,10 @@ const EXPECTED: Record<number, string[]> = {
   4: ['R9', 'R10', 'R11', 'R12', 'R13', 'R14', 'R15', 'R16'],
 }
 
-assert(patch.fixtures.length === 32, `the plot has 32 Tambora, the patch has ${patch.fixtures.length}`)
+const battens = patch.fixtures.filter((fixture) => fixture.type === 'tambora-std-pixel')
+assert(battens.length === 32, `the plot has 32 Tambora, the patch has ${battens.length}`)
 for (const [universe, ids] of Object.entries(EXPECTED)) {
-  const onUniverse = patch.fixtures
+  const onUniverse = battens
     .filter((fixture) => fixture.universe === Number(universe))
     .sort((a, b) => a.address - b.address)
   assert(
@@ -108,9 +109,82 @@ for (const [universe, ids] of Object.entries(EXPECTED)) {
 // normalises a pixel's position along its wall, so a fixture in the wrong
 // group would light at the wrong end of the room.
 assert(patch.groups.join(',') === 'wall-left,wall-right', `groups are ${patch.groups.join(',')}`)
-for (const fixture of patch.fixtures) {
+for (const fixture of battens) {
   const expected = fixture.id.startsWith('L') ? 'wall-left' : 'wall-right'
   assert(fixture.group === expected, `${fixture.id} must be in ${expected}`)
+}
+
+// ----- 2b. the rest of the plot ---------------------------------------------
+// Same source, same rule: written out from the PATCH LIJST rather than
+// computed, so a patch that drifts from the document fails here.
+const PLOT: { type: string; count: number; universe: number; addresses: number[] }[] = [
+  { type: 'blinded1-4ch', count: 10, universe: 5, addresses: [1, 5, 9, 13, 17, 21, 25, 29, 33, 37] },
+  { type: 'perseo-ex', count: 4, universe: 5, addresses: [41, 83, 125, 167] },
+  { type: 'xframe-43ch', count: 2, universe: 5, addresses: [401, 451] },
+  { type: 'bpanel-3ch', count: 8, universe: 6, addresses: [1, 11, 21, 31, 41, 51, 61, 71] },
+  { type: 'bpanel-3ch', count: 8, universe: 7, addresses: [1, 11, 21, 31, 41, 51, 61, 71] },
+  { type: 'captaind-1ch', count: 2, universe: 5, addresses: [501, 502] },
+  { type: 'captaind-1ch', count: 4, universe: 8, addresses: [1, 2, 3, 4] },
+]
+for (const entry of PLOT) {
+  const found = patch.fixtures
+    .filter((fixture) => fixture.type === entry.type && fixture.universe === entry.universe)
+    .sort((a, b) => a.address - b.address)
+  assert(
+    found.length === entry.count,
+    `${entry.type} on universe ${entry.universe}: expected ${entry.count}, found ${found.length}`,
+  )
+  assert(
+    found.map((fixture) => fixture.address).join(',') === entry.addresses.join(','),
+    `${entry.type} on universe ${entry.universe} must be at ${entry.addresses.join('/')}`,
+  )
+}
+assert(patch.fixtures.length === 70, `the whole plot is 70 fixtures, the patch has ${patch.fixtures.length}`)
+
+// Nothing outside the two walls may be in a group the effect engine targets:
+// that is what keeps a scene, and the Phase 6 output, off every family whose
+// channel map nobody has confirmed.
+for (const fixture of patch.fixtures) {
+  if (fixture.type === 'tambora-std-pixel') continue
+  assert(
+    !patch.groups.includes(fixture.group),
+    `${fixture.id} (${fixture.type}) must not sit in a targetable group, it is in ${fixture.group}`,
+  )
+}
+
+// Every universe, every family: blocks must fit and never overlap. This is the
+// check that catches a typo in an address before a rehearsal does.
+for (const universe of [1, 2, 3, 4, 5, 6, 7, 8]) {
+  const blocks = patch.fixtures
+    .filter((fixture) => fixture.universe === universe)
+    .map((fixture) => ({
+      id: fixture.id,
+      from: fixture.address,
+      to: fixture.address + (raw.fixtureTypes[fixture.type].footprint as number) - 1,
+    }))
+    .sort((a, b) => a.from - b.from)
+  for (const block of blocks) {
+    assert(block.to <= DMX_CHANNELS, `${block.id} runs past channel 512 on universe ${universe}`)
+  }
+  for (let i = 1; i < blocks.length; i++) {
+    assert(
+      blocks[i].from > blocks[i - 1].to,
+      `universe ${universe}: ${blocks[i - 1].id} and ${blocks[i].id} overlap`,
+    )
+  }
+}
+
+// A family whose chart is not confirmed must say so rather than read as zero.
+for (const [id, profile] of Object.entries(raw.fixtureTypes)) {
+  const charted = profile.standardMap !== undefined
+  const inUse = patch.fixtures.some((fixture) => fixture.type === id)
+  assert(inUse, `${id} is declared but nothing uses it`)
+  if (!charted) {
+    assert(
+      profile.kind !== undefined,
+      `${id} has no channel map, so it must at least declare which family it is`,
+    )
+  }
 }
 
 // ----- 3. the channel map ---------------------------------------------------
@@ -147,17 +221,6 @@ assert(pixels === 16, 'a Tambora Batten has 16 pixels')
 assert(footprint === 61, 'Standard RGB is 61 channels')
 assert(tiltRangeDeg === 220, 'the yoke travels 220 degrees')
 
-// 61 channels each, eight per universe: they must fit, and never overlap.
-for (const universe of [1, 2, 3, 4]) {
-  const blocks = patch.fixtures
-    .filter((fixture) => fixture.universe === universe)
-    .map((fixture) => [fixture.address, fixture.address + footprint - 1])
-    .sort((a, b) => a[0] - b[0])
-  assert(blocks[blocks.length - 1][1] <= DMX_CHANNELS, `universe ${universe} overflows 512 channels`)
-  for (let i = 1; i < blocks.length; i++) {
-    assert(blocks[i][0] > blocks[i - 1][1], `universe ${universe}: blocks ${i - 1} and ${i} overlap`)
-  }
-}
 
 // ----- 4. the read path -----------------------------------------------------
 // One batten, values on every function the previz reads, straight through the
@@ -219,7 +282,7 @@ const scene: SceneSpec = {
   tracks: [{ id: 't', target: 'both', effect: 'solid', params: { color: '#ff0000' }, fadeIn: 0, fadeOut: 0 }],
 }
 const before = new Uint8Array(DMX_CHANNELS)
-for (const fixture of patch.fixtures.filter((f) => f.universe === 1)) {
+for (const fixture of battens.filter((f) => f.universe === 1)) {
   before[abs(fixture, 'tilt')] = 200
   before[abs(fixture, 'tiltFine')] = 100
   before[abs(fixture, 'zoom')] = 55
@@ -234,7 +297,7 @@ const map = {
   dimmerFine: TAMBORA_CHART.dimmerFine - 1,
   strobe: TAMBORA_CHART.strobe - 1,
 }
-const wall = patch.fixtures.filter((f) => f.group === 'wall-left').sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)))
+const wall = battens.filter((f) => f.group === 'wall-left').sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)))
 const outFixtures = wall
   .filter((f) => f.universe === 1)
   .map((fixture) => ({
@@ -247,7 +310,7 @@ const outFixtures = wall
 const touched = mergeUniverse(after, outFixtures, map, scene, 50)
 assert(touched, 'a solid scene over the whole wall must touch universe 1')
 
-for (const fixture of patch.fixtures.filter((f) => f.universe === 1)) {
+for (const fixture of battens.filter((f) => f.universe === 1)) {
   assert(after[abs(fixture, 'red')] === 255, `${fixture.id} must be painted red`)
   assert(after[abs(fixture, 'green')] === 0, `${fixture.id} green must be off`)
   assert(after[abs(fixture, 'white')] === 0, `${fixture.id} white must fade out of the way`)
@@ -268,8 +331,8 @@ assert(untouched.every((byte, i) => byte === before[i]), 'no scene must leave th
 // real DMX value: one end of the tilt travel, a closed shutter, black. Anything
 // reading a frame must be able to tell "nothing is being sent" from "everything
 // is at zero", or it will confidently draw a rig that is switched off.
-const listener = new ArtnetListener([1, 2, 3, 4])
-for (const universe of [1, 2, 3, 4]) {
+const listener = new ArtnetListener([1, 2, 3, 4, 5, 6, 7, 8])
+for (const universe of [1, 2, 3, 4, 5, 6, 7, 8]) {
   assert(!listener.isActive(universe), `universe ${universe} must be inactive before a single packet`)
   assert(listener.getBuffer(universe).every((byte) => byte === 0), `universe ${universe} starts at zero`)
 }

@@ -170,7 +170,14 @@ export class ArtnetOutput {
   applyPatch(patch: Patch): void {
     this.fixtures.clear()
     this.buffers.clear()
-    const type = patch.fixtureTypes[patch.fixtures[0]?.type ?? '']
+    // Only the walls, and only the model they are made of. This used to read
+    // the first fixture's type and apply its channel map to the whole rig,
+    // which was correct while the rig was one model and would put a Tambora's
+    // channel numbers on a moving head now that it is not. Nothing outside
+    // patch.groups can be written to by this software, which is the right
+    // default for every family whose chart nobody has confirmed.
+    const walls = patch.fixtures.filter((fixture) => patch.groups.includes(fixture.group))
+    const type = patch.fixtureTypes[walls[0]?.type ?? '']
     const pixels = type?.pixels ?? 16
     const standard = type?.standardMap ?? {}
     this.map = {
@@ -184,8 +191,8 @@ export class ArtnetOutput {
     }
 
     for (const group of patch.groups) {
-      const wall = patch.fixtures
-        .filter((f) => f.group === group)
+      const wall = walls
+        .filter((f) => f.group === group && f.type === walls[0]?.type)
         .sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10))
       wall.forEach((fixture, index) => {
         const list = this.fixtures.get(fixture.universe) ?? []
