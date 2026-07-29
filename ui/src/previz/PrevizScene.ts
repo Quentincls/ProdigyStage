@@ -121,6 +121,24 @@ export const previzStats = {
   lastFrameAt: 0,
 }
 
+const OTHERS_KEY = 'lumenstage.showOtherFixtures'
+
+export function showOthers(): boolean {
+  try {
+    return localStorage.getItem(OTHERS_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+export function setShowOthers(on: boolean): void {
+  try {
+    localStorage.setItem(OTHERS_KEY, on ? 'on' : 'off')
+  } catch {
+    // Storage refused: the choice simply will not be remembered.
+  }
+}
+
 export function readAim(): number {
   try {
     const stored = Number(localStorage.getItem(AIM_KEY))
@@ -566,6 +584,14 @@ export class PrevizScene {
    * as a rig rather than as seventy identical cubes.
    */
   private buildOthers(patch: Patch): void {
+    // Off draws the battens and nothing else -- the rig exactly as it was
+    // before the plot was extended. It exists so the question "is it the new
+    // fixtures?" can be answered in two seconds on the machine where it
+    // actually happens, instead of guessed at on one where it does not.
+    if (!showOthers()) {
+      this.others = []
+      return
+    }
     this.others = patch.fixtures.filter((fixture) => {
       const profile = patch.fixtureTypes[fixture.type]
       return profile !== undefined && kindOf(profile) !== 'batten'

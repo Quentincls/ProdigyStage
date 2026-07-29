@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Patch } from '../patch'
 import { LightPicker } from './LightPicker'
-import { MAX_AIM, PrevizScene, readAim, VIEWS } from './PrevizScene'
+import { MAX_AIM, PrevizScene, readAim, setShowOthers, showOthers, VIEWS } from './PrevizScene'
 
 interface PrevizProps {
   patch: Patch
@@ -22,6 +22,7 @@ export default function Previz({ patch, selection, onPick, onSelect }: PrevizPro
   // Mirrors the scene's camera so the corner buttons can show which one is on.
   const [activeView, setActiveView] = useState(1)
   const [aim, setAim] = useState(readAim)
+  const [others, setOthers] = useState(showOthers)
 
   useEffect(() => {
     const container = containerRef.current!
@@ -99,6 +100,22 @@ export default function Previz({ patch, selection, onPick, onSelect }: PrevizPro
             onHover={onHover}
           />
         )}
+        <button
+          className={`previz-view ${others ? 'active' : ''}`}
+          title={
+            others
+              ? 'Drawing every fixture in the plot. Turn off to draw the battens only.'
+              : 'Drawing the battens only. Turn on to draw the whole plot.'
+          }
+          onClick={() => {
+            const next = !others
+            setOthers(next)
+            setShowOthers(next)
+            sceneRef.current?.applyPatch(patch)
+          }}
+        >
+          {others ? 'Full rig' : 'Battens only'}
+        </button>
         <label className="previz-aim" title="Where the battens point when the console is silent">
           <span className="previz-aim-label">Aim</span>
           <input
