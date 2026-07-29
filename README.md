@@ -70,6 +70,17 @@ on site — plays those scenes on the real fixtures as a man-in-the-middle.
       on a show day, falls back to the rules and nothing downstream can tell.
       The key lives in `data/direction.json` (never committed) or in
       `ANTHROPIC_API_KEY`.
+- [x] **The whole rig, phases 1–3 (2026-07-29).** The plot is no longer 32
+      battens: 70 fixtures across eight universes, from the official patch
+      list. `core/fixtures.ts` became the one place that knows what a DMX
+      channel means — bytes in, normalised state out — and the previz was
+      migrated onto it and photographed before and after against a fixed
+      console frame: zero pixels differ. Families whose channel chart is not in
+      the lighting document (Blinded1, Perseo, X Frame, B Panel) are
+      registered, addressed, and read as **unknown** rather than as a fixture
+      sitting at zero; nothing outside the two walls can be painted by a scene
+      or written to by this software. See
+      [docs/pipeline.md](docs/pipeline.md).
 - [x] **UX/UI passes (evening of 2026-07-27)** — previz framed on the rig with
       haze sheets and halos, transport controls (pause / local playback /
       LIVE), 31 built-in looks, a real hierarchy in the scene panel, Watch
@@ -101,8 +112,13 @@ target means nothing leaves the machine. That is the state the client receives.
    however well directed, never turns a fixture. Movement in the engine
    (tilt as an effect parameter, then output writing channels 9–10) is the
    next thing that changes what the room actually does.
-5. **Phase 7, the rest** — production comfort: headless multi-station,
-   universes 5–8, volumetric beams, shadow mode.
+5. **The rig, phases 4–7 of the brief**: draw the new families in the viewport,
+   WYSIWYG selection and logical groups, a contextual inspector, Light Layers on
+   the timeline, and 3D beam targeting. Blocked on nothing except the channel
+   charts — a Debug view comparing raw and normalised values against the real
+   console is how those get filled in.
+6. **Phase 7, the rest** — production comfort: headless multi-station,
+   volumetric beams, shadow mode.
 
 ## Phase 6 test bench (no rig, no console)
 
@@ -150,6 +166,8 @@ http://localhost:4480.
 
 - `/core` — shared deterministic effect engine, an npm workspace consumed by
   both the browser previz and the server output. Pure TS, zero dependencies.
+  `fixtures.ts` is the one place that knows what a DMX channel means: bytes in,
+  normalised fixture state out, so nothing above it says "channel 7".
   `vocabulary.ts` holds the words Compose thinks in (palettes, moods, movement,
   density, look families) and the numbers they become — shared because the
   server composes with them and the interface offers them, and a colour table
@@ -159,8 +177,11 @@ http://localhost:4480.
   `direction.ts` is the only module that talks to anything outside this
   machine, and only when a key has been configured.
 - `/ui` — 3D previz, timeline, scene editor, DMX monitor.
-- `/data/patch.json` — the whole rig as data, hot-reloadable. Generated from
-  the official patch list (checked against the lighting PDF, pp. 28–29).
+- `/data/patch.json` — the whole rig as data, hot-reloadable, generated from
+  the official patch list (checked against the lighting PDF, pp. 28–29): 70
+  fixtures across eight universes. Families whose channel chart is not in that
+  document carry no channel map and read as *unknown* rather than as a fixture
+  sitting at zero — see [docs/pipeline.md](docs/pipeline.md).
 - `/data/music` — the show's audio, read but never modified, and never
   committed: it is the client's material and it is measured in hundreds of
   megabytes. WAV only, streamed to the browser with byte ranges so the player

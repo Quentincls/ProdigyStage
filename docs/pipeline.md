@@ -1,13 +1,21 @@
-# Le pipeline console → écran (état avant extension du rig)
+# Le pipeline console → écran
 
-Document de la **Phase 1** de l'extension au parc complet de PRODIGY 12 :
-comment une valeur DMX voyage aujourd'hui de la console jusqu'au pixel affiché,
-et **où exactement le code suppose qu'il n'existe qu'un seul type de machine**.
+Comment une valeur DMX voyage de la console jusqu'au pixel affiché, et ce que
+chaque couche a le droit de savoir.
 
-Rien n'a été modifié pour écrire ce document. Le filet de sécurité qui
-l'accompagne est `server/src/pipeline-selftest.ts` (`npm run test:pipeline`,
-inclus dans `npm test`) : 204 assertions qui figent le comportement Tambora
-actuel. Vérifié en cassant volontairement le patch — le test échoue.
+Deux filets, tous deux dans `npm test` :
+
+- `server/src/pipeline-selftest.ts` — 375 assertions sur le trajet d'un octet,
+  toutes dérivées de `data/patch.json` et du document lumière, jamais du code
+  testé. Vérifié en cassant volontairement le patch : le test échoue et nomme
+  le problème.
+- `server/src/fixtures-selftest.ts` — 45 assertions sur l'arithmétique
+  DMX → état, avec des valeurs calculées à la main d'après la formule et non
+  relevées sur le code, pour qu'il ne puisse pas se donner raison tout seul.
+
+**État : phases 1 à 3 du brief faites.** Les 70 machines du plot sont dans le
+patch, les 8 univers sont écoutés, la traduction octets → état est partagée.
+Le previz ne dessine encore que les battens (phase 4).
 
 ## 1. Le trajet d'un octet
 
@@ -15,7 +23,7 @@ actuel. Vérifié en cassant volontairement le patch — le test échoue.
 console ChamSys
    │  ArtDMX / ArtTimeCode, UDP 6454
    ▼
-listener.ts            parse, 4 buffers de 512 octets, stats, fenêtre d'activité 2 s
+listener.ts            parse, 8 buffers de 512 octets, stats, fenêtre d'activité 2 s
    │                   onRaw  → recorder.ts    (enregistrement brut)
    │                   onFrame→ output.ts      (Phase 6, muette par défaut)
    ▼
@@ -24,6 +32,8 @@ index.ts               encodeFrame() : une trame binaire v2 toutes les 25 ms
    ▼  WebSocket :4480
 feed.ts (UI)           universes: Map<number, Uint8Array>, active: Map<number, boolean>
    │                   version++ à chaque trame
+   ▼
+core/fixtures.ts       readFixture()   → état normalisé, une fois par machine
    ▼
 PrevizScene.ts         updateColors()  → couleur de chaque pixel
                        updateTilt()    → orientation de chaque barre
@@ -39,7 +49,8 @@ La console numérote à partir de 1, Art-Net à partir de 0.
 `SHOW_TO_ARTNET_OFFSET = -1` dans `artnet.ts` est le seul endroit qui le sait.
 Confirmé sur l'enregistrement réel : les Tambora sortent sur les port-addresses
 0–3. La console émet aussi 4–15 (le reste du rig) — comptées dans `otherPps`
-puis jetées, parce que `ArtnetListener` n'a que quatre buffers.
+puis jetées, parce que `ArtnetListener` n'avait que quatre buffers. Il en a
+huit depuis la phase 3, et les port-addresses 8–15 restent hors périmètre.
 
 ### Silence ≠ zéro
 
@@ -58,12 +69,23 @@ et pointait tous les battens à 110° du niveau, console éteinte. Corrigé le
 | carte des canaux (RGBW, dimmer, tilt…) | `data/patch.json` → `standardMap` | données |
 | 61 canaux, 16 pixels, pixelStart 14 | `data/patch.json` → `fixtureTypes` | données |
 | course de tilt 220°, sens | `data/patch.json` → `tiltRangeDeg`, `tiltInvert` | données |
-| **comment lire ces canaux** | `PrevizScene.updateColors()` | **code** |
+| famille / adaptateur | `data/patch.json` → `kind` | données |
+| **comment lire ces canaux** | `core/fixtures.ts` → `readFixture()` | **code, un seul endroit** |
 | **comment écrire ces canaux** | `output.ts` → `mergeUniverse()` | **code** |
 
-Les deux dernières lignes sont le sujet de la Phase 2 : la traduction
-octets → état est écrite deux fois, dans deux langages d'intention différents,
-et aucune des deux n'est testable isolément.
+La lecture est passée dans `/core` (phase 2) : le previz demande à une machine
+sa couleur et l'angle de sa lyre, plus jamais « le canal 7 ». Migration prouvée
+neutre — même trame console figée, previz photographié avant/après, **0 pixel
+de différence sur 960 000**. L'écriture reste à part et le restera tant que la
+Phase 6 n'est pas mise en service : elle ne touche que les battens.
+
+Deux règles que cette couche existe pour tenir :
+
+1. **Une machine dont on n'a pas le chart lit `known: false`**, jamais des
+   zéros. Le document lumière donne les adresses et les modes, pas la
+   disposition des canaux à l'intérieur d'un mode.
+2. **Le silence n'est pas une donnée.** Un univers que personne n'envoie arrive
+   plein de zéros, et zéro est une vraie valeur DMX.
 
 ### Lecture — `PrevizScene.updateColors()`
 
@@ -100,31 +122,25 @@ et nappe de brume sont posés depuis une seule matrice (`poseFixture`).
 ouverts, **tilt et zoom jamais touchés** (la console garde le mouvement).
 Inerte sans `data/output.json`.
 
-## 3. Ce qui casse dès la deuxième famille
+## 3. Les six pièges de la deuxième famille
 
-Trouvé en lisant, pas en supposant :
+Trouvés en lisant le code, pas en supposant. Trois sont désarmés, trois
+restent.
 
-1. **`output.ts:173`** — `patch.fixtureTypes[patch.fixtures[0].type]` : *la
-   première machine du patch décide de la carte des canaux de tout le rig*.
-   Avec un seul modèle c'est correct ; avec six, la carte Tambora serait
-   appliquée à un Perseo.
-2. **`ArtnetListener`** n'alloue que les univers passés au constructeur —
-   `SHOW_UNIVERSES = [1,2,3,4]` dans `index.ts`. Les univers 5–8 sont reçus,
-   comptés, jetés.
-3. **La trame binaire v2** encode `SHOW_UNIVERSES.length` univers. Passer à 8
-   double sa taille (4 KB à 40 Hz) — à mesurer, pas à supposer.
-4. **`PrevizScene`** dessine une seule géométrie (une barre + 16 pixels) pour
-   tout le monde, et `wallPos` suppose que chaque groupe est une ligne
-   continue. Un Perseo n'est ni une ligne ni un mur.
-5. **`patch.groups`** sert à deux choses à la fois : le câblage physique
-   (mur gauche / mur droit) et la cible d'un effet (`target: 'left' | 'right' |
-   'both'`). Les groupes logiques du brief (§7) sont une troisième notion, à
-   ne pas confondre avec ces deux-là.
-6. **`sceneRules.ts` / le moteur `/core`** raisonnent en position normalisée le
-   long d'un mur. Une famille ponctuelle (4 Perseo) demandera une autre notion
-   de position.
+| | Piège | État |
+| --- | --- | --- |
+| 1 | `output.ts` prenait `fixtureTypes[fixtures[0].type]` et appliquait cette carte de canaux à **tout le rig** | **corrigé** — il ne regarde que `patch.groups`, donc que les murs |
+| 2 | `ArtnetListener` n'allouait que 4 univers ; 5–8 étaient reçus puis jetés | **corrigé** — les 8 sont écoutés |
+| 3 | `target: 'both'` signifiait « tous les groupes du rig » | **corrigé** — signifie les deux murs |
+| 4 | La trame binaire encode `SHOW_UNIVERSES.length` univers : 8 au lieu de 4 double sa taille (≈4 Ko à 40 Hz) | à mesurer sur la machine du client |
+| 5 | `PrevizScene` ne dessine qu'une géométrie (barre + 16 pixels) ; `wallPos` suppose une ligne continue | phase 4 — pour l'instant le previz **filtre** sur `kind === 'batten'` |
+| 6 | `patch.groups` sert déjà à deux choses (câblage physique **et** cible d'effet) ; les groupes logiques du brief §7 en seraient une troisième | à trancher avant les Light Layers |
 
-## 4. Ce que le filet de sécurité fige
+Le garde-fou qui tient les familles non chartées à l'écart : **rien hors de
+`patch.groups` ne peut être peint par une scène ni écrit par ce logiciel**, et
+le self-test l'affirme machine par machine.
+
+## 4. Ce que les filets figent
 
 `server/src/pipeline-selftest.ts`, dans l'ordre du trajet d'un octet :
 
@@ -141,6 +157,11 @@ Trouvé en lisant, pas en supposant :
    **laisse tilt et zoom intacts** ; sans scène, la trame ressort octet pour
    octet identique ;
 6. **le silence** — un univers sans paquet n'est jamais actif.
+
+Plus, depuis l'arrivée du plot complet : les 38 autres machines à leurs
+adresses, aucun chevauchement sur aucun des huit univers, aucune famille non
+chartée dans un groupe ciblable, et toute famille sans carte de canaux qui
+déclare au moins de quelle famille elle est.
 
 Les attentes viennent de `data/patch.json` et du document lumière, jamais du
 code testé : modifier le code fait échouer le test au lieu de le suivre.
