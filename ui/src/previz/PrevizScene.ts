@@ -816,7 +816,12 @@ export class PrevizScene {
     const box = new THREE.Box3()
     const point = new THREE.Vector3()
     for (const fixture of this.fixtures) box.expandByPoint(point.fromArray(fixture.position))
-    for (const fixture of this.others) box.expandByPoint(point.fromArray(fixture.position))
+    // Only the battens. The rest of the plot is drawn, and reaches far upstage
+    // -- framing on it shrank the walls to a corner of the screen, which reads
+    // as the room going dark rather than as the camera pulling back.
+    if (this.fixtures.length === 0) {
+      for (const fixture of this.others) box.expandByPoint(point.fromArray(fixture.position))
+    }
     if (this.fixtures.length + this.others.length === 0) {
       box.set(new THREE.Vector3(-8, 5, -6), new THREE.Vector3(8, 7, 6))
     }

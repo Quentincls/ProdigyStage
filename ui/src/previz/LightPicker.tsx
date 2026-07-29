@@ -10,7 +10,7 @@
 // what an effect can target -- and a third meaning on the same field is how a
 // small file becomes unreadable.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { kindOf } from '../../../core/fixtures'
 import type { Fixture, Patch } from '../patch'
 
@@ -77,7 +77,7 @@ export function LightPicker({
 }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
-  const groups = lightGroups(patch)
+  const groups = useMemo(() => lightGroups(patch), [patch])
 
   useEffect(() => {
     if (!open) return

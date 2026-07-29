@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Patch } from '../patch'
 import { LightPicker } from './LightPicker'
 import { MAX_AIM, PrevizScene, readAim, VIEWS } from './PrevizScene'
@@ -18,6 +18,7 @@ export default function Previz({ patch, selection, onPick, onSelect }: PrevizPro
   const sceneRef = useRef<PrevizScene | null>(null)
   const onPickRef = useRef(onPick)
   onPickRef.current = onPick
+  const onHover = useCallback((ids: string[]) => sceneRef.current?.setHover(ids), [])
   // Mirrors the scene's camera so the corner buttons can show which one is on.
   const [activeView, setActiveView] = useState(1)
   const [aim, setAim] = useState(readAim)
@@ -95,7 +96,7 @@ export default function Previz({ patch, selection, onPick, onSelect }: PrevizPro
             patch={patch}
             selection={selection}
             onSelect={onSelect}
-            onHover={(ids) => sceneRef.current?.setHover(ids)}
+            onHover={onHover}
           />
         )}
         <label className="previz-aim" title="Where the battens point when the console is silent">

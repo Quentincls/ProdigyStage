@@ -12,7 +12,14 @@
 // fader on the console and watching which number moves here.
 
 import { useEffect, useState } from 'react'
-import { capabilitiesOf, kindOf, litColour, readFixture, type Capability } from '../../core/fixtures'
+import {
+  blankState,
+  capabilitiesOf,
+  kindOf,
+  litColour,
+  readFixture,
+  type Capability,
+} from '../../core/fixtures'
 import { feed } from './feed'
 import type { Fixture, Patch } from './patch'
 
@@ -40,7 +47,9 @@ export function FixtureInspector({
   // through React state: nothing here should make the previz re-render.
   const [, tick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => tick((n) => n + 1), 120)
+    // Fast enough to read as live, slow enough that the viewport keeps the
+    // frame budget. This panel is never the thing you are watching.
+    const id = setInterval(() => tick((n) => n + 1), 200)
     return () => clearInterval(id)
   }, [])
 
@@ -138,6 +147,7 @@ function LiveState({
   capabilities: Capability[]
 }) {
   const colour: [number, number, number] = [0, 0, 0]
+  const scratch = blankState()
   let intensity = 0
   let tilt = 0
   let tilts = 0
@@ -151,6 +161,7 @@ function LiveState({
       feed.universes.get(fixture.universe) ?? null,
       fixture.address - 1,
       feed.active.get(fixture.universe) === true,
+      scratch,
     )
     if (!state.known) continue
     live++

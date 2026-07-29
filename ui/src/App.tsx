@@ -445,7 +445,7 @@ export default function App() {
             {/* What is selected in the room, and what it is doing. Never in
                 Compose: there the room is showing a proposal, and a fixture's
                 live state is not part of that conversation. */}
-            {mode !== 'compose' && tool !== 'placement' && selection.length > 0 && (
+            {mode !== 'compose' && tool === null && !selectedSceneId && selection.length > 0 && (
               <FixtureInspector
                 patch={patch}
                 selection={selection}
