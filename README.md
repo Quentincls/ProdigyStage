@@ -130,7 +130,7 @@ npm run dev            # server (watch, web on 4480) + Vite UI on http://localho
 npm run fake-show      # Art-Net test generator -> 127.0.0.1:6454, universes 1-4 + 25 fps timecode
 npm run replay -- data/recordings/run-XXX.artrec  # replays a recorded run
 npm run generate-patch # regenerates data/patch.json from scripts/generate-patch.mjs
-npm test               # /core engine + Phase 6 output + Phase 7 audio self-tests
+npm test               # /core engine + console pipeline + Phase 6 output + Phase 7 audio
 npm run build          # builds core + server (tsc) + UI (vite)
 npm run package        # produces dist-package/LumenStage-Previz-v3.zip (Windows + Mac)
 ```
@@ -170,8 +170,10 @@ http://localhost:4480.
   means the feature is simply not offered.
 - `/scripts` — patch generator, double-click launchers, packaging.
 - `/docs` — conventions and architecture
-  ([docs/architecture.md](docs/architecture.md), in French), plus the client
-  guide shipped inside the zip (`docs/client/README.html`, in English).
+  ([docs/architecture.md](docs/architecture.md), in French),
+  [docs/pipeline.md](docs/pipeline.md) (how a DMX byte travels from the console
+  to a pixel, and every place the code still assumes one fixture type), plus
+  the client guide shipped inside the zip (`docs/client/README.html`).
 
 ## Roadmap
 

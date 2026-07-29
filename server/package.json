@@ -9,7 +9,8 @@
     "fake-show": "tsx src/fake-show.ts",
     "replay": "tsx src/replay-cli.ts",
     "test:output": "tsx src/output-selftest.ts",
-    "test:audio": "tsx src/audio-selftest.ts"
+    "test:audio": "tsx src/audio-selftest.ts",
+    "test:pipeline": "tsx src/pipeline-selftest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
