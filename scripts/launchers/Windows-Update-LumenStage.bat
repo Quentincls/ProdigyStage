@@ -47,6 +47,13 @@ copy /y "%TMP_DIR%\LumenStage\README.html" README.html >nul
 if exist "%TMP_DIR%\LumenStage\version.txt" copy /y "%TMP_DIR%\LumenStage\version.txt" version.txt >nul
 if not exist data mkdir data
 for %%f in ("%TMP_DIR%\LumenStage\data\*") do if not exist "data\%%~nxf" copy "%%f" data\ >nul
+rem One exception, and it is the whole point of that file. patch.json belongs to
+rem the operator and is never touched; patch.reference.json is this build's own
+rem statement of what it knows about the rig, so it must always be the new one.
+rem Left alone, an install that updated once would keep an old build's fixture
+rem knowledge for ever -- new channel charts, beam angles and capabilities would
+rem download and then never arrive.
+if exist "%TMP_DIR%\LumenStage\data\patch.reference.json" copy /y "%TMP_DIR%\LumenStage\data\patch.reference.json" data\ >nul
 
 rem Launchers gained a Mac-/Windows- prefix: drop the old unprefixed names so
 rem Explorer never shows two files with the same visible name. Never delete

@@ -48,6 +48,13 @@ main() {
   for f in "$tmp/new/LumenStage/data/"*; do
     [ -e "data/$(basename "$f")" ] || cp "$f" data/
   done
+  # One exception, and it is the whole point of that file. patch.json belongs
+  # to the operator and is never touched; patch.reference.json is this build's
+  # own statement of what it knows about the rig, so it must always be the new
+  # one. Left alone, an install that updated once would keep an old build's
+  # fixture knowledge for ever -- new channel charts, beam angles and
+  # capabilities would download and then never arrive.
+  cp "$tmp/new/LumenStage/data/patch.reference.json" data/patch.reference.json 2>/dev/null || true
   # Launchers gained a Mac-/Windows- prefix: drop the old unprefixed names so
   # the folder never shows two files with the same visible name. Deleting the
   # script we are running from is safe on macOS -- it is already open.
