@@ -20,6 +20,7 @@
 import {
   blankState,
   capabilitiesOf,
+  kindOf,
   litColour,
   readFixture,
   readPixel,
@@ -142,6 +143,29 @@ const UNDOCUMENTED: FixtureProfile = { name: 'Ayrton Perseo Beam', kind: 'moving
 const blind = readFixture(UNDOCUMENTED, dmx, 40, true)
 assert(!blind.known, 'a profile with no channel map must read as unknown')
 assert(capabilitiesOf(UNDOCUMENTED).length === 0, 'an uncharted profile advertises no controls')
+
+// ----- a patch written before `kind` existed ---------------------------------
+// Updating the software never touches data/, so every install is still running
+// the patch it was shipped with -- and that patch has no `kind`, because the
+// field did not exist yet. Requiring it turned every batten into a fixture the
+// previz did not recognise, which emptied the rig, which crashed the page. An
+// old patch has to keep working, and this is where that is decided.
+const LEGACY: FixtureProfile = {
+  name: 'Clay Paky Tambora Batten',
+  footprint: 61,
+  pixels: 16,
+  pixelStart: 14,
+  tiltRangeDeg: 220,
+  standardMap: TAMBORA.standardMap,
+}
+assert(LEGACY.kind === undefined, 'the legacy profile must have no kind, that is the point')
+assert(kindOf(LEGACY) === 'batten', 'a profile with a pixel zone is a batten whether or not it says so')
+assert(kindOf({ name: 'x', footprint: 1 }) === 'unknown', 'a profile with nothing to go on is unknown')
+assert(kindOf({ name: 'x', footprint: 1, kind: 'fog' }) === 'fog', 'a declared kind wins')
+const legacyState = readFixture(LEGACY, dmx, base, true)
+assert(legacyState.known, 'a legacy Tambora must still be readable')
+close(legacyState.intensity, 32768 / 65535, 1e-9, 'a legacy Tambora reads the same dimmer')
+assert(capabilitiesOf(LEGACY).includes('tilt'), 'a legacy Tambora still tilts')
 
 // ----- capabilities are read off the chart, not assumed ----------------------
 const tamboraCaps = capabilitiesOf(TAMBORA)

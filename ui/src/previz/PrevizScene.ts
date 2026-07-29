@@ -13,6 +13,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { activeScene, renderScenePixel } from '../../../core/effects'
 import {
   blankState,
+  kindOf,
   litColour,
   readFixture,
   type FixtureProfile,
@@ -235,7 +236,7 @@ export class PrevizScene {
     this.fixtures.forEach((fixture, index) => {
       this.bars!.setColorAt(index, this.selected.has(fixture.id) ? BAR_SELECTED_COLOR : BAR_BASE_COLOR)
     })
-    this.bars.instanceColor!.needsUpdate = true
+    if (this.bars.instanceColor) this.bars.instanceColor.needsUpdate = true
   }
 
   // ----- static scenery ---------------------------------------------------
@@ -307,9 +308,10 @@ export class PrevizScene {
     // would be worse than not drawing it: the viewport's job is to be true.
     // Their own geometry comes next; until then the room looks exactly as it
     // did, which is the point of adding them in this order.
-    this.fixtures = patch.fixtures.filter(
-      (fixture) => patch.fixtureTypes[fixture.type]?.kind === 'batten',
-    )
+    this.fixtures = patch.fixtures.filter((fixture) => {
+      const profile = patch.fixtureTypes[fixture.type]
+      return profile !== undefined && kindOf(profile) === 'batten'
+    })
     this.measureRig()
 
     const type = patch.fixtureTypes[this.fixtures[0]?.type ?? '']
@@ -576,7 +578,7 @@ export class PrevizScene {
       sums[o + 1] += g
       sums[o + 2] += b
     })
-    this.pixels.instanceColor!.needsUpdate = true
+    if (this.pixels.instanceColor) this.pixels.instanceColor.needsUpdate = true
 
     const perFixture = this.pixelSlots.length / Math.max(1, fixtureCount)
     for (let f = 0; f < fixtureCount; f++) {
@@ -591,7 +593,7 @@ export class PrevizScene {
       this.halos?.setColorAt(f, color)
       this.beams?.setColorAt(f, color)
     }
-    this.glows.instanceColor!.needsUpdate = true
+    if (this.glows.instanceColor) this.glows.instanceColor.needsUpdate = true
     if (this.halos?.instanceColor) this.halos.instanceColor.needsUpdate = true
     if (this.beams?.instanceColor) this.beams.instanceColor.needsUpdate = true
   }

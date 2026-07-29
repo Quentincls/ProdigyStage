@@ -132,9 +132,26 @@ export const CAPABILITIES: Record<FixtureKind, Capability[]> = {
   unknown: [],
 }
 
+/**
+ * Which family a profile belongs to.
+ *
+ * `kind` was added when the plot grew past one model, so every patch written
+ * before that has none -- including the one sitting in every install right
+ * now, because updating the software deliberately never touches `data/`. A
+ * profile with a pixel zone is a batten whether or not anyone said so, and
+ * inferring that here is the difference between an old patch still working and
+ * an old patch drawing an empty room.
+ */
+export function kindOf(profile: FixtureProfile): FixtureKind {
+  if (profile.kind) return profile.kind
+  if ((profile.pixels ?? 0) > 0 && profile.pixelStart !== undefined) return 'batten'
+  return 'unknown'
+}
+
 export function capabilitiesOf(profile: FixtureProfile): Capability[] {
-  if (!profile.standardMap || !profile.kind) return []
-  const declared = CAPABILITIES[profile.kind] ?? []
+  const kind = kindOf(profile)
+  if (!profile.standardMap || kind === 'unknown') return []
+  const declared = CAPABILITIES[kind] ?? []
   const map = profile.standardMap
   return declared.filter((capability) => {
     switch (capability) {
@@ -229,7 +246,7 @@ export function readFixture(
   // and neither may be reported as a fixture sitting at zero.
   if (!map || !dmx || !live) return out
 
-  switch (profile.kind ?? 'unknown') {
+  switch (kindOf(profile)) {
     case 'batten':
     case 'movinghead':
     case 'blinder':
