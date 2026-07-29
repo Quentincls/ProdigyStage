@@ -58,11 +58,6 @@ const BODY_SIZE: Record<string, [number, number, number]> = {
   unknown: [0.3, 0.3, 0.3],
 }
 
-/** Device pixels per CSS pixel, capped. See the note where it is applied. */
-const MAX_PIXEL_RATIO = 1.5
-/** The bloom chain runs at this fraction of the viewport. */
-const BLOOM_SCALE = 0.5
-
 const DEFAULT_VIEW = 1
 const FRAME_MARGIN = 1.18
 const BEAM_LENGTH = 7
@@ -147,7 +142,6 @@ export class PrevizScene {
   private camera: THREE.PerspectiveCamera
   private controls: OrbitControls
   private composer: EffectComposer
-  private bloom: UnrealBloomPass | null = null
   private raycaster = new THREE.Raycaster()
 
   private fixtureGroup = new THREE.Group()
@@ -205,13 +199,7 @@ export class PrevizScene {
 
   constructor(canvas: HTMLCanvasElement, patch: Patch) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
-    // Fill rate is what this viewport costs, and the composer pays it several
-    // times over: the render target, then every mip of the bloom. At device
-    // ratio 2 on a large window that is tens of millions of pixels a frame,
-    // which is why the previz can be doing 0.2 ms of JavaScript and still not
-    // reach thirty frames. 1.5 is the point where the difference stops being
-    // visible on a dark scene and the cost is nearly halved.
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, MAX_PIXEL_RATIO))
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
     // Not flat black: pure black made the room a hole in the screen, with no
     // sense of depth behind the rig. A barely-lifted centre falling back to
     // black at the edges reads as air in a dark venue, and still leaves the
@@ -242,13 +230,7 @@ export class PrevizScene {
     this.composer.addPass(new RenderPass(this.scene, this.camera))
     // Restrained: the haze below carries the light now, so the bloom only has
     // to soften the emitters instead of blowing them out.
-    // Bloom runs on its own chain of downsampled targets, so it is the one
-    // pass whose resolution can be cut without the image telling on you: a
-    // glow is low-frequency by definition.
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.85, 0.55, 0.2)
-    bloom.resolution.set(1, 1)
-    this.bloom = bloom
-    this.composer.addPass(bloom)
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.85, 0.55, 0.2))
     this.composer.addPass(new OutputPass())
 
     canvas.addEventListener('pointerdown', this.onPointerDown)
@@ -911,9 +893,6 @@ export class PrevizScene {
     if (width === 0 || height === 0) return
     this.renderer.setSize(width, height, false)
     this.composer.setSize(width, height)
-    // Half resolution for the glow. It is blurred to nothing anyway, and it
-    // quarters the most expensive pass in the frame.
-    this.bloom?.resolution.set(Math.max(1, width * BLOOM_SCALE), Math.max(1, height * BLOOM_SCALE))
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
     // Keep the rig framed as the window changes -- unless the operator has
