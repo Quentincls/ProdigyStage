@@ -3,6 +3,7 @@ import { defaultParams } from '../../core/effects'
 import { backToLive, editor, isTimeOverridden, startPreview } from './editor'
 import { feed } from './feed'
 import { ComposeDock, ComposeInspector, enterCompose } from './Compose'
+import { FixtureInspector } from './FixtureInspector'
 import { composeStore } from './compose'
 import Diagnostics from './Diagnostics'
 import Monitor from './Monitor'
@@ -405,9 +406,20 @@ export default function App() {
           <>
             <Previz
               patch={patch}
-              selection={tool === 'placement' ? selection : []}
-              onPick={(id) => {
-                if (tool === 'placement') setSelection(id ? [id] : [])
+              selection={selection}
+              onSelect={setSelection}
+              onPick={(id, add) => {
+                if (id === null) {
+                  setSelection([])
+                } else if (add) {
+                  // Shift adds and removes: the same click on a chosen light
+                  // takes it back out, which is what every editor does.
+                  setSelection((current) =>
+                    current.includes(id) ? current.filter((each) => each !== id) : [...current, id],
+                  )
+                } else {
+                  setSelection([id])
+                }
               }}
             />
             {tool === 'placement' && (
@@ -430,6 +442,17 @@ export default function App() {
               <Diagnostics patch={patch} show={show} onClose={() => setTool(null)} />
             )}
             {mode === 'compose' && <ComposeInspector />}
+            {/* What is selected in the room, and what it is doing. Never in
+                Compose: there the room is showing a proposal, and a fixture's
+                live state is not part of that conversation. */}
+            {mode !== 'compose' && tool !== 'placement' && selection.length > 0 && (
+              <FixtureInspector
+                patch={patch}
+                selection={selection}
+                onSelect={setSelection}
+                onClose={() => setSelection([])}
+              />
+            )}
             {mode === 'edit' && selectedSceneId && show && (
               <SceneEditor
                 show={show}

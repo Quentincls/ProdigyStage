@@ -2453,3 +2453,177 @@ select:focus {
   line-height: 1.55;
   color: var(--text-dim);
 }
+
+/* ====================================================== THE LIGHT PICKER ====
+   Secondary to the viewport, so it lives with the camera buttons and looks
+   like them. Hovering a family lights it in the room; that is the point. */
+
+.light-picker {
+  position: relative;
+}
+
+.light-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px;
+  background: rgba(var(--surface-rgb), 0.97);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.65);
+  z-index: 6;
+}
+
+.light-menu-rule {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+.light-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 9px;
+}
+
+.light-item:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.light-item.on {
+  color: var(--text);
+}
+
+.light-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.light-item-count {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* ==================================================== FIXTURE INSPECTOR ====
+   Built from what the fixture can do, never from a list of channels -- except
+   for the raw grid, which exists precisely so a missing chart can be written. */
+
+.fixture-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fixture-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 8px;
+}
+
+.fixture-row:hover {
+  background: var(--panel-2);
+}
+
+.fixture-row-id {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  min-width: 44px;
+}
+
+.fixture-row-where {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.live-bar {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  background: var(--panel-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.live-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--accent);
+  transition: width 110ms linear;
+}
+
+/* A tilt is a position either side of level, not an amount: it gets a mark on
+   a centred scale rather than a bar growing from the left. */
+.live-bar-fill.centred {
+  width: 2px;
+  border-radius: 1px;
+  transition: left 110ms linear;
+}
+
+.live-swatch {
+  flex: 1;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+}
+
+.raw-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.raw-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 2px;
+  border-radius: 3px;
+  background: var(--panel-2);
+}
+
+.raw-cell.on {
+  background: rgba(var(--accent-rgb), 0.16);
+}
+
+.raw-ch {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.raw-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.raw-cell.on .raw-value {
+  color: var(--text);
+}

@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Patch } from '../patch'
+import { LightPicker } from './LightPicker'
 import { MAX_AIM, PrevizScene, readAim, VIEWS } from './PrevizScene'
 
 interface PrevizProps {
   patch: Patch
   selection: string[]
-  onPick: (fixtureId: string | null) => void
+  onPick: (fixtureId: string | null, add: boolean) => void
+  /** Present in the modes where lights are chosen, absent where the viewport
+   *  is only there to be looked at. */
+  onSelect?: (ids: string[]) => void
 }
 
-export default function Previz({ patch, selection, onPick }: PrevizProps) {
+export default function Previz({ patch, selection, onPick, onSelect }: PrevizProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sceneRef = useRef<PrevizScene | null>(null)
@@ -21,7 +25,7 @@ export default function Previz({ patch, selection, onPick }: PrevizProps) {
   useEffect(() => {
     const container = containerRef.current!
     const scene = new PrevizScene(canvasRef.current!, patch)
-    scene.onPick = (id) => onPickRef.current(id)
+    scene.onPick = (id, add) => onPickRef.current(id, add)
     sceneRef.current = scene
 
     const observer = new ResizeObserver(() => {
@@ -86,6 +90,14 @@ export default function Previz({ patch, selection, onPick }: PrevizProps) {
             here -- but a room lit by lights pointing somewhere they are not is
             worse than no previz at all. */}
         <span className="previz-sep" />
+        {onSelect && (
+          <LightPicker
+            patch={patch}
+            selection={selection}
+            onSelect={onSelect}
+            onHover={(ids) => sceneRef.current?.setHover(ids)}
+          />
+        )}
         <label className="previz-aim" title="Where the battens point when the console is silent">
           <span className="previz-aim-label">Aim</span>
           <input

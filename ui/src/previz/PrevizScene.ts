@@ -30,6 +30,7 @@ const ROOM = { length: 40, width: 15, height: 10 }
 // whenever the console goes dark looks broken, not dark.
 const BAR_BASE_COLOR = new THREE.Color('#242932')
 const BAR_SELECTED_COLOR = new THREE.Color('#2563ff')
+const BAR_HOVER_COLOR = new THREE.Color('#1c3a7a')
 
 // Views are directions, not positions: the distance is computed from the
 // actual rig bounding box and the viewport aspect, so the installation is
@@ -120,7 +121,10 @@ export function readAim(): number {
 }
 
 export class PrevizScene {
-  onPick: ((fixtureId: string | null) => void) | null = null
+  /** Second argument: the operator held shift, so this adds to the selection
+   *  rather than replacing it. The scene does not own the selection -- it only
+   *  reports what was clicked. */
+  onPick: ((fixtureId: string | null, add: boolean) => void) | null = null
 
   private renderer: THREE.WebGLRenderer
   private scene = new THREE.Scene()
@@ -159,6 +163,7 @@ export class PrevizScene {
   // a hanging fixture away from the room, not into it.
   private aim = (-readAim() * Math.PI) / 180
   private selected = new Set<string>()
+  private hovered = new Set<string>()
 
   private lastVersion = -1
   private lastEditorVersion = -1
@@ -254,7 +259,7 @@ export class PrevizScene {
         : hit.object === this.otherBodies
           ? (this.others[hit.instanceId]?.id ?? null)
           : (this.fixtures[hit.instanceId]?.id ?? null)
-    this.onPick(picked)
+    this.onPick(picked, event.shiftKey)
   }
 
   setSelection(ids: string[]): void {
@@ -262,17 +267,27 @@ export class PrevizScene {
     this.applySelectionTint()
   }
 
+  /** What the pointer is over somewhere else in the interface. Drawn like a
+   *  selection but dimmer, so pointing at a family in a menu shows you where
+   *  it is before you commit to it. */
+  setHover(ids: string[]): void {
+    this.hovered = new Set(ids)
+    this.applySelectionTint()
+  }
+
   private applySelectionTint(): void {
+    const tint = (id: string, resting: THREE.Color): THREE.Color =>
+      this.selected.has(id) ? BAR_SELECTED_COLOR : this.hovered.has(id) ? BAR_HOVER_COLOR : resting
     if (this.bars) {
       this.fixtures.forEach((fixture, index) => {
-        this.bars!.setColorAt(index, this.selected.has(fixture.id) ? BAR_SELECTED_COLOR : BAR_BASE_COLOR)
+        this.bars!.setColorAt(index, tint(fixture.id, BAR_BASE_COLOR))
       })
       if (this.bars.instanceColor) this.bars.instanceColor.needsUpdate = true
     }
     if (this.otherBodies) {
       const unread = new THREE.Color(UNREAD_COLOR)
       this.others.forEach((fixture, index) => {
-        this.otherBodies!.setColorAt(index, this.selected.has(fixture.id) ? BAR_SELECTED_COLOR : unread)
+        this.otherBodies!.setColorAt(index, tint(fixture.id, unread))
       })
       if (this.otherBodies.instanceColor) this.otherBodies.instanceColor.needsUpdate = true
     }
