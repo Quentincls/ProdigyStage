@@ -12,6 +12,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { activeScene, hexToRgb, type SceneSpec } from '../../core/effects'
+import { behaviorDef } from '../../core/behaviors'
+import type { LayerPart, LightLayer } from '../../core/layers'
 import {
   backToLive,
   editor,
@@ -37,6 +39,38 @@ interface TimelineProps {
   selectedSceneId: string | null
   onSelectScene: (id: string | null) => void
   onAddScene: (start: number) => void
+  /** The LIGHTS lane: which layer, and which part inside it, is selected. */
+  selectedLayerId: string | null
+  selectedPartId: string | null
+  onSelectLayer: (layerId: string | null, partId?: string | null) => void
+  /** What to call a layer part -- "Tambora", "Beams", "PB3". */
+  partLabel: (part: LayerPart) => string
+}
+
+/**
+ * How much room the LIGHTS lane needs: one row per layer track, plus the parts
+ * of whichever layer is open. Zero when there are no layers, so a show that
+ * does not use them loses no space to them.
+ */
+function lightsBand(
+  height: number,
+  count: number,
+  expanded: string | null,
+  layers: LightLayer[],
+): { height: number } {
+  if (count === 0) return { height: 0 }
+  const open = expanded ? layers.find((layer) => layer.id === expanded) : null
+  const rows = LIGHTS_ROW + (open ? open.parts.length * LIGHTS_PART_ROW + 4 : 0)
+  return { height: Math.min(Math.max(0, height - SCENE_TOP - 40), rows + LIGHTS_GAP + 4) }
+}
+
+/** A layer wears the colour of its first part, the way a scene wears its look's. */
+function layerTint(layer: LightLayer): string {
+  for (const part of layer.parts) {
+    const colour = part.params.color
+    if (typeof colour === 'string') return colour
+  }
+  return '#a78bfa'
 }
 
 const RULER_STEPS = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]
@@ -49,6 +83,12 @@ const SECTION_TOP = 30
 const SECTION_BOTTOM = 52
 const SCENE_TOP = 60
 const SCENE_BAND_MAX = 150
+// The LIGHTS lane sits under the scenes and takes what it needs, which is one
+// row when every layer is closed and one row per family when one is open. It is
+// never a track per fixture -- see core/layers.ts.
+const LIGHTS_GAP = 9
+const LIGHTS_ROW = 26
+const LIGHTS_PART_ROW = 19
 const EDGE_PX = 6
 // How close to the playhead counts as grabbing it. Matches the trim handles,
 // and is what makes the line itself draggable instead of the ruler only.
@@ -62,6 +102,10 @@ export default function Timeline({
   selectedSceneId,
   onSelectScene,
   onAddScene,
+  selectedLayerId,
+  selectedPartId,
+  onSelectLayer,
+  partLabel,
 }: TimelineProps) {
   countRender('Timeline')
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -125,6 +169,18 @@ export default function Timeline({
   selectedRef.current = selectedId
   const selectedSceneRef = useRef(selectedSceneId)
   selectedSceneRef.current = selectedSceneId
+  const layersRef = useRef(show.layers ?? [])
+  layersRef.current = show.layers ?? []
+  const selectedLayerRef = useRef(selectedLayerId)
+  selectedLayerRef.current = selectedLayerId
+  const selectedPartRef = useRef(selectedPartId)
+  selectedPartRef.current = selectedPartId
+  const onSelectLayerRef = useRef(onSelectLayer)
+  onSelectLayerRef.current = onSelectLayer
+  // Which layer is open. Closing it is how the timeline gets simple again.
+  const [expandedLayer, setExpandedLayer] = useState<string | null>(null)
+  const expandedRef = useRef(expandedLayer)
+  expandedRef.current = expandedLayer
   const onSelectSceneRef = useRef(onSelectScene)
   onSelectSceneRef.current = onSelectScene
   const replayingRef = useRef(false)
@@ -132,6 +188,12 @@ export default function Timeline({
   // Where the draw loop last put the playhead, so the pointer handlers can hit
   // it without recomputing the time it stands for.
   const playheadXRef = useRef<number | null>(null)
+  /** Top of the LIGHTS lane in canvas pixels, or null when it is not drawn. */
+  const lightsTopRef = useRef<number | null>(null)
+  // Naming a part needs the patch, which the timeline does not have -- so the
+  // caller supplies the words and the canvas only draws them.
+  const partLabelRef = useRef(partLabel)
+  partLabelRef.current = partLabel
 
   useEffect(() => {
     const poll = setInterval(() => setOverridden(isTimeOverridden()), 400)
@@ -190,7 +252,12 @@ export default function Timeline({
 
       ctx.clearRect(0, 0, width, height)
 
-      const sceneBottom = Math.min(height - 4, SCENE_TOP + SCENE_BAND_MAX)
+      const lights = lightsBand(height, layersRef.current.length, expandedRef.current, layersRef.current)
+      const sceneBottom = Math.max(
+        SCENE_TOP + 24,
+        Math.min(height - 4 - lights.height, SCENE_TOP + SCENE_BAND_MAX),
+      )
+      lightsTopRef.current = lights.height > 0 ? sceneBottom + LIGHTS_GAP : null
 
       // Everything time-based is clipped to the lanes, so nothing ever slides
       // under the gutter.
@@ -227,6 +294,12 @@ export default function Timeline({
       // Scenes: the material. Neutral until they matter -- an inactive scene
       // states its colour in a single line, the selected one wears it.
       drawScenes(ctx, width, sceneBottom, showTime)
+
+      // Lights: artistic intentions, one block each. Opening one shows the
+      // families inside it; closing it puts the complexity away again.
+      if (lightsTopRef.current !== null) {
+        drawLayers(ctx, width, lightsTopRef.current, showTime)
+      }
 
       // First-time hint.
       if (modeRef.current === 'edit' && scenesRef.current.length === 0) {
@@ -356,8 +429,8 @@ export default function Timeline({
       ctx.lineTo(GUTTER - 0.5, height)
       ctx.stroke()
 
-      // Two names, and the indent says which contains which. Chapters first,
-      // the material they hold underneath and set in.
+      // Three names, and the indent says which contains which. Chapters first,
+      // the material they hold underneath, and the light layers under that.
       ctx.font = '9px Inter, sans-serif'
       ctx.textBaseline = 'middle'
       ctx.textAlign = 'left'
@@ -365,6 +438,9 @@ export default function Timeline({
       ctx.fillText('SECTIONS', 14, (SECTION_TOP + SECTION_BOTTOM) / 2)
       ctx.fillStyle = rgba(theme.text, 0.3)
       ctx.fillText('SCENES', 24, SCENE_TOP + 10)
+      if (lightsTopRef.current !== null) {
+        ctx.fillText('LIGHTS', 24, lightsTopRef.current + LIGHTS_ROW / 2)
+      }
       ctx.textBaseline = 'top'
     }
 
@@ -489,6 +565,76 @@ export default function Timeline({
         }
         ctx.restore()
       }
+    }
+
+    /**
+     * The LIGHTS lane.
+     *
+     * One block per light layer, whatever it drives. A layer that touches four
+     * families is still one block -- opening it lists the families, closing it
+     * puts them away. A track per fixture is never drawn, and a track per family
+     * only while you are looking at it.
+     */
+    function drawLayers(ctx: CanvasRenderingContext2D, width: number, top: number, showTime: number | null): void {
+      const layers = layersRef.current
+      ctx.textBaseline = 'middle'
+      for (const layer of layers) {
+        const x1 = xOf(layer.start)
+        const x2 = xOf(layer.end)
+        if (x2 < GUTTER || x1 > width) continue
+        const w = Math.max(3, x2 - x1)
+        const open = expandedRef.current === layer.id
+        const selected = layer.id === selectedLayerRef.current && !selectedPartRef.current
+        const playing = showTime !== null && showTime >= layer.start && showTime < layer.end
+        const tint = layerTint(layer)
+
+        ctx.fillStyle = selected ? rgba(tint, 0.3) : rgba(theme.text, playing ? 0.08 : 0.04)
+        roundedRect(ctx, x1, top, w, LIGHTS_ROW, 3)
+        ctx.fill()
+        ctx.strokeStyle = selected ? rgba(tint, 0.9) : rgba(theme.text, playing ? 0.26 : 0.1)
+        ctx.stroke()
+        ctx.fillStyle = rgba(tint, selected ? 1 : playing ? 0.85 : 0.6)
+        ctx.fillRect(x1 + 1, top + 1, selected ? 3 : 2, LIGHTS_ROW - 2)
+
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(x1 + 2, top, Math.max(0, w - 4), LIGHTS_ROW)
+        ctx.clip()
+        ctx.font = selected || playing ? '500 11px Inter, sans-serif' : '11px Inter, sans-serif'
+        ctx.fillStyle = selected || playing ? theme.text : rgba(theme.text, 0.58)
+        // The chevron is the affordance: this block has an inside.
+        ctx.fillText(`${open ? '⌄' : '›'} ${layer.name}`, x1 + 10, top + LIGHTS_ROW / 2)
+        ctx.restore()
+
+        if (!open) continue
+
+        // Open: one row per part, which is one row per family plus one for each
+        // fixture that is an exception. Never one per fixture.
+        layer.parts.forEach((part, index) => {
+          const rowTop = top + LIGHTS_ROW + 2 + index * LIGHTS_PART_ROW
+          const isPart = selectedPartRef.current === part.id
+          ctx.fillStyle = isPart ? rgba(tint, 0.26) : rgba(theme.text, 0.03)
+          roundedRect(ctx, x1 + 10, rowTop, Math.max(3, w - 12), LIGHTS_PART_ROW - 3, 2)
+          ctx.fill()
+          if (isPart) {
+            ctx.strokeStyle = rgba(tint, 0.8)
+            ctx.stroke()
+          }
+          ctx.save()
+          ctx.beginPath()
+          ctx.rect(x1 + 12, rowTop, Math.max(0, w - 16), LIGHTS_PART_ROW)
+          ctx.clip()
+          ctx.font = '10px Inter, sans-serif'
+          ctx.fillStyle = rgba(theme.text, isPart ? 0.95 : 0.5)
+          ctx.fillText(
+            `${partLabelRef.current(part)}   ${behaviorDef(part.behavior)?.label ?? part.behavior}`,
+            x1 + 18,
+            rowTop + (LIGHTS_PART_ROW - 3) / 2,
+          )
+          ctx.restore()
+        })
+      }
+      ctx.textBaseline = 'top'
     }
 
     function drawMinimap(showTime: number | null, timeOverridden: boolean, laneWidth: number): void {
@@ -627,6 +773,38 @@ export default function Timeline({
         scrubTo(event.clientX)
         return
       }
+      // The LIGHTS lane, before the scenes: it is the lower band, so a click
+      // that lands in it was meant for it.
+      const lightsTop = lightsTopRef.current
+      if (lightsTop !== null && y >= lightsTop) {
+        const layers = layersRef.current
+        const row = Math.floor((y - lightsTop) / 1)
+        const hit = [...layers].reverse().find((layer) => {
+          if (t < layer.start || t > layer.end) return false
+          const open = expandedRef.current === layer.id
+          const bottom = lightsTop + LIGHTS_ROW + (open ? layer.parts.length * LIGHTS_PART_ROW + 4 : 0)
+          return y <= bottom
+        })
+        if (!hit) {
+          onSelectLayerRef.current(null)
+          return
+        }
+        // The header row selects the layer; the chevron on it opens it. Rows
+        // below the header are its parts.
+        if (row < LIGHTS_ROW) {
+          const onChevron = x - xOf(hit.start) < 22
+          if (onChevron) {
+            setExpandedLayer((current) => (current === hit.id ? null : hit.id))
+          }
+          onSelectLayerRef.current(hit.id, null)
+          return
+        }
+        const index = Math.floor((y - lightsTop - LIGHTS_ROW - 2) / LIGHTS_PART_ROW)
+        const part = hit.parts[index]
+        onSelectLayerRef.current(hit.id, part ? part.id : null)
+        return
+      }
+
       // Sections move and trim like scenes, and a plain click travels to one.
       if (y >= SECTION_TOP && y <= SECTION_BOTTOM) {
         const tolerance = EDGE_PX / view.current.pxPerSec
@@ -1033,8 +1211,10 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 const DOCK_HEIGHT_KEY = 'lumenstage.dockHeight'
+// Three lanes now rather than two, so the default leaves room for the light
+// layers without the operator having to find the resize grip first.
 const DOCK_MIN = 150
-const DOCK_DEFAULT = 224
+const DOCK_DEFAULT = 258
 const DOCK_MAX = 360
 
 // Never more than half the window, and never past the point where the extra

@@ -11,6 +11,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { activeScene, renderScenePixel } from '../../../core/effects'
+import type { FixtureRef } from '../../../core/layers'
 import {
   blankState,
   kindOf,
@@ -21,7 +22,9 @@ import {
 } from '../../../core/fixtures'
 import { editor, effectiveShowTime } from '../editor'
 import { feed } from '../feed'
+import { activeLayerAt, intentFor } from '../intent'
 import { countLoop, perf } from '../perf'
+import { OtherFixtures } from './OtherFixtures'
 import type { Fixture, Patch } from '../patch'
 
 // Room dimensions from the brief: ~40 x 15 m, 10 m high. Stage/arch at -X.
@@ -40,23 +43,6 @@ export const VIEWS: Record<number, { name: string; dir: [number, number, number]
   1: { name: 'Room', dir: [0.72, 0.5, 1] },
   2: { name: 'Front', dir: [0, 0.16, 1] },
   3: { name: 'Top', dir: [0, 1, 0.02] },
-}
-
-// A fixture whose channel chart nobody has confirmed: drawn as a body, never
-// as light. The same grey as an unlit batten, because that is what it is -- a
-// physical object in a dark room. Making it dimmer to mean "unread" only made
-// the plot harder to see, and the honest place to say a fixture cannot be read
-// is the inspector, not a shade of grey nobody can name.
-const UNREAD_COLOR = '#242932'
-
-// Roughly what each family is, in metres, so the plot reads as a plot. Not a
-// model of the fixture -- a mark at the right place, at the right scale.
-const BODY_SIZE: Record<string, [number, number, number]> = {
-  blinder: [0.55, 0.28, 0.3],
-  panel: [0.5, 0.5, 0.12],
-  movinghead: [0.36, 0.5, 0.36],
-  fog: [0.6, 0.4, 0.35],
-  unknown: [0.3, 0.3, 0.3],
 }
 
 const DEFAULT_VIEW = 1
@@ -214,12 +200,18 @@ export class PrevizScene {
   // flat emissive plane alone never suggests.
   private halos: THREE.InstancedMesh | null = null
   private beams: THREE.InstancedMesh | null = null
-  // Everything that is not a batten. Kept apart from `fixtures` on purpose:
-  // every index in pixelSlots, poses and tiltSlots refers to that list, and
-  // widening it would have meant touching all of them at once.
-  private others: Fixture[] = []
-  private otherBodies: THREE.InstancedMesh | null = null
+  // Everything that is not a batten, drawn as the thing it is -- see
+  // OtherFixtures. Kept apart from `fixtures` on purpose: every index in
+  // pixelSlots, poses and tiltSlots refers to that list, and widening it would
+  // have meant touching all of them at once.
+  private otherFixtures: OtherFixtures
   private fixtures: Fixture[] = []
+  /** Every fixture in the patch, in the shape /core wants for layer targeting. */
+  private refs: FixtureRef[] = []
+  private refById = new Map<string, FixtureRef>()
+  /** Per batten: what a layer or the inspector is asking of it, if anything. */
+  private intentColours = new Float32Array(0)
+  private hasIntent = new Uint8Array(0)
   private pixelSlots: PixelSlot[] = []
   private tiltSlots: TiltSlot[] = []
   private poses: Pose[] = []
@@ -261,6 +253,11 @@ export class PrevizScene {
   private scratchColor = new THREE.Color()
   private raf = 0
   private lastCensusAt = 0
+  // Created once and shared: they used to be rebuilt on every applyPatch, which
+  // for three canvas gradients is work done twice at boot and again on every
+  // placement edit.
+  private glowTexture = makeGlowTexture()
+  private beamTexture = makeBeamTexture()
   private appliedScale = 1
   private disposed = false
   private pointerDown: { x: number; y: number } | null = null
@@ -299,6 +296,7 @@ export class PrevizScene {
 
     this.buildRoom()
     this.scene.add(this.fixtureGroup)
+    this.otherFixtures = new OtherFixtures(this.fixtureGroup)
     this.applyPatch(patch)
     this.applyView(DEFAULT_VIEW, false)
 
@@ -343,14 +341,15 @@ export class PrevizScene {
     // Battens and every other family are separate meshes, so the nearest hit
     // across both is the one the operator meant -- clicking a Perseo has to
     // pick that Perseo, not the batten behind it.
+    const bodies = this.otherFixtures.bodies
     const targets: THREE.Object3D[] = [this.bars]
-    if (this.otherBodies) targets.push(this.otherBodies)
+    if (bodies) targets.push(bodies)
     const hit = this.raycaster.intersectObjects(targets, false)[0]
     const picked =
       hit?.instanceId === undefined
         ? null
-        : hit.object === this.otherBodies
-          ? (this.others[hit.instanceId]?.id ?? null)
+        : hit.object === bodies
+          ? (this.otherFixtures.list[hit.instanceId]?.id ?? null)
           : (this.fixtures[hit.instanceId]?.id ?? null)
     this.onPick(picked, event.shiftKey)
   }
@@ -377,13 +376,7 @@ export class PrevizScene {
       })
       if (this.bars.instanceColor) this.bars.instanceColor.needsUpdate = true
     }
-    if (this.otherBodies) {
-      const unread = new THREE.Color(UNREAD_COLOR)
-      this.others.forEach((fixture, index) => {
-        this.otherBodies!.setColorAt(index, tint(fixture.id, unread))
-      })
-      if (this.otherBodies.instanceColor) this.otherBodies.instanceColor.needsUpdate = true
-    }
+    this.otherFixtures.setSelection(this.selected, this.hovered)
   }
 
   // ----- static scenery ---------------------------------------------------
@@ -437,25 +430,29 @@ export class PrevizScene {
 
   applyPatch(patch: Patch): void {
     perf.patchRebuilds++
+    // The textures are owned by the scene and shared between rebuilds, so a
+    // placement edit no longer throws away three canvas gradients and redraws
+    // them. Only the meshes are rebuilt.
+    this.otherFixtures.dispose()
     for (const child of [...this.fixtureGroup.children]) {
       const mesh = child as THREE.Mesh
       mesh.geometry.dispose()
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-      for (const material of materials) {
-        const mapped = material as THREE.MeshBasicMaterial
-        mapped.map?.dispose()
-        material.dispose()
-      }
+      for (const material of materials) material.dispose()
       this.fixtureGroup.remove(child)
     }
     this.pixelSlots = []
     this.tiltSlots = []
-    this.others = []
-    this.otherBodies = null
     this.lastTiltVersion = -1
+    this.refs = patch.fixtures.map((fixture) => ({
+      id: fixture.id,
+      type: fixture.type,
+      group: fixture.group,
+    }))
+    this.refById = new Map(this.refs.map((ref) => [ref.id, ref]))
     // Battens get the bar-and-pixels treatment; every other family is drawn by
-    // buildOthers below, as a body at its place in the plot. A Perseo is not a
-    // bar of sixteen pixels, so it is not drawn as one.
+    // OtherFixtures, as the thing it actually is. A Perseo is not a bar of
+    // sixteen pixels, so it is not drawn as one.
     this.fixtures = patch.fixtures.filter((fixture) => {
       const profile = patch.fixtureTypes[fixture.type]
       return profile !== undefined && kindOf(profile) === 'batten'
@@ -477,7 +474,7 @@ export class PrevizScene {
       new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
       this.fixtures.length * pixelsPerFixture,
     )
-    const glowTexture = makeGlowTexture()
+    const glowTexture = this.glowTexture
     const glows = new THREE.InstancedMesh(
       new THREE.PlaneGeometry(3.4, 5.2).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({
@@ -509,7 +506,7 @@ export class PrevizScene {
       // instead of reading as separate streaks.
       new THREE.PlaneGeometry(2.4, BEAM_LENGTH).translate(0, -BEAM_LENGTH / 2, 0),
       new THREE.MeshBasicMaterial({
-        map: makeBeamTexture(),
+        map: this.beamTexture,
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
@@ -629,63 +626,14 @@ export class PrevizScene {
     // points.
     for (let index = 0; index < this.fixtures.length; index++) this.poseFixture(index, this.aim)
     this.fixtureGroup.add(bars, pixels, glows, halos, beams)
-    this.buildOthers(patch)
+    // Off draws the battens and nothing else -- the rig exactly as it was
+    // before the plot was extended. It stays because it answers "is it the new
+    // fixtures?" in two seconds on the machine where the question arises.
+    if (showOthers()) {
+      this.otherFixtures.build(patch, { glow: this.glowTexture, beam: this.beamTexture })
+    }
     this.applySelectionTint()
     this.lastVersion = -1 // force a recolor on the next frame
-  }
-
-  /**
-   * Everything that is not a batten: the blinders and the beams upstage, the
-   * panels along the tribune, the X Frames at the corners, the hazers.
-   *
-   * They are drawn as bodies, not as light. Their channel charts are not in
-   * the lighting document, so nothing here knows what the console is telling
-   * them -- and a fixture drawn lit when we cannot read it would be a lie the
-   * previz exists to avoid. What this gives is the true answer to "what is in
-   * this room and where": the operator can see the plot, and the moment a
-   * chart is filled in, the same fixture starts showing what it is doing.
-   *
-   * One body per family, sized to what the thing actually is, so a rig reads
-   * as a rig rather than as seventy identical cubes.
-   */
-  private buildOthers(patch: Patch): void {
-    // Off draws the battens and nothing else -- the rig exactly as it was
-    // before the plot was extended. It exists so the question "is it the new
-    // fixtures?" can be answered in two seconds on the machine where it
-    // actually happens, instead of guessed at on one where it does not.
-    if (!showOthers()) {
-      this.others = []
-      return
-    }
-    this.others = patch.fixtures.filter((fixture) => {
-      const profile = patch.fixtureTypes[fixture.type]
-      return profile !== undefined && kindOf(profile) !== 'batten'
-    })
-    if (this.others.length === 0) return
-
-    const dummy = new THREE.Object3D()
-    const bodies = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshBasicMaterial({ color: '#ffffff' }),
-      this.others.length,
-    )
-    bodies.frustumCulled = false
-    const unread = new THREE.Color(UNREAD_COLOR)
-
-    this.others.forEach((fixture, index) => {
-      const kind = kindOf(patch.fixtureTypes[fixture.type])
-      const size = BODY_SIZE[kind] ?? BODY_SIZE.unknown
-      dummy.position.fromArray(fixture.position)
-      dummy.rotation.set(0, 0, 0)
-      dummy.scale.set(size[0], size[1], size[2])
-      dummy.updateMatrix()
-      bodies.setMatrixAt(index, dummy.matrix)
-      bodies.setColorAt(index, unread)
-    })
-    dummy.scale.set(1, 1, 1)
-
-    this.otherBodies = bodies
-    this.fixtureGroup.add(bodies)
   }
 
   // ----- per-frame --------------------------------------------------------
@@ -699,10 +647,18 @@ export class PrevizScene {
     const liveTime = tc.receiving ? tc.total : null
     const showTime = effectiveShowTime(liveTime)
     const scene = showTime !== null ? activeScene(editor.scenes, showTime) : null
+    const layer = activeLayerAt(editor.layers, showTime)
 
-    // An active scene animates continuously (its time advances even without
-    // new DMX frames); otherwise redraw only on new frames or editor changes.
-    if (!scene && feed.version === this.lastVersion && editor.version === this.lastEditorVersion) {
+    // A scene or a layer animates continuously -- their time advances even
+    // without new DMX frames -- and so does anything the inspector is
+    // previewing. Otherwise redraw only on new frames or editor changes.
+    if (
+      !scene &&
+      !layer &&
+      !editor.preview &&
+      feed.version === this.lastVersion &&
+      editor.version === this.lastEditorVersion
+    ) {
       return
     }
     this.lastVersion = feed.version
@@ -719,6 +675,10 @@ export class PrevizScene {
     // nobody is talking to -- see core/fixtures.ts.
     const lit: [number, number, number] = [0, 0, 0]
     perf.fixtureReads += fixtureCount
+    if (this.intentColours.length !== fixtureCount * 3) {
+      this.intentColours = new Float32Array(fixtureCount * 3)
+      this.hasIntent = new Uint8Array(fixtureCount)
+    }
     for (let index = 0; index < fixtureCount; index++) {
       const fixture = this.fixtures[index]
       const state = readFixture(
@@ -732,6 +692,18 @@ export class PrevizScene {
       this.litColours[index * 3] = lit[0]
       this.litColours[index * 3 + 1] = lit[1]
       this.litColours[index * 3 + 2] = lit[2]
+
+      // What Stage is asking of this batten, if anything: the inspector's live
+      // preview first, then a light layer. Either one replaces the console for
+      // this fixture; neither one is ever sent to it.
+      const ref = this.refById.get(fixture.id)
+      const intent = ref ? intentFor(ref, layer, showTime, this.refs) : null
+      this.hasIntent[index] = intent ? 1 : 0
+      if (intent) {
+        this.intentColours[index * 3] = intent.r * intent.intensity
+        this.intentColours[index * 3 + 1] = intent.g * intent.intensity
+        this.intentColours[index * 3 + 2] = intent.b * intent.intensity
+      }
     }
 
     this.pixelSlots.forEach((slot, instance) => {
@@ -742,7 +714,12 @@ export class PrevizScene {
       // one colour, so a scene gradient must not look finer on screen than it
       // ever can in the room.
       const perFixture = slot.globalRgb !== null
-      const sceneColor = scene
+      // Priority, top down: what the inspector is previewing, then a light
+      // layer, then a scene, then the console. The first one with an opinion
+      // wins, and when none of them has one the console is the truth -- which
+      // is what makes Watch mode a monitor rather than a proposal.
+      const intended = this.hasIntent[slot.fixtureIndex] === 1
+      const sceneColor = !intended && scene
         ? renderScenePixel(
             scene,
             slot.group,
@@ -751,7 +728,12 @@ export class PrevizScene {
             showTime!,
           )
         : null
-      if (sceneColor) {
+      if (intended) {
+        const o = slot.fixtureIndex * 3
+        r = this.intentColours[o]
+        g = this.intentColours[o + 1]
+        b = this.intentColours[o + 2]
+      } else if (sceneColor) {
         r = sceneColor[0] / 255
         g = sceneColor[1] / 255
         b = sceneColor[2] / 255
@@ -801,6 +783,25 @@ export class PrevizScene {
     if (this.glows.instanceColor) this.glows.instanceColor.needsUpdate = true
     if (this.halos?.instanceColor) this.halos.instanceColor.needsUpdate = true
     if (this.beams?.instanceColor) this.beams.instanceColor.needsUpdate = true
+  }
+
+  /**
+   * Everything that is not a batten, once per frame.
+   *
+   * The console is read through the same /core adapter the battens use, and
+   * whatever a light layer or the inspector asks for wins over it -- the same
+   * priority as above, in one place, so the two halves of the room cannot
+   * disagree about what is happening in it.
+   */
+  private updateOthers(): void {
+    const tc = feed.timecode
+    const showTime = effectiveShowTime(tc.receiving ? tc.total : null)
+    const layer = activeLayerAt(editor.layers, showTime)
+    perf.fixtureReads += this.otherFixtures.list.length
+    this.otherFixtures.update(feed.universes, feed.active, this.camera.quaternion, (id) => {
+      const ref = this.refById.get(id)
+      return ref ? intentFor(ref, layer, showTime, this.refs) : null
+    })
   }
 
   // Halos are billboards: rebuilt each frame so they always face the camera
@@ -933,9 +934,9 @@ export class PrevizScene {
     // -- framing on it shrank the walls to a corner of the screen, which reads
     // as the room going dark rather than as the camera pulling back.
     if (this.fixtures.length === 0) {
-      for (const fixture of this.others) box.expandByPoint(point.fromArray(fixture.position))
+      for (const fixture of this.otherFixtures.list) box.expandByPoint(point.fromArray(fixture.position))
     }
-    if (this.fixtures.length + this.others.length === 0) {
+    if (this.fixtures.length + this.otherFixtures.list.length === 0) {
       box.set(new THREE.Vector3(-8, 5, -6), new THREE.Vector3(8, 7, 6))
     }
     box.expandByScalar(0.8) // batten length and its glow
@@ -1042,6 +1043,7 @@ export class PrevizScene {
     this.updateColors()
     this.updateTilt()
     this.updateHalos()
+    this.updateOthers()
     const cpuMs = performance.now() - frameStart
     previzStats.cpuMs = previzStats.cpuMs * 0.9 + cpuMs * 0.1
 

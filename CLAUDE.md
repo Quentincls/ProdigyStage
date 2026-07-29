@@ -59,6 +59,16 @@ Optionnelle : sans clé (`data/direction.json` ou `ANTHROPIC_API_KEY`), retour
 aux règles fixes. Reste : le moteur ne produit **aucun mouvement physique**
 (couleur seule), donc un show composé ne fait bouger aucun projecteur.
 
+**Couche LIGHTING complète (2026-07-29)** : recherche documentaire des six
+familles (`docs/fixtures.md` — sources, modes, incertitudes assumées),
+capabilities normalisées (`core/fixtures.ts`), behaviors artistiques
+(`core/behaviors.ts`), light layers (`core/layers.ts`), WYSIWYG par famille
+(`ui/src/previz/OtherFixtures.ts` : wash / flare / beam / fog, zéro lumière
+Three.js), sélection unifiée (`ui/src/selection.ts` — ce qui est sélectionné est
+ce que l'inspecteur édite), inspecteur généré depuis les capabilities, voie
+LIGHTS dans la timeline. Perfs vérifiées : 6,5 fps contre 6,6 avant la passe
+dans le conteneur, 38 draw calls, 0 lumière réelle, React à 1 Hz.
+
 Lire `README.md` (état + roadmap) et `docs/architecture.md` (conventions,
 formats, pièges) avant toute modification.
 

@@ -180,13 +180,19 @@ const { wss } = startWebServer({
   },
   readShow,
   writeShow: (raw) => {
-    const parsed = JSON.parse(raw) as { markers?: unknown; scenes?: unknown; presets?: unknown }
+    const parsed = JSON.parse(raw) as {
+      markers?: unknown
+      scenes?: unknown
+      presets?: unknown
+      layers?: unknown
+    }
     if (
       !parsed ||
       typeof parsed !== 'object' ||
       !Array.isArray(parsed.markers) ||
       (parsed.scenes !== undefined && !Array.isArray(parsed.scenes)) ||
-      (parsed.presets !== undefined && !Array.isArray(parsed.presets))
+      (parsed.presets !== undefined && !Array.isArray(parsed.presets)) ||
+      (parsed.layers !== undefined && !Array.isArray(parsed.layers))
     ) {
       throw new Error('invalid show shape')
     }

@@ -11,7 +11,8 @@
     "test:output": "tsx src/output-selftest.ts",
     "test:audio": "tsx src/audio-selftest.ts",
     "test:pipeline": "tsx src/pipeline-selftest.ts",
-    "test:fixtures": "tsx src/fixtures-selftest.ts"
+    "test:fixtures": "tsx src/fixtures-selftest.ts",
+    "test:layers": "tsx src/layers-selftest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

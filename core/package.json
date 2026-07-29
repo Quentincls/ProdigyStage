@@ -18,6 +18,14 @@
     "./fixtures": {
       "types": "./dist/fixtures.d.ts",
       "default": "./dist/fixtures.js"
+    },
+    "./behaviors": {
+      "types": "./dist/behaviors.d.ts",
+      "default": "./dist/behaviors.js"
+    },
+    "./layers": {
+      "types": "./dist/layers.d.ts",
+      "default": "./dist/layers.js"
     }
   },
   "files": [

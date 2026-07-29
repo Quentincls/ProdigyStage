@@ -23,6 +23,22 @@
         "reset": 13
       },
       "pixelStart": 14,
+      "optics": {
+        "source": "16 x 40 W RGBW LED cells, 640 W, 9934 lm",
+        "beamAngleDeg": 4,
+        "beamAngleWideDeg": 35,
+        "diffuse": false
+      },
+      "has": [
+        "intensity",
+        "color",
+        "white",
+        "colourTemp",
+        "strobe",
+        "tilt",
+        "zoom",
+        "pixels"
+      ],
       "tiltRangeDeg": 220,
       "tiltInvert": false
     },
@@ -30,25 +46,117 @@
       "name": "Luxibel B Blinded1",
       "short": "Blinders",
       "kind": "blinder",
-      "footprint": 4
+      "footprint": 4,
+      "standardMap": {
+        "dimmer": 1,
+        "dimmerFine": 2,
+        "strobe": 3,
+        "function": 4
+      },
+      "shutterOpenFrom": 0,
+      "optics": {
+        "source": "1 x 110 W warm white + amber LED engine, 125 W",
+        "beamAngleDeg": 50,
+        "colourTemperatureK": 2700,
+        "diffuse": true
+      },
+      "has": [
+        "intensity",
+        "strobe"
+      ]
     },
     "perseo-ex": {
       "name": "Ayrton Perseo Beam",
       "short": "Beams",
       "kind": "movinghead",
-      "footprint": 42
+      "footprint": 42,
+      "optics": {
+        "source": "450 W LED",
+        "beamAngleDeg": 2,
+        "beamAngleWideDeg": 42,
+        "diffuse": false
+      },
+      "has": [
+        "intensity",
+        "pan",
+        "tilt",
+        "zoom"
+      ]
     },
     "xframe-43ch": {
       "name": "Clay Paky Sharpy X Frame",
       "short": "X-Frame",
       "kind": "movinghead",
-      "footprint": 43
+      "footprint": 43,
+      "standardMap": {
+        "cyan": 1,
+        "magenta": 2,
+        "yellow": 3,
+        "cto": 4,
+        "colourFunction": 5,
+        "colourWheel": 6,
+        "strobe": 7,
+        "dimmer": 8,
+        "dimmerFine": 9,
+        "iris": 10,
+        "goboStatic": 11,
+        "animationWheel": 12,
+        "animationRotation": 13,
+        "gobo": 14,
+        "goboRotation": 15,
+        "goboRotationFine": 16,
+        "prism": 17,
+        "prismRotation": 18,
+        "prism8": 19,
+        "prism8Rotation": 20,
+        "frost": 21,
+        "zoom": 22,
+        "focus": 23,
+        "focusFine": 24,
+        "beamMode": 25,
+        "framing": 26,
+        "framing1Swivel": 27,
+        "framing2": 28,
+        "framing2Swivel": 29,
+        "framing3": 30,
+        "framing3Swivel": 31,
+        "framing4": 32,
+        "framing4Swivel": 33,
+        "framingRotation": 34,
+        "framingMacro": 35,
+        "framingMacroSpeed": 36,
+        "pan": 37,
+        "panFine": 38,
+        "tilt": 39,
+        "tiltFine": 40,
+        "function": 41,
+        "reset": 42,
+        "lamp": 43
+      },
+      "panRangeDeg": 540,
+      "tiltRangeDeg": 270,
+      "optics": {
+        "source": "550 W discharge, ~8000 K, 18800 lm",
+        "beamAngleDeg": 3,
+        "beamAngleWideDeg": 52,
+        "colourTemperatureK": 8000,
+        "diffuse": false
+      }
     },
     "bpanel-3ch": {
       "name": "Luxibel B Panel 240WW",
       "short": "Side Panels",
       "kind": "panel",
-      "footprint": 3
+      "footprint": 3,
+      "optics": {
+        "source": "240 warm-white SMD LEDs, CRI 95.8",
+        "beamAngleDeg": 160,
+        "colourTemperatureK": 2700,
+        "diffuse": true
+      },
+      "has": [
+        "intensity"
+      ]
     },
     "captaind-1ch": {
       "name": "Smoke Factory Captain D",
@@ -57,7 +165,10 @@
       "footprint": 1,
       "standardMap": {
         "fog": 1
-      }
+      },
+      "has": [
+        "fog"
+      ]
     }
   },
   "fixtures": [

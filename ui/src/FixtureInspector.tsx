@@ -1,33 +1,48 @@
-// What the selected lights are, and what they are doing right now.
+// What the selected lights are, and what to make them do.
 //
-// Two readings of the same selection, and the order between them is the whole
-// point. On top: the name you selected it by, what it is made of, and what it
-// is doing -- nothing here is a number an operator would have to be taught.
-// Underneath, folded away: the manufacturer's name, the universe, the channel,
-// the raw bytes. All of that is true and none of it is what you came for, so it
-// waits behind one click and stays there until something is wrong.
+// Three readings of the same selection, and the order between them is the whole
+// point.
 //
-// The inspector builds itself from what a fixture can actually do -- the
-// capabilities its profile declares -- rather than from a universal list of
-// every parameter in the rig. A panel that dims and has white shows two rows;
-// a moving head shows the ones it has. A family whose chart is not in the
-// lighting document shows none of them and says so, because drawing controls
-// for channels nobody has confirmed is how a previz starts lying.
+//   what it is      the name you selected it by, and what it is made of
+//   what to do      controls, built from what these fixtures can actually do
+//   what it is      the manufacturer, the universe, the channel, the raw bytes
+//                   -- true, necessary, and folded away until something is wrong
+//
+// The controls are generated, never written per model. A fixture declares its
+// capabilities and this panel shows one row per capability the whole selection
+// shares; a behaviour is offered only when every selected fixture can perform
+// it. That is what stops a warm-white panel being handed a colour picker, and a
+// fixture bolted to a wall being offered Sweep.
+//
+// Two things it will not do, and both are deliberate. It will not show a
+// control for a capability nobody has confirmed -- an invented control is a
+// promise the rig cannot keep. And it will not send anything: turning a slider
+// lights the previz and nothing else, until the operator makes a light layer
+// out of it.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  behaviorsFor,
+  defaultBehaviorParams,
+  paramsFor,
+  type BehaviorType,
+} from '../../core/behaviors'
+import type { ParamValue } from '../../core/effects'
 import {
   blankState,
   capabilitiesOf,
   familyName,
   kindOf,
   litColour,
+  physicalCapabilities,
   readFixture,
   type Capability,
 } from '../../core/fixtures'
+import { clearPreview, setPreview } from './editor'
 import { feed } from './feed'
 import { families, selectionName } from './lightGroups'
-import type { Fixture, Patch } from './patch'
 import { countRender } from './perf'
+import type { Fixture, Patch } from './patch'
 
 const KIND_LABEL: Record<string, string> = {
   batten: 'Batten',
@@ -43,43 +58,71 @@ export function FixtureInspector({
   selection,
   onSelect,
   onClose,
+  onCommit,
+  playhead,
 }: {
   patch: Patch
   selection: string[]
   onSelect: (ids: string[]) => void
   onClose: () => void
+  onCommit: (behavior: BehaviorType, params: Record<string, ParamValue>) => void
+  playhead: number | null
 }) {
   countRender('Inspector')
   const [advanced, setAdvanced] = useState(false)
-  // The console is a moving target, so this reads it on a timer rather than
-  // through React state: nothing here should make the previz re-render.
-  const [, tick] = useState(0)
-  useEffect(() => {
-    // Fast enough to read as live, slow enough that the viewport keeps the
-    // frame budget. This panel is never the thing you are watching.
-    const id = setInterval(() => tick((n) => n + 1), 200)
-    return () => clearInterval(id)
-  }, [])
+  const [behavior, setBehavior] = useState<BehaviorType>('static')
+  const [params, setParams] = useState<Record<string, ParamValue>>(() => defaultBehaviorParams('static'))
+  const [designing, setDesigning] = useState(false)
 
-  const chosen = patch.fixtures.filter((fixture) => selection.includes(fixture.id))
+  const chosen = useMemo(
+    () => patch.fixtures.filter((fixture) => selection.includes(fixture.id)),
+    [patch, selection],
+  )
+  const parts = useMemo(() => families(patch, chosen), [patch, chosen])
+  const first = chosen[0]
+  const profile = first ? patch.fixtureTypes[first.type] : undefined
+  const sameModel = parts.length === 1
+
+  // What every selected fixture can do. The intersection, not the union: a
+  // control that only half the selection understands is a control that does
+  // half of what it says.
+  const capabilities = useMemo(() => commonCapabilities(patch, chosen), [patch, chosen])
+  const available = useMemo(() => behaviorsFor(capabilities), [capabilities])
+
+  // A selection change ends the design: the controls belonged to what was
+  // selected, and silently carrying them onto something else would apply a
+  // colour to a family that cannot show it.
+  useEffect(() => {
+    setDesigning(false)
+    clearPreview()
+  }, [selection])
+
+  useEffect(() => () => clearPreview(), [])
+
+  // Anything the operator touches goes straight to the previz and nowhere else.
+  function design(nextBehavior: BehaviorType, nextParams: Record<string, ParamValue>): void {
+    setBehavior(nextBehavior)
+    setParams(nextParams)
+    setDesigning(true)
+    setPreview(selection, nextBehavior, nextParams)
+  }
+
+  function setParam(key: string, value: ParamValue): void {
+    design(behavior, { ...params, [key]: value })
+  }
+
+  function chooseBehavior(next: BehaviorType): void {
+    design(next, defaultBehaviorParams(next))
+  }
+
   if (chosen.length === 0) return null
 
-  const first = chosen[0]
-  const profile = patch.fixtureTypes[first.type]
-  const parts = families(patch, chosen)
-  const sameModel = parts.length === 1
-  const capabilities = sameModel ? capabilitiesOf(profile) : []
-  const readable = sameModel && profile?.standardMap !== undefined
-  // A selection made by clicking a name keeps that name; one made by clicking
-  // lights in the room is counted instead, because it has no other name.
-  const title =
-    selectionName(patch, selection) ?? (chosen.length === 1 ? first.id : `${chosen.length} lights`)
-  // The second line says whichever of the two facts the first one did not: what
-  // they are, or how many. Never both, and never the title again -- a header
-  // that repeats itself is a header nobody reads the second line of.
+  const title = selectionName(patch, selection) ?? (chosen.length === 1 ? first.id : `${chosen.length} lights`)
   const count = `${chosen.length} lights`
   const family = sameModel ? familyName(profile) : null
   const subtitle = family && family !== title ? family : count !== title ? count : null
+  const chosenDef = available.find((def) => def.type === behavior)
+  const behaviorParams = chosenDef ? paramsFor(chosenDef, capabilities) : []
 
   return (
     <aside className="inspector">
@@ -95,41 +138,87 @@ export function FixtureInspector({
         </div>
       )}
 
-      {/* What the selection is made of -- and the way back down into it. A
-          click keeps one family and drops the rest, which is how you get from
-          "stage left" to "the panels on stage left" without a fixture tree. */}
+      {/* What the selection is made of -- and the way down into it. A click
+          keeps one family and drops the rest, which is how you get from "stage
+          left" to "the panels on stage left" without a permanent fixture tree. */}
       {chosen.length > 1 && (
         <section className="ins-section">
           <span className="ins-label">Includes</span>
           <div className="fixture-list">
-            {parts.map((family) => (
+            {parts.map((part) => (
               <button
-                key={family.type}
+                key={part.type}
                 className="family-row"
-                onClick={() => onSelect(family.ids)}
-                title={parts.length > 1 ? `Keep only the ${family.label}` : 'Already the whole selection'}
+                onClick={() => onSelect(part.ids)}
+                title={parts.length > 1 ? `Keep only the ${part.label}` : 'Already the whole selection'}
               >
-                <span className="family-row-name">{family.label}</span>
-                <span className="family-row-count">{family.ids.length}</span>
+                <span className="family-row-name">{part.label}</span>
+                <span className="family-row-count">{part.ids.length}</span>
               </button>
             ))}
           </div>
         </section>
       )}
 
-      {readable && capabilities.length > 0 && (
-        <section className="ins-section">
-          <span className="ins-label">Doing now</span>
-          <LiveState patch={patch} fixtures={chosen} capabilities={capabilities} />
-        </section>
-      )}
-
-      {!readable && (
+      {capabilities.length === 0 ? (
         <p className="direction-why">
           {sameModel
-            ? 'The channel chart for this model is not in the lighting document, so Stage cannot say what it is doing. Open Advanced to see the raw values the console is sending it — move one fader and watch which number moves.'
-            : 'Several families at once. Pick one above to see what it is doing.'}
+            ? 'Nothing is documented about what this model can do, so Stage will not offer controls it cannot stand behind. Its raw values are under Advanced — move one fader on the console and watch which number moves.'
+            : 'These families have nothing in common that Stage can drive. Pick one above.'}
         </p>
+      ) : (
+        <>
+          <section className="ins-section">
+            <span className="ins-label">Behaviour</span>
+            <div className="behavior-picker">
+              {available.map((def) => (
+                <button
+                  key={def.type}
+                  className={`behavior-chip ${designing && behavior === def.type ? 'on' : ''}`}
+                  title={def.hint}
+                  onClick={() => chooseBehavior(def.type)}
+                >
+                  {def.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {designing && behaviorParams.length > 0 && (
+            <section className="ins-section">
+              <span className="ins-label">How</span>
+              {behaviorParams.map((param) => (
+                <ParamRow
+                  key={param.key}
+                  label={param.label}
+                  type={param.type}
+                  min={param.min}
+                  max={param.max}
+                  step={param.step}
+                  value={params[param.key] ?? param.default}
+                  onChange={(value) => setParam(param.key, value)}
+                />
+              ))}
+            </section>
+          )}
+
+          {designing && (
+            <button className="primary-button ins-commit" onClick={() => onCommit(behavior, params)}>
+              Add to timeline{playhead !== null ? ` at ${formatClock(playhead)}` : ''}
+            </button>
+          )}
+
+          {/* What these fixtures can do that Stage is not driving yet. Said
+              plainly rather than shown as dead controls. */}
+          <Capabilities capabilities={capabilities} />
+        </>
+      )}
+
+      {!designing && (
+        <section className="ins-section">
+          <span className="ins-label">Doing now</span>
+          <LiveState patch={patch} fixtures={chosen} />
+        </section>
       )}
 
       <button className="ins-disclosure" onClick={() => setAdvanced(!advanced)}>
@@ -141,16 +230,38 @@ export function FixtureInspector({
         <div className="ins-advanced">
           <section className="ins-section">
             <span className="ins-label">Models</span>
-            {parts.map((family) => {
-              const type = patch.fixtureTypes[family.type]
+            {parts.map((part) => {
+              const type = patch.fixtureTypes[part.type]
+              const decoded = type ? capabilitiesOf(type) : []
               return (
-                <div className="ins-fact" key={family.type}>
-                  <span className="ins-fact-key">{type?.name ?? family.type}</span>
-                  <span className="ins-fact-value">
-                    {KIND_LABEL[kindOf(type ?? { name: '', footprint: 0 })] ?? 'Unknown'} ·{' '}
-                    {type?.footprint ?? 0} ch
-                    {type?.standardMap === undefined && ' · chart unknown'}
-                  </span>
+                <div key={part.type}>
+                  <div className="ins-fact">
+                    <span className="ins-fact-key">{type?.name ?? part.type}</span>
+                    <span className="ins-fact-value">
+                      {KIND_LABEL[kindOf(type ?? { name: '', footprint: 0 })] ?? 'Unknown'} ·{' '}
+                      {type?.footprint ?? 0} ch
+                    </span>
+                  </div>
+                  <div className="ins-fact">
+                    <span className="ins-fact-key">Stage can read</span>
+                    <span className="ins-fact-value">
+                      {decoded.length > 0 ? decoded.join(', ') : 'nothing — channel chart unconfirmed'}
+                    </span>
+                  </div>
+                  {type?.optics && (
+                    <div className="ins-fact">
+                      <span className="ins-fact-key">Optics</span>
+                      <span className="ins-fact-value">
+                        {[
+                          type.optics.beamAngleDeg !== undefined &&
+                            `${type.optics.beamAngleDeg}${type.optics.beamAngleWideDeg !== undefined ? `–${type.optics.beamAngleWideDeg}` : ''}°`,
+                          type.optics.colourTemperatureK !== undefined && `${type.optics.colourTemperatureK} K`,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || '—'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -179,9 +290,7 @@ export function FixtureInspector({
                   </span>
                 </button>
               ))}
-              {chosen.length > 12 && (
-                <span className="muted-note">and {chosen.length - 12} more</span>
-              )}
+              {chosen.length > 12 && <span className="muted-note">and {chosen.length - 12} more</span>}
             </div>
           </section>
 
@@ -198,17 +307,107 @@ export function FixtureInspector({
   )
 }
 
-/** The selection's normalised state, averaged when several are chosen: this is
- *  the level the operator thinks in, never a byte. */
-function LiveState({
-  patch,
-  fixtures,
-  capabilities,
+/**
+ * What every fixture in the selection can do.
+ *
+ * The intersection. A mixed selection of battens and panels can be dimmed --
+ * both dim -- and cannot be given a gradient, because half of them are one
+ * warm-white emitter. Which is exactly what the operator would expect, and
+ * exactly what a union would get wrong.
+ */
+function commonCapabilities(patch: Patch, chosen: Fixture[]): Capability[] {
+  if (chosen.length === 0) return []
+  const types = [...new Set(chosen.map((fixture) => fixture.type))]
+  let common: Capability[] | null = null
+  for (const type of types) {
+    const capabilities = physicalCapabilities(patch.fixtureTypes[type])
+    common = common === null ? capabilities : common.filter((each) => capabilities.includes(each))
+  }
+  return common ?? []
+}
+
+/** Named plainly rather than shown as controls that do not exist yet. */
+function Capabilities({ capabilities }: { capabilities: Capability[] }) {
+  const driven = new Set(['intensity', 'color', 'strobe', 'pan', 'tilt', 'fog'])
+  const rest = capabilities.filter((capability) => !driven.has(capability))
+  if (rest.length === 0) return null
+  return (
+    <div className="ins-fact">
+      <span className="ins-fact-key">Also has</span>
+      <span className="ins-fact-value">{rest.join(', ')}</span>
+    </div>
+  )
+}
+
+function ParamRow({
+  label,
+  type,
+  min,
+  max,
+  step,
+  value,
+  onChange,
 }: {
-  patch: Patch
-  fixtures: Fixture[]
-  capabilities: Capability[]
+  label: string
+  type: 'color' | 'range'
+  min?: number
+  max?: number
+  step?: number
+  value: ParamValue
+  onChange: (value: ParamValue) => void
 }) {
+  if (type === 'color') {
+    return (
+      <div className="param">
+        <span className="param-label">{label}</span>
+        <input
+          className="param-color"
+          type="color"
+          value={typeof value === 'string' ? value : '#ffffff'}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <span className="param-value" />
+      </div>
+    )
+  }
+  const numeric = typeof value === 'number' ? value : 0
+  return (
+    <div className="param">
+      <span className="param-label">{label}</span>
+      <input
+        type="range"
+        min={min ?? 0}
+        max={max ?? 1}
+        step={step ?? 0.01}
+        value={numeric}
+        onChange={(event) => onChange(event.target.valueAsNumber)}
+      />
+      <span className="param-value">{formatParam(numeric, min, max)}</span>
+    </div>
+  )
+}
+
+function formatParam(value: number, min?: number, max?: number): string {
+  if (min === 0 && max === 1) return `${Math.round(value * 100)}%`
+  return String(Math.round(value * 100) / 100)
+}
+
+function formatClock(seconds: number): string {
+  const whole = Math.max(0, Math.floor(seconds))
+  return `${String(Math.floor(whole / 60)).padStart(2, '0')}:${String(whole % 60).padStart(2, '0')}`
+}
+
+/** The selection's normalised state, averaged: the level the operator thinks
+ *  in, never a byte. Read on a timer so nothing here re-renders the previz. */
+function LiveState({ patch, fixtures }: { patch: Patch; fixtures: Fixture[] }) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    // Fast enough to read as live, slow enough that the viewport keeps the
+    // frame budget. This panel is never the thing you are watching.
+    const id = setInterval(() => tick((n) => n + 1), 200)
+    return () => clearInterval(id)
+  }, [])
+
   const colour: [number, number, number] = [0, 0, 0]
   const scratch = blankState()
   let intensity = 0
@@ -239,37 +438,31 @@ function LiveState({
     }
   }
   if (live === 0) {
-    return <span className="muted-note">Nothing is sending this universe.</span>
+    return <span className="muted-note">Stage cannot read what the console is sending these.</span>
   }
   const swatch = `rgb(${Math.round((r / live) * 255)}, ${Math.round((g / live) * 255)}, ${Math.round((b / live) * 255)})`
 
   return (
     <>
-      {capabilities.includes('intensity') && (
-        <div className="param">
-          <span className="param-label">Intensity</span>
-          <div className="live-bar">
-            <div className="live-bar-fill" style={{ width: `${Math.round((intensity / live) * 100)}%` }} />
-          </div>
-          <span className="param-value">{Math.round((intensity / live) * 100)}%</span>
+      <div className="param">
+        <span className="param-label">Intensity</span>
+        <div className="live-bar">
+          <div className="live-bar-fill" style={{ width: `${Math.round((intensity / live) * 100)}%` }} />
         </div>
-      )}
-      {capabilities.includes('color') && (
-        <div className="param">
-          <span className="param-label">Colour</span>
-          <span className="live-swatch" style={{ background: swatch }} />
-          <span className="param-value" />
-        </div>
-      )}
-      {capabilities.includes('tilt') && tilts > 0 && (
+        <span className="param-value">{Math.round((intensity / live) * 100)}%</span>
+      </div>
+      <div className="param">
+        <span className="param-label">Colour</span>
+        <span className="live-swatch" style={{ background: swatch }} />
+        <span className="param-value" />
+      </div>
+      {tilts > 0 && (
         <div className="param">
           <span className="param-label">Tilt</span>
           <div className="live-bar">
             <div
               className="live-bar-fill centred"
-              style={{
-                left: `${50 + Math.min(50, Math.max(-50, (tilt / tilts / 110) * 50))}%`,
-              }}
+              style={{ left: `${50 + Math.min(50, Math.max(-50, (tilt / tilts / 110) * 50))}%` }}
             />
           </div>
           <span className="param-value">{Math.round(tilt / tilts)}°</span>
@@ -280,6 +473,12 @@ function LiveState({
 }
 
 function RawChannels({ patch, fixture }: { patch: Patch; fixture: Fixture }) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 200)
+    return () => clearInterval(id)
+  }, [])
+
   const profile = patch.fixtureTypes[fixture.type]
   const buffer = feed.universes.get(fixture.universe)
   const live = buffer !== undefined && feed.active.get(fixture.universe) === true

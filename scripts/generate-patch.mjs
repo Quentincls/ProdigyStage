@@ -92,6 +92,19 @@ const patch = {
         reset: 13,
       },
       pixelStart: 14,
+      // Cross-checked 2026-07-29 against the QLC+ community definition of the
+      // Tambora Batten (resources/fixtures/Clay_Paky/Clay-Paky-Tambora-Batten.qxf),
+      // which lists "Standard RGBW" as exactly these thirteen channels in this
+      // order and "RGB" as the 48-channel pixel block -- 13 + 48 = 61, the
+      // footprint our console is configured for. Independent of our own venue
+      // recording, and it agrees with it channel for channel.
+      optics: {
+        source: '16 x 40 W RGBW LED cells, 640 W, 9934 lm',
+        beamAngleDeg: 4,
+        beamAngleWideDeg: 35,
+        diffuse: false,
+      },
+      has: ['intensity', 'color', 'white', 'colourTemp', 'strobe', 'tilt', 'zoom', 'pixels'],
       tiltRangeDeg: 220, // TiltMax from the fixture data
       // Which way the yoke turns is not in any chart -- it is a physical
       // fact of the install. Flip this on site if the previz mirrors the room.
@@ -112,6 +125,31 @@ const patch = {
       short: 'Blinders',
       kind: 'blinder',
       footprint: 4, // "4 Channel" in the patch list
+      // B BLINDED1 is not B BLINDED. The 1-lite has three modes (1/2/4) and a
+      // single 110 W warm-white-plus-amber engine; the 2-lite has five modes
+      // and its 4-channel mode is two separate 16-bit dimmers. Patching one
+      // chart onto the other gives a fixture that never strobes and dims on the
+      // wrong channels. Source: the Luxibel-branded GDTF for "B Blinded1"
+      // (FixtureTypeID 3DB3CBC1-9468-4F14-9102-B8823B82FEB3, rev 2021-10-22),
+      // corroborated by Luxibel's own product copy -- "8/16 bit dimmer mode,
+      // adjustable strobe speed with random function". Luxibel's own PDF chart
+      // was not reachable, so this is a good source and not the primary one.
+      standardMap: { dimmer: 1, dimmerFine: 2, strobe: 3, function: 4 },
+      // And this is why shutterOpenFrom exists: on this chart 0-5 is OPEN with
+      // no strobe. Read with the Tambora's rule the blinder would be black at
+      // every level it actually runs at.
+      shutterOpenFrom: 0,
+      optics: {
+        source: '1 x 110 W warm white + amber LED engine, 125 W',
+        beamAngleDeg: 50,
+        // 2700 K nominal, dropping towards ~1200 K as it dims: the amber
+        // emitters are mixed by the fixture itself, not addressable over DMX.
+        colourTemperatureK: 2700,
+        diffuse: true,
+      },
+      // No colour capability: there is no colour, amber or CTO channel in any
+      // of this model's three modes. The tungsten drift is the fixture's own.
+      has: ['intensity', 'strobe'],
     },
     'perseo-ex': {
       name: 'Ayrton Perseo Beam',
@@ -120,20 +158,124 @@ const patch = {
       // Mode "Ex". 42 is the address step in the patch list (41, 83, 125, 167),
       // which is the footprint whatever the chart turns out to say.
       footprint: 42,
+      // NO CHANNEL MAP, deliberately. Ayrton's own charts were unreachable and
+      // no GDTF or community definition of the Perseo *Beam* exists that we
+      // could find -- the one Ayrton GDTF in the open library is the plain
+      // Perseo, whose Extended mode is 58 channels, not 42. So Stage decodes
+      // nothing from the console for these four fixtures and says so in Debug.
+      // Fill this in on site: open Debug, move one fader, watch which number
+      // moves. That is a ten-minute job with the desk in the room and pure
+      // guesswork without it.
+      optics: {
+        // The one figure published consistently everywhere, including in the
+        // product's own name: a 2 to 42 degree zoom. Enough to draw the beam
+        // at the right width without pretending to decode it.
+        source: '450 W LED',
+        beamAngleDeg: 2,
+        beamAngleWideDeg: 42,
+        diffuse: false,
+      },
+      // What a beam moving head is, not what a chart told us: it dims, it pans,
+      // it tilts, it zooms. Colour is NOT declared -- whether this model mixes
+      // CMY or carries a fixed wheel was never established, and a colour picker
+      // that might do nothing is worse than no colour picker.
+      has: ['intensity', 'pan', 'tilt', 'zoom'],
     },
     'xframe-43ch': {
       name: 'Clay Paky Sharpy X Frame',
       short: 'X-Frame',
       kind: 'movinghead',
       footprint: 43,
+      // The QLC+ community definition has exactly one mode for this fixture and
+      // it is 43 channels -- our footprint, with nothing to disambiguate.
+      // Transcribed from resources/fixtures/Clay_Paky/Clay-Paky-Sharpy-X-Frame.qxf.
+      // Claypaky's own documents were unreachable, so this is corroborating
+      // rather than primary: treat it as good until someone opens the manual.
+      //
+      // Subtractive: CMY filters over a 550 W discharge lamp, plus a linear CTO
+      // and a 14-colour wheel. Nothing here is an RGB emitter.
+      standardMap: {
+        cyan: 1,
+        magenta: 2,
+        yellow: 3,
+        cto: 4,
+        colourFunction: 5,
+        colourWheel: 6,
+        strobe: 7,
+        dimmer: 8,
+        dimmerFine: 9,
+        iris: 10,
+        goboStatic: 11,
+        animationWheel: 12,
+        animationRotation: 13,
+        gobo: 14,
+        goboRotation: 15,
+        goboRotationFine: 16,
+        prism: 17,
+        prismRotation: 18,
+        prism8: 19,
+        prism8Rotation: 20,
+        frost: 21,
+        zoom: 22,
+        focus: 23,
+        focusFine: 24,
+        beamMode: 25,
+        framing: 26,
+        framing1Swivel: 27,
+        framing2: 28,
+        framing2Swivel: 29,
+        framing3: 30,
+        framing3Swivel: 31,
+        framing4: 32,
+        framing4Swivel: 33,
+        framingRotation: 34,
+        framingMacro: 35,
+        framingMacroSpeed: 36,
+        pan: 37,
+        panFine: 38,
+        tilt: 39,
+        tiltFine: 40,
+        function: 41,
+        reset: 42,
+        lamp: 43,
+      },
+      panRangeDeg: 540,
+      tiltRangeDeg: 270,
+      optics: {
+        source: '550 W discharge, ~8000 K, 18800 lm',
+        // A hybrid with two envelopes: 3-52 in spot mode, 2-29 in beam mode,
+        // selected on channel 25. The wider pair is drawn, since the mode
+        // channel is not decoded into the picture.
+        beamAngleDeg: 3,
+        beamAngleWideDeg: 52,
+        colourTemperatureK: 8000,
+        diffuse: false,
+      },
     },
     'bpanel-3ch': {
       name: 'Luxibel B Panel 240WW',
       short: 'Side Panels',
       kind: 'panel',
       // Three channels for a warm-white panel: dimmer plus two more, and which
-      // two is exactly the kind of thing worth being wrong about. Unmapped.
+      // two is exactly the kind of thing worth being wrong about. The mode is
+      // certain -- Luxibel offer 1, 2 and 3 channel modes and only one of them
+      // is three wide -- but the chart itself was not reachable, so nothing is
+      // decoded and Debug says so.
       footprint: 3,
+      optics: {
+        source: '240 warm-white SMD LEDs, CRI 95.8',
+        // A soft light, and the number that makes it look like one: 160
+        // degrees. This is the figure that stops it being drawn as a small
+        // bright dot, which is what it looked like before.
+        beamAngleDeg: 160,
+        colourTemperatureK: 2700,
+        diffuse: true,
+      },
+      // Warm white only. Luxibel sell the cold-white B PANEL240CW and the
+      // tunable B PANEL180TW/360TW as separate products, so the WW suffix is a
+      // fixed source: no colour picker, ever. It dims -- the datasheet says
+      // 16-bit dimming -- and that is all we can stand behind.
+      has: ['intensity'],
     },
     'captaind-1ch': {
       name: 'Smoke Factory Captain D',
@@ -141,8 +283,10 @@ const patch = {
       kind: 'fog',
       footprint: 1,
       // The one case where a map is not a guess: a one-channel hazer has one
-      // channel, and it is the output level.
+      // channel, and it is the output level. The manufacturer's own documents
+      // were not reachable either, but there is nothing here to get wrong.
       standardMap: { fog: 1 },
+      has: ['fog'],
     },
   },
   fixtures,

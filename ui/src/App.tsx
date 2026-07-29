@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { defaultParams } from '../../core/effects'
-import { backToLive, editor, isTimeOverridden, startPreview } from './editor'
+import { backToLive, clearPreview, editor, effectiveShowTime, isTimeOverridden, startPreview } from './editor'
+import { behaviorDef, type BehaviorType } from '../../core/behaviors'
+import type { ParamValue } from '../../core/effects'
+import type { LayerPart, LightLayer } from '../../core/layers'
 import { feed } from './feed'
 import { ComposeDock, ComposeInspector, enterCompose } from './Compose'
 import { FixtureInspector } from './FixtureInspector'
 import { composeStore } from './compose'
 import Diagnostics from './Diagnostics'
+import { LayerInspector } from './LayerInspector'
 import PerfOverlay from './PerfOverlay'
 import Monitor from './Monitor'
 import MusicPanel from './MusicPanel'
 import OutputPanel from './OutputPanel'
+import { familyName } from '../../core/fixtures'
 import { fetchPatch, savePatch, type Patch } from './patch'
+import { coverTargets, highlightedFixtures, layerId, sceneId, NOTHING, type Selection } from './selection'
 import PlacementPanel from './previz/PlacementPanel'
 import Previz from './previz/Previz'
 import RunsPanel from './RunsPanel'
@@ -36,8 +42,17 @@ export default function App() {
   const [tool, setTool] = useState<Tool>(null)
   const [toolsOpen, setToolsOpen] = useState(false)
   const [perfOpen, setPerfOpen] = useState(false)
-  const [selection, setSelection] = useState<string[]>([])
-  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
+  // One selection, five shapes. There used to be two independent states here --
+  // fixtures in one, the open scene in the other -- and nothing said they were
+  // alternatives, so picking Panels left the scene editor open over them. See
+  // selection.ts: what is selected is what the inspector edits.
+  const [selection, setSelection] = useState<Selection>(NOTHING)
+  const selectedSceneId = sceneId(selection)
+  const setSelectedSceneId = (id: string | null): void =>
+    setSelection(id ? { kind: 'scene', id } : NOTHING)
+  const pickedFixtures = selection.kind === 'fixtures' ? selection.ids : []
+  const selectFixtures = (ids: string[]): void =>
+    setSelection(ids.length > 0 ? { kind: 'fixtures', ids } : NOTHING)
   const { connected, stats } = useSyncExternalStore(feed.subscribe, feed.getSnapshot)
 
   const [show, setShow] = useState<ShowFile | null>(null)
@@ -54,6 +69,7 @@ export default function App() {
       return
     }
     editor.scenes = show?.scenes ?? []
+    editor.layers = show?.layers ?? []
     editor.version++
   }, [show, mode])
 
@@ -69,7 +85,7 @@ export default function App() {
         setShow(initial)
         showLoaded.current = true
       })
-      .catch(() => setShow({ markers: [], scenes: [], presets: [] }))
+      .catch(() => setShow({ markers: [], scenes: [], presets: [], layers: [] }))
   }, [])
 
   // Undo history: direct manipulation demands Ctrl+Z. Consecutive edits
@@ -192,6 +208,20 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // Where the playhead is, which is where a new light layer lands. Read from
+  // the same authority the previz uses -- preview, local playback, parked time,
+  // then the console -- so "here" means the same thing in both.
+  const playheadTime = effectiveShowTime(
+    feed.timecode.receiving ? feed.timecode.total : null,
+  )
+
+  // What the viewport lights up: the fixtures themselves when they are what is
+  // selected, and a layer's targets when a layer is. Three zones, one truth.
+  const highlighted = useMemo(
+    () => highlightedFixtures(selection, patch, show?.layers ?? []),
+    [selection, patch, show],
+  )
+
   const totalPps = stats
     ? Object.values(stats.perUniverse).reduce((sum, u) => sum + u.pps, 0)
     : 0
@@ -280,6 +310,38 @@ export default function App() {
 
   function handleRevertPatch(): void {
     if (savedJson) setPatch(JSON.parse(savedJson) as Patch)
+  }
+
+  /**
+   * Turn what the inspector is doing into a light layer on the timeline.
+   *
+   * This is the one moment the workflow has: select, design, then time. Up to
+   * here the operator has been previewing -- nothing was written -- and this
+   * writes it, at the playhead, as a block they can move and reopen.
+   */
+  function handleAddLayer(behavior: BehaviorType, params: Record<string, ParamValue>): void {
+    if (!show || !patch || selection.kind !== 'fixtures') return
+    const start = Math.max(0, Math.round((playheadTime ?? 0) * 10) / 10)
+    const parts = coverTargets(patch, selection.ids).map((target) => ({
+      id: crypto.randomUUID(),
+      target,
+      behavior,
+      params: { ...params },
+      fadeIn: 0.4,
+      fadeOut: 0.4,
+    }))
+    const layer: LightLayer = {
+      id: crypto.randomUUID(),
+      // Named after what it does and when, because "Layer 4" is not something
+      // anyone can find again in a show with thirty of them.
+      name: `${behaviorDef(behavior)?.label ?? behavior} at ${formatTime(start)}`,
+      start,
+      end: start + 8,
+      parts,
+    }
+    clearPreview()
+    handleShowChange({ ...show, layers: [...(show.layers ?? []), layer] })
+    setSelection({ kind: 'layer', id: layer.id })
   }
 
   function handleAddScene(start: number): void {
@@ -418,28 +480,33 @@ export default function App() {
           <>
             <Previz
               patch={patch}
-              selection={selection}
-              onSelect={setSelection}
+              selection={highlighted}
+              onSelect={selectFixtures}
               onPick={(id, add) => {
                 if (id === null) {
-                  setSelection([])
+                  setSelection(NOTHING)
                 } else if (add) {
                   // Shift adds and removes: the same click on a chosen light
-                  // takes it back out, which is what every editor does.
-                  setSelection((current) =>
-                    current.includes(id) ? current.filter((each) => each !== id) : [...current, id],
+                  // takes it back out, which is what every editor does. Adding
+                  // to something that was not a set of fixtures -- a scene, a
+                  // layer -- starts a new set, because there is nothing to add
+                  // to.
+                  selectFixtures(
+                    pickedFixtures.includes(id)
+                      ? pickedFixtures.filter((each) => each !== id)
+                      : [...pickedFixtures, id],
                   )
                 } else {
-                  setSelection([id])
+                  selectFixtures([id])
                 }
               }}
             />
             {tool === 'placement' && (
               <PlacementPanel
                 patch={patch}
-                selection={selection}
+                selection={pickedFixtures}
                 dirty={dirty}
-                onSelect={setSelection}
+                onSelect={selectFixtures}
                 onChange={setPatch}
                 onSave={handleSavePatch}
                 onRevert={handleRevertPatch}
@@ -458,12 +525,31 @@ export default function App() {
             {/* What is selected in the room, and what it is doing. Never in
                 Compose: there the room is showing a proposal, and a fixture's
                 live state is not part of that conversation. */}
-            {mode !== 'compose' && tool === null && !selectedSceneId && selection.length > 0 && (
+            {mode !== 'compose' && tool === null && selection.kind === 'fixtures' && (
               <FixtureInspector
                 patch={patch}
-                selection={selection}
-                onSelect={setSelection}
-                onClose={() => setSelection([])}
+                selection={selection.ids}
+                onSelect={selectFixtures}
+                onClose={() => setSelection(NOTHING)}
+                onCommit={handleAddLayer}
+                playhead={playheadTime}
+              />
+            )}
+            {(selection.kind === 'layer' || selection.kind === 'layerPart') && show && (
+              <LayerInspector
+                show={show}
+                patch={patch}
+                layerId={layerId(selection)!}
+                partId={selection.kind === 'layerPart' ? selection.partId : null}
+                onChange={handleShowChange}
+                onSelectPart={(partId) =>
+                  setSelection(
+                    partId
+                      ? { kind: 'layerPart', layerId: layerId(selection)!, partId }
+                      : { kind: 'layer', id: layerId(selection)! },
+                  )
+                }
+                onClose={() => setSelection(NOTHING)}
               />
             )}
             {mode === 'edit' && selectedSceneId && show && (
@@ -504,12 +590,39 @@ export default function App() {
             onChange={handleShowChange}
             saveState={showSaveState}
             selectedSceneId={selectedSceneId}
+            selectedLayerId={layerId(selection)}
+            selectedPartId={selection.kind === 'layerPart' ? selection.partId : null}
+            onSelectLayer={(id, partId) =>
+              setSelection(
+                id === null
+                  ? NOTHING
+                  : partId
+                    ? { kind: 'layerPart', layerId: id, partId }
+                    : { kind: 'layer', id },
+              )
+            }
+            partLabel={(part) => partName(part, patch)}
             onSelectScene={handleSelectScene}
             onAddScene={handleAddScene}
           />
         ))}
     </div>
   )
+}
+
+/**
+ * What a layer part is called on the timeline.
+ *
+ * The word the room uses -- Tambora, Beams, Stage Left -- or the fixture's own
+ * id when the part is an exception for one machine. Never a model number and
+ * never a type key.
+ */
+function partName(part: LayerPart, patch: Patch | null): string {
+  if (part.target.kind === 'fixture') return part.target.key
+  if (part.target.kind === 'family') {
+    return familyName(patch?.fixtureTypes[part.target.key]) ?? part.target.key
+  }
+  return part.target.key.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 // Wall clock. A control room screen that shows the show's timecode but not

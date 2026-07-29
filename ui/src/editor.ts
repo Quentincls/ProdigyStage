@@ -2,11 +2,34 @@
 // previz render loop. Mutable on purpose: the previz reads it at 60 fps, React
 // components bump `version` after structural changes.
 
-import { type SceneSpec } from '../../core/effects'
+import { type BehaviorType } from '../../core/behaviors'
+import { type ParamValue, type SceneSpec } from '../../core/effects'
+import { layerMembers, type FixtureRef, type LightLayer } from '../../core/layers'
 
 export const editor = {
   // Kept in sync with show.json by App.
   scenes: [] as SceneSpec[],
+  // Light layers: the same show file, the other lane of the timeline.
+  layers: [] as LightLayer[],
+  /**
+   * What the inspector is doing to the selection right now, before it has been
+   * committed to anything.
+   *
+   * This is previewState, and it is deliberately not editorState: turning a
+   * slider must light the room immediately, and must not have written a layer
+   * into the show file that the operator never asked for. Committing is the
+   * separate, explicit act of making a light layer out of it.
+   *
+   * It holds the behaviour rather than one frozen result, because a Wave has to
+   * travel and a Chase has to run -- a preview that could not move would be
+   * showing something the layer will never do.
+   */
+  preview: null as {
+    ids: string[]
+    behavior: BehaviorType
+    params: Record<string, ParamValue>
+    startedAt: number
+  } | null,
   // Local preview: loops the given scene without external timecode.
   previewSceneId: null as string | null,
   playing: false,
@@ -18,6 +41,44 @@ export const editor = {
   localFrom: null as number | null,
   localStartedAt: 0, // performance.now() ms
   version: 0,
+}
+
+// Membership per part, rebuilt only when the layers change: a Wave has to know
+// how many fixtures it is travelling along, and recomputing that for seventy
+// fixtures on every frame would be work done sixty times a second to get the
+// same answer.
+let membersVersion = -1
+let membersByLayer = new Map<string, Map<string, string[]>>()
+
+export function layerMembership(fixtures: FixtureRef[]): Map<string, Map<string, string[]>> {
+  if (membersVersion !== editor.version) {
+    membersVersion = editor.version
+    membersByLayer = new Map()
+    for (const layer of editor.layers) membersByLayer.set(layer.id, layerMembers(layer, fixtures))
+  }
+  return membersByLayer
+}
+
+/**
+ * Start, or update, the live preview of what the inspector is doing.
+ *
+ * The clock is kept across parameter changes: dragging the speed of a running
+ * wave should change its speed, not restart it from the beginning.
+ */
+export function setPreview(
+  ids: string[],
+  behavior: BehaviorType,
+  params: Record<string, ParamValue>,
+): void {
+  const startedAt = editor.preview?.startedAt ?? performance.now()
+  editor.preview = { ids, behavior, params, startedAt }
+  editor.version++
+}
+
+export function clearPreview(): void {
+  if (!editor.preview) return
+  editor.preview = null
+  editor.version++
 }
 
 // The single time authority for scene rendering:

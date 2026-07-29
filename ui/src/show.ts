@@ -1,4 +1,5 @@
 import type { EffectType, ParamValue, SceneSpec, TrackTarget } from '../../core/effects'
+import type { LightLayer } from '../../core/layers'
 import { apiUrl } from './config'
 
 export interface Marker {
@@ -22,6 +23,10 @@ export interface ShowFile {
   markers: Marker[]
   scenes: SceneSpec[]
   presets: PresetSpec[]
+  /** The LIGHTS lane: artistic intentions across the whole rig. Absent from
+   *  every show file written before it existed, which is why it is read with a
+   *  default rather than required. */
+  layers: LightLayer[]
 }
 
 export interface RecordingInfo {
@@ -35,7 +40,12 @@ export async function fetchShow(): Promise<ShowFile> {
   const response = await fetch(apiUrl('/api/show'))
   if (!response.ok) throw new Error(`show fetch failed (${response.status})`)
   const data = (await response.json()) as Partial<ShowFile>
-  return { markers: data.markers ?? [], scenes: data.scenes ?? [], presets: data.presets ?? [] }
+  return {
+    markers: data.markers ?? [],
+    scenes: data.scenes ?? [],
+    presets: data.presets ?? [],
+    layers: data.layers ?? [],
+  }
 }
 
 export async function saveShow(show: ShowFile): Promise<void> {

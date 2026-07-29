@@ -30,19 +30,39 @@
 
 export type FixtureKind = 'batten' | 'movinghead' | 'blinder' | 'panel' | 'fog' | 'unknown'
 
-/** What a family can actually do. The inspector shows controls for these and
- *  for nothing else, which is what keeps it from becoming a channel list. */
+/**
+ * What a family can actually do.
+ *
+ * The inspector shows controls for these and for nothing else, and a behaviour
+ * is only offered to fixtures that declare what it needs. That is the whole
+ * mechanism that keeps a warm-white panel from being handed a colour picker and
+ * a fixture bolted to a wall from being offered Sweep.
+ *
+ * A capability is declared by the channel map, never by the model name: a
+ * profile whose chart nobody has confirmed declares nothing, which is the
+ * honest answer and the one that stops the interface inventing controls.
+ */
 export type Capability =
   | 'intensity'
   | 'color'
   | 'white'
+  | 'amber'
+  /** Colour temperature, whether by CTO fade or by a tunable white mix. */
+  | 'colourTemp'
   | 'shutter'
   | 'strobe'
   | 'tilt'
   | 'pan'
   | 'zoom'
+  | 'focus'
+  | 'iris'
+  | 'frost'
+  | 'gobo'
+  | 'prism'
+  | 'framing'
   | 'pixels'
   | 'fog'
+  | 'fan'
 
 /** Function name -> 1-based channel inside the fixture's own footprint. */
 export type ChannelMap = Record<string, number>
@@ -67,6 +87,58 @@ export interface FixtureProfile {
   tiltInvert?: boolean
   panRangeDeg?: number
   panInvert?: boolean
+  /**
+   * The DMX value at and above which the shutter counts as open.
+   *
+   * Not a detail: the Tambora chart makes 0-3 a closed shutter, and the
+   * Luxibel B Blinded1 chart makes 0-5 *open, no strobe*. One convention read
+   * with the other's rule draws a blinder that is black at every level it is
+   * actually running at. Defaults to the Tambora's 4, because that profile
+   * predates this field.
+   */
+  shutterOpenFrom?: number
+  /** What the light physically looks like coming out of the front. */
+  optics?: Optics
+  /**
+   * What the machine physically does, from its datasheet.
+   *
+   * Not the same question as what we can *read* off the wire, and confusing the
+   * two held the whole interface hostage. A B Panel 240WW dims -- the datasheet
+   * says 16-bit dimming, 2700 K, no colour mixing -- and that is true whether or
+   * not anyone has yet found which of its three channels is the dimmer. So:
+   *
+   *   standardMap  answers "can Stage decode what the console is sending it"
+   *   has          answers "what can this machine do at all"
+   *
+   * The artistic side of the interface is built from `has`, so a panel offers
+   * Intensity and never offers a colour picker. The Debug side is built from
+   * `standardMap`, so a family whose chart nobody has confirmed still says so.
+   * Neither one is allowed to invent the other.
+   */
+  has?: Capability[]
+}
+
+/**
+ * The physical shape of the light, from the manufacturer's own datasheet.
+ *
+ * This is what stops every fixture being drawn as the same glowing rectangle. A
+ * 240 W warm-white soft panel and a beam moving head are not the same object
+ * with a different colour: one washes a wide soft field at 3000 K, the other
+ * throws a hard column a few degrees across. The renderer reads these numbers
+ * and nothing else -- so correcting a datasheet corrects the picture.
+ */
+export interface Optics {
+  /** Free text from the datasheet: LED count, wattage, type. Shown in Advanced. */
+  source?: string
+  /** Degrees. A single figure for a fixed optic, the narrow end for a zoom. */
+  beamAngleDeg?: number
+  /** Degrees at the wide end of the zoom. Absent = the fixture does not zoom. */
+  beamAngleWideDeg?: number
+  /** Native colour temperature in kelvin, for a fixture with no colour mixing. */
+  colourTemperatureK?: number
+  /** True for a soft wide source, false for a hard column. Drives which shape
+   *  the previz draws, because those two read completely differently in a room. */
+  diffuse?: boolean
 }
 
 /**
@@ -87,6 +159,9 @@ export interface FixtureState {
   b: number
   /** 0-1 white emitter, where there is one. */
   white: number
+  /** 0-1 amber emitter, where there is one. Warm-white blinders drift amber as
+   *  they dim, which is a large part of what makes them look like tungsten. */
+  amber: number
   /** Radians from level, positive one way, null when the fixture cannot tilt. */
   tilt: number | null
   pan: number | null
@@ -105,6 +180,7 @@ export function blankState(): FixtureState {
     g: 0,
     b: 0,
     white: 0,
+    amber: 0,
     tilt: null,
     pan: null,
     zoom: null,
@@ -120,6 +196,7 @@ function reset(state: FixtureState): FixtureState {
   state.g = 0
   state.b = 0
   state.white = 0
+  state.amber = 0
   state.tilt = null
   state.pan = null
   state.zoom = null
@@ -127,13 +204,34 @@ function reset(state: FixtureState): FixtureState {
   return state
 }
 
-/** What each family exposes, for the inspector to build itself from. */
+/**
+ * The most a family could expose. What it actually exposes is this list
+ * filtered by what its channel map declares -- see capabilitiesOf. Two gates
+ * rather than one, so a model whose chart turns out to be missing a function
+ * loses the control rather than showing a dead one.
+ */
 export const CAPABILITIES: Record<FixtureKind, Capability[]> = {
-  batten: ['intensity', 'color', 'white', 'shutter', 'strobe', 'tilt', 'zoom', 'pixels'],
-  movinghead: ['intensity', 'color', 'shutter', 'strobe', 'pan', 'tilt', 'zoom'],
-  blinder: ['intensity', 'color', 'strobe'],
-  panel: ['intensity', 'white'],
-  fog: ['fog'],
+  batten: ['intensity', 'color', 'white', 'amber', 'colourTemp', 'shutter', 'strobe', 'tilt', 'zoom', 'pixels'],
+  movinghead: [
+    'intensity',
+    'color',
+    'white',
+    'colourTemp',
+    'shutter',
+    'strobe',
+    'pan',
+    'tilt',
+    'zoom',
+    'focus',
+    'iris',
+    'frost',
+    'gobo',
+    'prism',
+    'framing',
+  ],
+  blinder: ['intensity', 'color', 'white', 'amber', 'colourTemp', 'shutter', 'strobe'],
+  panel: ['intensity', 'white', 'amber', 'colourTemp', 'shutter', 'strobe'],
+  fog: ['fog', 'fan'],
   unknown: [],
 }
 
@@ -181,6 +279,34 @@ export function familyName(profile: FixtureProfile | undefined): string {
   return FAMILY_NAME[kindOf(profile)]
 }
 
+/**
+ * What the fixture can do at all: the datasheet's list, plus anything the
+ * channel map proves on top of it.
+ *
+ * This is what the artistic inspector and the behaviour picker are built from.
+ * A family with no chart still has controls, because a panel dims whether or
+ * not we can yet watch it dim -- and Stage does not transmit, so editing one
+ * has never depended on being able to read one.
+ */
+export function physicalCapabilities(profile: FixtureProfile | undefined): Capability[] {
+  if (!profile) return []
+  const declared = profile.has ?? []
+  const decoded = capabilitiesOf(profile)
+  const all = new Set<Capability>([...declared, ...decoded])
+  // Kept in the canonical order rather than in declaration order, so two
+  // families never present the same controls in a different sequence.
+  const order = CAPABILITIES[kindOf(profile)] ?? []
+  const sorted = order.filter((capability) => all.has(capability))
+  for (const capability of all) if (!sorted.includes(capability)) sorted.push(capability)
+  return sorted
+}
+
+/**
+ * What Stage can decode from the console for this profile.
+ *
+ * Chart-derived and nothing else: this is the honest answer to "do we
+ * understand what this machine is being told", and it is what Debug reports.
+ */
 export function capabilitiesOf(profile: FixtureProfile): Capability[] {
   const kind = kindOf(profile)
   if (!profile.standardMap || kind === 'unknown') return []
@@ -191,9 +317,18 @@ export function capabilitiesOf(profile: FixtureProfile): Capability[] {
       case 'intensity':
         return map.dimmer !== undefined
       case 'color':
-        return map.red !== undefined && map.green !== undefined && map.blue !== undefined
+        return (
+          (map.red !== undefined && map.green !== undefined && map.blue !== undefined) ||
+          (map.cyan !== undefined && map.magenta !== undefined && map.yellow !== undefined)
+        )
       case 'white':
         return map.white !== undefined
+      case 'amber':
+        return map.amber !== undefined
+      case 'colourTemp':
+        // Either a CTO fader or a documented native temperature the fixture
+        // can be said to have. A blinder with neither says nothing about it.
+        return map.cto !== undefined || map.colourTemp !== undefined
       case 'shutter':
       case 'strobe':
         return map.strobe !== undefined || map.shutter !== undefined
@@ -203,14 +338,109 @@ export function capabilitiesOf(profile: FixtureProfile): Capability[] {
         return map.pan !== undefined && (profile.panRangeDeg ?? 0) > 0
       case 'zoom':
         return map.zoom !== undefined
+      case 'focus':
+        return map.focus !== undefined
+      case 'iris':
+        return map.iris !== undefined
+      case 'frost':
+        return map.frost !== undefined
+      case 'gobo':
+        return map.gobo !== undefined
+      case 'prism':
+        return map.prism !== undefined
+      case 'framing':
+        return map.framing !== undefined
       case 'pixels':
         return (profile.pixels ?? 0) > 0 && profile.pixelStart !== undefined
       case 'fog':
         return map.fog !== undefined
+      case 'fan':
+        return map.fan !== undefined
       default:
         return false
     }
   })
+}
+
+/**
+ * How a fixture should be drawn, which is a question about its optics and not
+ * about its model name.
+ *
+ *   bar   -- a line of emitters, lighting a strip below it
+ *   wash  -- a wide soft field: a panel, a cyc light, anything diffuse
+ *   flare -- wide, hard and blinding, pointed at the audience
+ *   beam  -- a column you can see in the air, aimed somewhere
+ *   fog   -- no light at all, a volume of haze
+ *
+ * Drawing all five the same way was the single biggest thing wrong with the
+ * viewport: a 240 W soft panel and a beam moving head appeared as the same
+ * small glowing rectangle, so the plot told you where things were and nothing
+ * about what they would do.
+ */
+export type BeamShape = 'bar' | 'wash' | 'flare' | 'beam' | 'fog' | 'none'
+
+export function beamShape(profile: FixtureProfile | undefined): BeamShape {
+  if (!profile) return 'none'
+  switch (kindOf(profile)) {
+    case 'batten':
+      return 'bar'
+    case 'panel':
+      return 'wash'
+    case 'blinder':
+      return 'flare'
+    case 'movinghead':
+      return 'beam'
+    case 'fog':
+      return 'fog'
+    default:
+      return 'none'
+  }
+}
+
+/**
+ * The cone angle to draw, in degrees, for a fixture at a given zoom.
+ *
+ * Straight from the datasheet: a fixture with one optic has one angle, a zoom
+ * fixture interpolates between its two ends. `zoom` is 0-1 as the fixture
+ * reports it, or null when it has none. Returns null when the documentation
+ * does not give an angle -- and a fixture with no documented angle is drawn
+ * without a beam rather than with a guessed one.
+ */
+export function beamAngleDeg(profile: FixtureProfile | undefined, zoom: number | null): number | null {
+  const optics = profile?.optics
+  if (!optics || optics.beamAngleDeg === undefined) return null
+  const narrow = optics.beamAngleDeg
+  const wide = optics.beamAngleWideDeg
+  if (wide === undefined || zoom === null) return narrow
+  return narrow + (wide - narrow) * Math.max(0, Math.min(1, zoom))
+}
+
+/**
+ * The colour a fixture emits when it has no colour mixing to ask about.
+ *
+ * A warm-white panel is not white: at 3000 K it is visibly amber next to a
+ * 6500 K LED, and a previz that draws both as #ffffff loses the one distinction
+ * an operator actually uses when balancing a stage. Planckian approximation,
+ * good enough between 1500 K and 15000 K.
+ */
+export function kelvinToRgb(kelvin: number, out: [number, number, number]): [number, number, number] {
+  const t = Math.max(1000, Math.min(40000, kelvin)) / 100
+  let r: number
+  let g: number
+  let b: number
+  if (t <= 66) {
+    r = 255
+    g = 99.4708025861 * Math.log(t) - 161.1195681661
+    b = t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307
+  } else {
+    r = 329.698727446 * (t - 60) ** -0.1332047592
+    g = 288.1221695283 * (t - 60) ** -0.0755148492
+    b = 255
+  }
+  out[0] = Math.max(0, Math.min(1, r / 255))
+  out[1] = Math.max(0, Math.min(1, g / 255))
+  out[2] = Math.max(0, Math.min(1, b / 255))
+  return out
 }
 
 // ----- reading ---------------------------------------------------------------
@@ -318,16 +548,26 @@ function readLuminaire(
   out.known = true
   out.intensity = level(dmx, base, map, 'dimmer', 'dimmerFine', 1)
 
-  // Shutter: on the Tambora chart 0-3 is a closed shutter and everything above
-  // is open or strobing. Flashes are not simulated; a strobing fixture reads
-  // as lit, which is what the eye sees across a bar.
+  // Shutter. Where the closed band sits is a per-chart fact -- see
+  // shutterOpenFrom. Flashes are not simulated; a strobing fixture reads as
+  // lit, which is what the eye sees across a bar.
   const shutter = map.strobe ?? map.shutter
-  out.lit = shutter === undefined ? true : (dmx[base + shutter - 1] ?? 0) > 3
+  const openFrom = profile.shutterOpenFrom ?? 4
+  out.lit = shutter === undefined ? true : (dmx[base + shutter - 1] ?? 0) >= openFrom
 
   if (map.red !== undefined) out.r = (dmx[base + map.red - 1] ?? 0) / 255
   if (map.green !== undefined) out.g = (dmx[base + map.green - 1] ?? 0) / 255
   if (map.blue !== undefined) out.b = (dmx[base + map.blue - 1] ?? 0) / 255
+  // Subtractive mixing, for the fixtures that filter a white lamp instead of
+  // adding emitters. A Sharpy X Frame at CMY 0/0/0 is white, not black -- read
+  // as RGB it would come out black at exactly the moment it is brightest.
+  if (map.cyan !== undefined && map.magenta !== undefined && map.yellow !== undefined) {
+    out.r = 1 - (dmx[base + map.cyan - 1] ?? 0) / 255
+    out.g = 1 - (dmx[base + map.magenta - 1] ?? 0) / 255
+    out.b = 1 - (dmx[base + map.yellow - 1] ?? 0) / 255
+  }
   if (map.white !== undefined) out.white = (dmx[base + map.white - 1] ?? 0) / 255
+  if (map.amber !== undefined) out.amber = (dmx[base + map.amber - 1] ?? 0) / 255
 
   out.tilt = axis(dmx, base, map, 'tilt', 'tiltFine', profile.tiltRangeDeg, profile.tiltInvert)
   out.pan = axis(dmx, base, map, 'pan', 'panFine', profile.panRangeDeg, profile.panInvert)
@@ -347,8 +587,11 @@ export function litColour(state: FixtureState, out: [number, number, number]): [
     return out
   }
   const w = state.white
-  out[0] = Math.min(1, state.r + w) * state.intensity
-  out[1] = Math.min(1, state.g + w) * state.intensity
+  const a = state.amber
+  // Amber is not white: it lands around 255/126/0, which is what gives a
+  // warm-white blinder its tungsten look as it comes up.
+  out[0] = Math.min(1, state.r + w + a) * state.intensity
+  out[1] = Math.min(1, state.g + w + a * 0.49) * state.intensity
   out[2] = Math.min(1, state.b + w) * state.intensity
   return out
 }

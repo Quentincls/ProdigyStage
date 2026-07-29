@@ -1,4 +1,4 @@
-import type { FixtureKind } from '../../core/fixtures'
+import type { Capability, FixtureKind, Optics } from '../../core/fixtures'
 import { apiUrl } from './config'
 
 export interface FixtureType {
@@ -19,6 +19,13 @@ export interface FixtureType {
   // Which way the yoke turns. No DMX chart states this -- it is a fact of
   // the physical install, so it is calibrated on site rather than guessed.
   tiltInvert?: boolean
+  panRangeDeg?: number
+  panInvert?: boolean
+  /** What the light physically looks like: beam angle, colour temperature. */
+  optics?: Optics
+  /** What the machine does at all, from its datasheet -- as opposed to what
+   *  standardMap proves Stage can decode. See core/fixtures.ts. */
+  has?: Capability[]
 }
 
 export interface Fixture {
