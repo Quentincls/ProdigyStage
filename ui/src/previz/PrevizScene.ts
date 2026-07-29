@@ -110,6 +110,17 @@ const AIM_KEY = 'lumenstage.beamAim'
 export const DEFAULT_AIM = 0
 export const MAX_AIM = 60
 
+/** What the viewport is actually costing, for the Diagnostics panel. A single
+ *  mutable object read at 1 Hz: nothing here may cause a render. */
+export const previzStats = {
+  fps: 0,
+  /** Our own JavaScript per frame, before the GPU is asked to draw. If this is
+   *  small and the frame rate is still low, the cost is in the graphics card
+   *  and not in anything this file does. */
+  cpuMs: 0,
+  lastFrameAt: 0,
+}
+
 export function readAim(): number {
   try {
     const stored = Number(localStorage.getItem(AIM_KEY))
@@ -892,12 +903,26 @@ export class PrevizScene {
   private loop = (): void => {
     if (this.disposed) return
     this.raf = requestAnimationFrame(this.loop)
+    // Two numbers, measured here rather than guessed from a description of how
+    // it feels: how often a frame arrives, and how much of it is our own work
+    // before the GPU is even asked. A previz that stutters on a real machine
+    // and not on ours is unfindable without them.
+    const frameStart = performance.now()
+    if (previzStats.lastFrameAt > 0) {
+      const gap = frameStart - previzStats.lastFrameAt
+      previzStats.fps = previzStats.fps === 0 ? 1000 / gap : previzStats.fps * 0.9 + (1000 / gap) * 0.1
+    }
+    previzStats.lastFrameAt = frameStart
     this.updateTween()
     this.controls.update()
     this.updateColors()
     this.updateTilt()
     this.updateHalos()
+    previzStats.cpuMs = previzStats.cpuMs * 0.9 + (performance.now() - frameStart) * 0.1
     this.composer.render()
+    // renderer.info is deliberately not reported: the composer resets it per
+    // pass, so what survives the last one is a fullscreen quad -- "1 draw call,
+    // 1 triangle", which is worse than no number at all.
   }
 
   dispose(): void {

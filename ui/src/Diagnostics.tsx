@@ -5,6 +5,7 @@
 // Read-only. It reports state, it never changes any.
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { previzStats } from './previz/PrevizScene'
 import { feed } from './feed'
 import type { Patch } from './patch'
 import type { ShowFile } from './show'
@@ -186,6 +187,14 @@ function buildReport(
     if (out.activeSceneName) lines.push(`Playing        ${out.activeSceneName}`)
     if (out.lastError) lines.push(`Last error     ${out.lastError}`)
   }
+  lines.push('')
+
+  // The viewport's own cost, measured in the render loop. This is the section
+  // to read first when someone says it stutters: fps is what they feel, cpuMs
+  // is how much of it is our JavaScript rather than their graphics card.
+  lines.push('-- Viewport --')
+  lines.push(`Frame rate    ${Math.round(previzStats.fps)} fps`)
+  lines.push(`Our work      ${previzStats.cpuMs.toFixed(2)} ms per frame`)
   lines.push('')
 
   lines.push('-- Show --')
