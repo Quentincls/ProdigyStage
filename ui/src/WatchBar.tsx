@@ -10,8 +10,10 @@ import { activeScene, type SceneSpec } from '../../core/effects'
 import { feed } from './feed'
 import type { Marker, ShowFile } from './show'
 import { formatTime, pad } from './TimeInput'
+import { countLoop, countRender } from './perf'
 
 export default function WatchBar({ show }: { show: ShowFile }) {
+  countRender('WatchBar')
   const timeRef = useRef<HTMLSpanElement>(null)
   const stateRef = useRef<HTMLSpanElement>(null)
   const sectionRef = useRef<HTMLSpanElement>(null)
@@ -29,6 +31,9 @@ export default function WatchBar({ show }: { show: ShowFile }) {
 
     const draw = () => {
       raf = requestAnimationFrame(draw)
+      countLoop('watchbar', drawFrame)
+    }
+    const drawFrame = () => {
       const tc = feed.timecode
       const t = tc.receiving ? tc.total : null
       const current = showRef.current

@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { lightGroups } from '../lightGroups'
 import type { Patch } from '../patch'
+import { countRender } from '../perf'
 
 export function LightPicker({
   patch,
@@ -22,6 +23,7 @@ export function LightPicker({
   onSelect: (ids: string[]) => void
   onHover: (ids: string[]) => void
 }) {
+  countRender('LightPicker')
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const groups = useMemo(() => lightGroups(patch), [patch])

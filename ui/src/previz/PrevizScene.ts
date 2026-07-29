@@ -21,6 +21,7 @@ import {
 } from '../../../core/fixtures'
 import { editor, effectiveShowTime } from '../editor'
 import { feed } from '../feed'
+import { countLoop, perf } from '../perf'
 import type { Fixture, Patch } from '../patch'
 
 // Room dimensions from the brief: ~40 x 15 m, 10 m high. Stage/arch at -X.
@@ -121,7 +122,48 @@ export const previzStats = {
   lastFrameAt: 0,
 }
 
+/**
+ * Measurement switches. Everything is on, and stays on -- this is not a quality
+ * setting and nothing in the interface turns it off.
+ *
+ * It exists because "the viewport is slow" has several possible causes that
+ * look identical from the outside, and the only way to tell them apart is to
+ * remove one at a time and watch the frame rate. Turning the bloom off for two
+ * seconds is a measurement; shipping it off would be hiding the problem, which
+ * is the one thing that must not happen here.
+ */
+/**
+ * The bloom's blur runs at half the frame's resolution.
+ *
+ * EffectComposer sizes every pass to the full frame. For a blur that is paying
+ * full price for something about to be smeared across five mip levels anyway:
+ * the scene, the emitters and the final image stay at full resolution, and only
+ * the glow around them is computed on a smaller grid. A glow is the one thing
+ * in this picture that cannot show the difference, and it does not: comparing
+ * two frames of the same held console frame, 1% of pixels differ at all and the
+ * mean difference over the whole image is 0.3 of one value in 255.
+ *
+ * It is the largest single cost in the frame -- see docs/performance.md.
+ */
+const BLOOM_SCALE = 0.5
+
+export const previzDebug = {
+  /** The postprocessing chain. Off renders the scene straight to the canvas. */
+  bloom: true,
+  /** Beams, floor glows and halos: every additively blended transparent sheet. */
+  haze: true,
+  /** Multiplier on the device pixel ratio. The fill-rate experiment. */
+  resolutionScale: 1,
+  /** Resolution the bloom's blur chain runs at, as a fraction of the frame.
+   *  Set to 1 to get the old full-resolution chain back for comparison. */
+  bloomScale: BLOOM_SCALE,
+}
+
 const OTHERS_KEY = 'lumenstage.showOtherFixtures'
+
+if (typeof window !== 'undefined') {
+  ;(window as unknown as { __previzDebug: typeof previzDebug }).__previzDebug = previzDebug
+}
 
 export function showOthers(): boolean {
   try {
@@ -160,6 +202,8 @@ export class PrevizScene {
   private camera: THREE.PerspectiveCamera
   private controls: OrbitControls
   private composer: EffectComposer
+  private bloom: UnrealBloomPass
+  private appliedBloomScale = 1
   private raycaster = new THREE.Raycaster()
 
   private fixtureGroup = new THREE.Group()
@@ -204,7 +248,20 @@ export class PrevizScene {
   // Set as soon as the operator orbits, so a resize never yanks their camera.
   private userMoved = false
   private glowSums = new Float32Array(0)
+  /** Bumped whenever glowSums is rewritten, so the halos know to follow. */
+  private glowVersion = 0
+  private haloGlowVersion = -1
+  private haloQuaternion = new THREE.Quaternion(NaN, NaN, NaN, NaN)
+  // Scratch, reused: this is a sixty-hertz path and it must not allocate.
+  private scratchMatrix = new THREE.Matrix4()
+  private scratchMatrixB = new THREE.Matrix4()
+  private scratchRotation = new THREE.Matrix4()
+  private scratchPosition = new THREE.Vector3()
+  private scratchScale = new THREE.Vector3()
+  private scratchColor = new THREE.Color()
   private raf = 0
+  private lastCensusAt = 0
+  private appliedScale = 1
   private disposed = false
   private pointerDown: { x: number; y: number } | null = null
   private tween: {
@@ -216,7 +273,13 @@ export class PrevizScene {
   } | null = null
 
   constructor(canvas: HTMLCanvasElement, patch: Patch) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+    // No MSAA: EffectComposer renders the scene into its own render target,
+    // which is not multisampled, so the canvas's multisampled buffer never
+    // sees a single scene edge -- it only ever receives the final fullscreen
+    // quad, where multisampling has nothing to smooth. Asking for it allocated
+    // a second full-resolution buffer and resolved it every frame for a
+    // picture that is byte-for-byte the same without it. Measured, not assumed.
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false })
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
     // Not flat black: pure black made the room a hole in the screen, with no
     // sense of depth behind the rig. A barely-lifted centre falling back to
@@ -248,7 +311,8 @@ export class PrevizScene {
     this.composer.addPass(new RenderPass(this.scene, this.camera))
     // Restrained: the haze below carries the light now, so the bloom only has
     // to soften the emitters instead of blowing them out.
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.85, 0.55, 0.2))
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.85, 0.55, 0.2)
+    this.composer.addPass(this.bloom)
     this.composer.addPass(new OutputPass())
 
     canvas.addEventListener('pointerdown', this.onPointerDown)
@@ -372,6 +436,7 @@ export class PrevizScene {
   // ----- fixtures (rebuildable) ------------------------------------------
 
   applyPatch(patch: Patch): void {
+    perf.patchRebuilds++
     for (const child of [...this.fixtureGroup.children]) {
       const mesh = child as THREE.Mesh
       mesh.geometry.dispose()
@@ -643,7 +708,7 @@ export class PrevizScene {
     this.lastVersion = feed.version
     this.lastEditorVersion = editor.version
 
-    const color = new THREE.Color()
+    const color = this.scratchColor
     const fixtureCount = this.fixtures.length
     if (this.glowSums.length !== fixtureCount * 3) this.glowSums = new Float32Array(fixtureCount * 3)
     this.glowSums.fill(0)
@@ -653,6 +718,7 @@ export class PrevizScene {
     // means. `live` is the difference between a rig that is dark and a rig
     // nobody is talking to -- see core/fixtures.ts.
     const lit: [number, number, number] = [0, 0, 0]
+    perf.fixtureReads += fixtureCount
     for (let index = 0; index < fixtureCount; index++) {
       const fixture = this.fixtures[index]
       const state = readFixture(
@@ -731,6 +797,7 @@ export class PrevizScene {
       this.halos?.setColorAt(f, color)
       this.beams?.setColorAt(f, color)
     }
+    this.glowVersion++
     if (this.glows.instanceColor) this.glows.instanceColor.needsUpdate = true
     if (this.halos?.instanceColor) this.halos.instanceColor.needsUpdate = true
     if (this.beams?.instanceColor) this.beams.instanceColor.needsUpdate = true
@@ -741,9 +808,17 @@ export class PrevizScene {
   private updateHalos(): void {
     const halos = this.halos
     if (!halos) return
-    const matrix = new THREE.Matrix4()
-    const position = new THREE.Vector3()
-    const scale = new THREE.Vector3()
+    // A billboard only moves when the camera turns or the light changes. Doing
+    // it unconditionally rewrote thirty-two matrices and re-uploaded the whole
+    // instance buffer on every frame of an orbit that had come to rest.
+    if (this.haloQuaternion.equals(this.camera.quaternion) && this.haloGlowVersion === this.glowVersion) {
+      return
+    }
+    this.haloQuaternion.copy(this.camera.quaternion)
+    this.haloGlowVersion = this.glowVersion
+    const matrix = this.scratchMatrix
+    const position = this.scratchPosition
+    const scale = this.scratchScale
     const sums = this.glowSums
     this.fixtures.forEach((fixture, index) => {
       const o = index * 3
@@ -769,12 +844,12 @@ export class PrevizScene {
   private poseFixture(fixtureIndex: number, angle: number): void {
     const pose = this.poses[fixtureIndex]
     if (!pose || !this.bars || !this.pixels) return
-    const posed = new THREE.Matrix4().multiplyMatrices(
+    const posed = this.scratchMatrix.multiplyMatrices(
       pose.base,
-      new THREE.Matrix4().makeRotationX(angle),
+      this.scratchRotation.makeRotationX(angle),
     )
     this.bars.setMatrixAt(fixtureIndex, posed)
-    const pixelMatrix = new THREE.Matrix4()
+    const pixelMatrix = this.scratchMatrixB
     pose.pixelOffsets.forEach((offset, p) => {
       pixelMatrix.multiplyMatrices(posed, offset)
       this.pixels!.setMatrixAt(fixtureIndex * pose.pixelOffsets.length + p, pixelMatrix)
@@ -823,6 +898,7 @@ export class PrevizScene {
     this.lastTiltVersion = feed.version
 
     let dirty = false
+    perf.fixtureReads += this.tiltSlots.length
     for (const slot of this.tiltSlots) {
       const fixture = this.fixtures[slot.fixtureIndex]
       // A universe nobody is sending is not a universe saying zero. Zero is
@@ -915,10 +991,28 @@ export class PrevizScene {
     if (t >= 1) this.tween = null
   }
 
+  /**
+   * The bloom's blur chain, sized independently of the scene.
+   *
+   * EffectComposer resizes every pass to the full frame, which for a blur is
+   * paying full price for something that is about to be smeared across five
+   * mip levels anyway. Sizing this one pass down leaves the scene, the
+   * emitters and the final image at full resolution -- only the glow around
+   * them is computed on a smaller grid, and a glow is the one thing in the
+   * picture that cannot show the difference.
+   */
+  private sizeBloom(): void {
+    const size = new THREE.Vector2()
+    this.renderer.getDrawingBufferSize(size)
+    const scale = Math.max(0.1, Math.min(1, previzDebug.bloomScale))
+    this.bloom.setSize(Math.round(size.x * scale), Math.round(size.y * scale))
+  }
+
   resize(width: number, height: number): void {
     if (width === 0 || height === 0) return
     this.renderer.setSize(width, height, false)
     this.composer.setSize(width, height)
+    this.sizeBloom()
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
     // Keep the rig framed as the window changes -- unless the operator has
@@ -929,6 +1023,10 @@ export class PrevizScene {
   private loop = (): void => {
     if (this.disposed) return
     this.raf = requestAnimationFrame(this.loop)
+    countLoop('previz', this.frame)
+  }
+
+  private frame = (): void => {
     // Two numbers, measured here rather than guessed from a description of how
     // it feels: how often a frame arrives, and how much of it is our own work
     // before the GPU is even asked. A previz that stutters on a real machine
@@ -944,11 +1042,110 @@ export class PrevizScene {
     this.updateColors()
     this.updateTilt()
     this.updateHalos()
-    previzStats.cpuMs = previzStats.cpuMs * 0.9 + (performance.now() - frameStart) * 0.1
-    this.composer.render()
-    // renderer.info is deliberately not reported: the composer resets it per
-    // pass, so what survives the last one is a fullscreen quad -- "1 draw call,
-    // 1 triangle", which is worse than no number at all.
+    const cpuMs = performance.now() - frameStart
+    previzStats.cpuMs = previzStats.cpuMs * 0.9 + cpuMs * 0.1
+
+    // renderer.info resets itself at the start of every render, and the
+    // composer renders once per pass -- so reading it afterwards used to
+    // report the last fullscreen quad and nothing else ("1 draw call"). With
+    // autoReset off and one reset here, the counters accumulate across every
+    // pass and the number is the whole composed frame, bloom included.
+    // The three measurement switches, applied here so nothing else in the file
+    // has to know they exist.
+    const hazeVisible = previzDebug.haze
+    if (this.beams) this.beams.visible = hazeVisible
+    if (this.glows) this.glows.visible = hazeVisible
+    if (this.halos) this.halos.visible = hazeVisible
+    if (previzDebug.resolutionScale !== this.appliedScale) {
+      this.appliedScale = previzDebug.resolutionScale
+      const ratio = Math.min(devicePixelRatio, 2) * this.appliedScale
+      this.renderer.setPixelRatio(ratio)
+      // EffectComposer captures the pixel ratio when it is constructed and
+      // multiplies setSize() by that stored value -- so resizing it alone
+      // leaves every bloom target at the old resolution. Both have to be told.
+      this.composer.setPixelRatio(ratio)
+      const size = new THREE.Vector2()
+      this.renderer.getSize(size)
+      this.composer.setSize(size.x, size.y)
+    }
+
+    if (previzDebug.bloomScale !== this.appliedBloomScale) {
+      this.appliedBloomScale = previzDebug.bloomScale
+      this.sizeBloom()
+    }
+
+    const info = this.renderer.info
+    info.autoReset = false
+    info.reset()
+    const drawStart = performance.now()
+    if (previzDebug.bloom) this.composer.render()
+    else this.renderer.render(this.scene, this.camera)
+    const drawMs = performance.now() - drawStart
+
+    perf.frames++
+    perf.cpuMs += cpuMs
+    perf.drawMs += drawMs
+    perf.drawCalls = info.render.calls
+    perf.triangles = info.render.triangles
+    perf.geometries = info.memory.geometries
+    perf.textures = info.memory.textures
+    perf.programs = this.renderer.info.programs?.length ?? 0
+    // Once a second is plenty for things that only change when the patch does.
+    if (frameStart - this.lastCensusAt > 1000) {
+      this.lastCensusAt = frameStart
+      this.census()
+    }
+  }
+
+  /**
+   * What is actually in the scene, counted rather than assumed.
+   *
+   * "Seventy fixtures" is the number in the patch; it is not the number the
+   * renderer sees, and the gap between the two is the first thing worth
+   * knowing. Lights and shadow casters are counted for the same reason: a
+   * previz that never creates one should be able to prove it.
+   */
+  private census(): void {
+    let objects = 0
+    let meshes = 0
+    let instancedMeshes = 0
+    let instances = 0
+    let lights = 0
+    let shadowCasters = 0
+    const materials = new Set<THREE.Material>()
+    this.scene.traverse((object) => {
+      objects++
+      if ((object as THREE.Light).isLight) {
+        lights++
+        if (object.castShadow) shadowCasters++
+      }
+      const mesh = object as THREE.Mesh
+      if (!mesh.isMesh && !(object as THREE.Line).isLine) return
+      meshes++
+      const instanced = object as THREE.InstancedMesh
+      if (instanced.isInstancedMesh) {
+        instancedMeshes++
+        instances += instanced.count
+      } else {
+        instances++
+      }
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        if (material) materials.add(material)
+      }
+    })
+    perf.objects = objects
+    perf.meshes = meshes
+    perf.instancedMeshes = instancedMeshes
+    perf.instances = instances
+    perf.materials = materials.size
+    perf.lights = lights
+    perf.shadowCasters = shadowCasters
+    const size = new THREE.Vector2()
+    this.renderer.getDrawingBufferSize(size)
+    perf.devicePixels = size.x * size.y
+    perf.pixelRatio = this.renderer.getPixelRatio()
+    const memory = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory
+    if (memory) perf.heapBytes = memory.usedJSHeapSize
   }
 
   dispose(): void {

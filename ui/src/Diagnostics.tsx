@@ -193,8 +193,46 @@ function buildReport(
   // to read first when someone says it stutters: fps is what they feel, cpuMs
   // is how much of it is our JavaScript rather than their graphics card.
   lines.push('-- Viewport --')
+  const perf = window.__perfSample?.()
   lines.push(`Frame rate    ${Math.round(previzStats.fps)} fps`)
   lines.push(`Our work      ${previzStats.cpuMs.toFixed(2)} ms per frame`)
+  if (perf) {
+    // What the frame is made of. The two halves are the whole diagnosis: if
+    // our work is small and the frame is still long, the cost is pixels.
+    lines.push(`Drawing       ${perf.drawMsPerFrame.toFixed(2)} ms per frame`)
+    lines.push(
+      `Frame         ${perf.gauges.drawCalls} draw calls, ${perf.gauges.triangles} triangles, ` +
+        `${perf.gauges.instances} instances in ${perf.gauges.meshes} meshes`,
+    )
+    lines.push(
+      `Scene         ${perf.gauges.lights} real lights, ${perf.gauges.shadowCasters} casting shadows, ` +
+        `${perf.gauges.materials} materials, ${perf.gauges.textures} textures`,
+    )
+    lines.push(
+      `Resolution    ${(perf.gauges.devicePixels / 1e6).toFixed(2)} Mpx at ratio ${perf.gauges.pixelRatio}`,
+    )
+    lines.push(`Rebuilds      ${perf.gauges.patchRebuilds} since start (expected: 1, plus one per patch edit)`)
+    const loops = Object.entries(perf.loops)
+      .map(([name, l]) => `${name} ${l.fps}/s at ${l.msPerFrame} ms`)
+      .join(', ')
+    lines.push(`Loops         ${loops || 'none'}`)
+    const renders = Object.entries(perf.rendersPerSecond)
+      .filter(([, n]) => n > 0)
+      .map(([name, n]) => `${name} ${n}`)
+      .join(', ')
+    lines.push(`React         ${perf.totalRendersPerSecond} renders/s (${renders || 'none'})`)
+    lines.push(
+      `Console feed  ${perf.dmxFramesPerSecond} frames/s, ${perf.kilobytesPerSecond} KB/s, ` +
+        `${perf.parseUsPerFrame} us to read each`,
+    )
+    lines.push(`Fixture reads ${perf.fixtureReadsPerSecond}/s`)
+    if (perf.gauges.heapBytes > 0) {
+      lines.push(
+        `Memory        ${(perf.gauges.heapBytes / 1e6).toFixed(1)} MB, ` +
+          `${perf.heapGrowthKbPerSecond > 0 ? '+' : ''}${perf.heapGrowthKbPerSecond} KB/s`,
+      )
+    }
+  }
   lines.push('')
 
   lines.push('-- Show --')

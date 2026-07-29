@@ -6,6 +6,7 @@ import { ComposeDock, ComposeInspector, enterCompose } from './Compose'
 import { FixtureInspector } from './FixtureInspector'
 import { composeStore } from './compose'
 import Diagnostics from './Diagnostics'
+import PerfOverlay from './PerfOverlay'
 import Monitor from './Monitor'
 import MusicPanel from './MusicPanel'
 import OutputPanel from './OutputPanel'
@@ -19,6 +20,7 @@ import { controlOutput, fetchShow, saveShow, type ShowFile } from './show'
 import Timeline from './Timeline'
 import WatchBar from './WatchBar'
 import { formatTime } from './TimeInput'
+import { countRender } from './perf'
 
 // Two intents, two modes: Watch (default, safe, zero chrome) and Edit.
 // Technical tools (DMX monitor, placement, runs, live output) live behind the
@@ -27,11 +29,13 @@ type Mode = 'watch' | 'edit' | 'compose'
 type Tool = 'monitor' | 'placement' | 'runs' | 'output' | 'diag' | 'music' | null
 
 export default function App() {
+  countRender('App')
   const [patch, setPatch] = useState<Patch | null>(null)
   const [savedJson, setSavedJson] = useState('')
   const [mode, setMode] = useState<Mode>('watch')
   const [tool, setTool] = useState<Tool>(null)
   const [toolsOpen, setToolsOpen] = useState(false)
+  const [perfOpen, setPerfOpen] = useState(false)
   const [selection, setSelection] = useState<string[]>([])
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const { connected, stats } = useSyncExternalStore(feed.subscribe, feed.getSnapshot)
@@ -150,6 +154,14 @@ export default function App() {
       const target = event.target as HTMLElement
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) return
 
+      // The measurement overlay. Deliberately undiscoverable: it is an
+      // instrument for the two of us, not a feature, and an operator who finds
+      // it by accident learns nothing they can use.
+      if (event.shiftKey && event.key.toLowerCase() === 'p' && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault()
+        setPerfOpen((open) => !open)
+        return
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault()
         if (event.shiftKey) redoRef.current()
@@ -441,6 +453,7 @@ export default function App() {
             {tool === 'diag' && (
               <Diagnostics patch={patch} show={show} onClose={() => setTool(null)} />
             )}
+            {perfOpen && <PerfOverlay onClose={() => setPerfOpen(false)} />}
             {mode === 'compose' && <ComposeInspector />}
             {/* What is selected in the room, and what it is doing. Never in
                 Compose: there the room is showing a proposal, and a fixture's

@@ -27,6 +27,7 @@ import { theme } from './theme'
 import { clampMove, clampTrimEnd, clampTrimStart } from './sceneRules'
 import { type Marker, type ShowFile } from './show'
 import { formatTime, pad, round1, TimeInput } from './TimeInput'
+import { countLoop, countRender } from './perf'
 
 interface TimelineProps {
   show: ShowFile
@@ -62,6 +63,7 @@ export default function Timeline({
   onSelectScene,
   onAddScene,
 }: TimelineProps) {
+  countRender('Timeline')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const minimapRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -157,6 +159,9 @@ export default function Timeline({
     let raf = 0
     const draw = () => {
       raf = requestAnimationFrame(draw)
+      countLoop('timeline', drawFrame)
+    }
+    const drawFrame = () => {
       const width = canvas.clientWidth
       const height = canvas.clientHeight
       if (width === 0) return

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Patch } from '../patch'
 import { LightPicker } from './LightPicker'
 import { MAX_AIM, PrevizScene, readAim, setShowOthers, showOthers, VIEWS } from './PrevizScene'
+import { countRender } from '../perf'
 
 interface PrevizProps {
   patch: Patch
@@ -13,6 +14,7 @@ interface PrevizProps {
 }
 
 export default function Previz({ patch, selection, onPick, onSelect }: PrevizProps) {
+  countRender('Previz')
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sceneRef = useRef<PrevizScene | null>(null)
@@ -59,7 +61,14 @@ export default function Previz({ patch, selection, onPick, onSelect }: PrevizPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // The scene is built with the patch it was constructed from, so the first
+  // run of this effect would tear all of it down and build the identical thing
+  // again -- every geometry, every material, and the three canvas textures --
+  // while the first frames are being drawn.
+  const builtPatch = useRef(patch)
   useEffect(() => {
+    if (builtPatch.current === patch) return
+    builtPatch.current = patch
     sceneRef.current?.applyPatch(patch)
   }, [patch])
 

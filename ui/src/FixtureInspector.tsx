@@ -27,6 +27,7 @@ import {
 import { feed } from './feed'
 import { families, selectionName } from './lightGroups'
 import type { Fixture, Patch } from './patch'
+import { countRender } from './perf'
 
 const KIND_LABEL: Record<string, string> = {
   batten: 'Batten',
@@ -48,6 +49,7 @@ export function FixtureInspector({
   onSelect: (ids: string[]) => void
   onClose: () => void
 }) {
+  countRender('Inspector')
   const [advanced, setAdvanced] = useState(false)
   // The console is a moving target, so this reads it on a timer rather than
   // through React state: nothing here should make the previz re-render.

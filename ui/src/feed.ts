@@ -4,6 +4,7 @@
 // React re-renders at 1 Hz only.
 
 import { wsUrl } from './config'
+import { perf } from './perf'
 
 export interface UniverseStat {
   pps: number
@@ -107,6 +108,7 @@ class Feed {
     }
 
     ws.onmessage = (event) => {
+      const startedAt = performance.now()
       this.lastMessageAt = Date.now()
       if (typeof event.data === 'string') {
         const message = JSON.parse(event.data)
@@ -140,6 +142,9 @@ class Feed {
       tc.fps = TIMECODE_FPS[view[offset++]] ?? 25
       tc.total = tc.hours * 3600 + tc.minutes * 60 + tc.seconds + tc.frames / tc.fps
       this.version++
+      perf.dmxFrames++
+      perf.wsBytes += view.byteLength
+      perf.parseMs += performance.now() - startedAt
     }
 
     ws.onclose = () => {
