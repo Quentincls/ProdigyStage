@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from 'node:fs'
 
 export interface FixtureType {
   name: string
+  /** What the room calls this family. See core/fixtures.ts familyName(). */
+  short?: string
   footprint: number
   pixels: number
   pixelOrder: string
@@ -53,14 +55,22 @@ function referencePath(): URL | null {
 }
 
 /**
- * The installed patch, plus any fixture the shipped reference knows about and
- * it does not.
+ * The installed patch, plus anything the shipped reference knows about and it
+ * does not.
  *
  * Purely additive, and purely in memory: a fixture that already exists is
  * never touched, whatever the reference says about it, because the operator
  * may have moved it in Placement mode and that is the more recent truth. The
  * file on disk is not rewritten either -- it changes only when someone saves
  * from the interface.
+ *
+ * "Additive" reaches inside a fixture type as well as beside it. A build that
+ * learns something new about a model it already ships -- what the room calls
+ * it, or one day the channel chart nobody had -- would otherwise be unable to
+ * say so on any machine that has been running since before it knew, because
+ * updating deliberately never overwrites data/. So a key the installed profile
+ * does not have is filled in from the reference, and a key it does have is
+ * left exactly as it is.
  */
 export function loadPatch(): Patch {
   const patch = JSON.parse(readFileSync(patchPath(), 'utf8')) as Patch
@@ -74,18 +84,40 @@ export function loadPatch(): Patch {
     return patch
   }
 
+  const merged = mergePatch(patch, reference)
+  if (merged.added > 0) {
+    console.log(
+      `patch: ${merged.added} fixtures added from the lighting documentation (${merged.families.join(', ')}). ` +
+        'Existing fixtures and their placements were left alone.',
+    )
+  }
+  return merged.patch
+}
+
+/**
+ * The merge itself, as a function of its inputs so it can be tested against a
+ * patch older than the build -- which is the only case that matters and the
+ * only one that never happens on a developer's machine.
+ */
+export function mergePatch(
+  patch: Patch,
+  reference: Patch,
+): { patch: Patch; added: number; families: string[] } {
+  for (const [id, type] of Object.entries(reference.fixtureTypes)) {
+    const installed = patch.fixtureTypes[id]
+    if (!installed) {
+      patch.fixtureTypes[id] = type
+      continue
+    }
+    const fields = installed as unknown as Record<string, unknown>
+    for (const [key, value] of Object.entries(type)) {
+      if (fields[key] === undefined) fields[key] = value
+    }
+  }
+
   const known = new Set(patch.fixtures.map((fixture) => fixture.id))
   const added = reference.fixtures.filter((fixture) => !known.has(fixture.id))
-  if (added.length === 0) return patch
-
-  for (const [id, type] of Object.entries(reference.fixtureTypes)) {
-    if (!patch.fixtureTypes[id]) patch.fixtureTypes[id] = type
-  }
   patch.fixtures = [...patch.fixtures, ...added]
   const families = [...new Set(added.map((fixture) => reference.fixtureTypes[fixture.type]?.name ?? fixture.type))]
-  console.log(
-    `patch: ${added.length} fixtures added from the lighting documentation (${families.join(', ')}). ` +
-      'Existing fixtures and their placements were left alone.',
-  )
-  return patch
+  return { patch, added: added.length, families }
 }

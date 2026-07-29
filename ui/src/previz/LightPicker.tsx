@@ -5,64 +5,11 @@
 // fastest way to say "all the beams". Hovering a family lights it in the
 // viewport; clicking selects it.
 //
-// The groups are derived from the patch rather than stored in it. patch.groups
-// already means two other things -- the physical wiring of the two walls, and
-// what an effect can target -- and a third meaning on the same field is how a
-// small file becomes unreadable.
+// The names come from ../lightGroups, which the inspector reads too.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { kindOf } from '../../../core/fixtures'
-import type { Fixture, Patch } from '../patch'
-
-export interface LightGroup {
-  id: string
-  label: string
-  ids: string[]
-}
-
-const FAMILY_LABEL: Record<string, string> = {
-  batten: 'Battens',
-  movinghead: 'Moving heads',
-  blinder: 'Blinders',
-  panel: 'Panels',
-  fog: 'Haze',
-  unknown: 'Unknown',
-}
-
-/** Families first, then the sides that actually exist. Empty groups are never
- *  offered: a menu of things that are not there is worse than a short menu. */
-export function lightGroups(patch: Patch): LightGroup[] {
-  const groups: LightGroup[] = []
-  const byModel = new Map<string, Fixture[]>()
-  for (const fixture of patch.fixtures) {
-    const list = byModel.get(fixture.type) ?? []
-    list.push(fixture)
-    byModel.set(fixture.type, list)
-  }
-
-  for (const [type, fixtures] of byModel) {
-    const profile = patch.fixtureTypes[type]
-    if (!profile) continue
-    groups.push({
-      id: `model:${type}`,
-      label: profile.name || (FAMILY_LABEL[kindOf(profile)] ?? type),
-      ids: fixtures.map((fixture) => fixture.id),
-    })
-  }
-
-  // Sides, from the group name the patch already carries.
-  for (const [suffix, label] of [
-    ['left', 'Everything stage left'],
-    ['right', 'Everything stage right'],
-  ] as const) {
-    const ids = patch.fixtures
-      .filter((fixture) => fixture.group.endsWith(suffix))
-      .map((fixture) => fixture.id)
-    if (ids.length > 0) groups.push({ id: `side:${suffix}`, label, ids })
-  }
-
-  return groups
-}
+import { lightGroups } from '../lightGroups'
+import type { Patch } from '../patch'
 
 export function LightPicker({
   patch,

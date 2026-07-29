@@ -11,7 +11,9 @@
 // What is pinned, in the order a byte travels:
 //
 //   1. the wire        -- ArtDMX parses, and Art-Net universe N-1 is show N
-//   2. the addressing  -- where the patch says each of the 70 fixtures lives
+//   2. the addressing  -- where the patch says each of the 70 fixtures lives,
+//                         what each family is called, and what a patch older
+//                         than the build inherits from it
 //   3. the channel map -- which channel inside a batten is which function,
 //                         and which families honestly admit they have none
 //   4. the read path   -- a frame lands where the previz will look for it
@@ -32,7 +34,7 @@ import {
 } from './artnet.js'
 import { ArtnetListener } from './listener.js'
 import { mergeUniverse } from './output.js'
-import { loadPatch, patchPath, type Fixture, type Patch } from './patch.js'
+import { loadPatch, mergePatch, patchPath, type Fixture, type Patch } from './patch.js'
 
 let checks = 0
 function assert(condition: boolean, message: string): void {
@@ -172,6 +174,88 @@ for (const universe of [1, 2, 3, 4, 5, 6, 7, 8]) {
       `universe ${universe}: ${blocks[i - 1].id} and ${blocks[i].id} overlap`,
     )
   }
+}
+
+// Every family has the name the room uses for it, and the interface is built
+// from those. This list is the operator's vocabulary, not ours: a family that
+// falls back to "Panels" because nobody wrote "Side Panels" is a family they
+// have to translate in their head every time they select it.
+const SHORT_NAMES: Record<string, string> = {
+  'tambora-std-pixel': 'Tambora',
+  'bpanel-3ch': 'Side Panels',
+  'blinded1-4ch': 'Blinders',
+  'perseo-ex': 'Beams',
+  'xframe-43ch': 'X-Frame',
+  'captaind-1ch': 'Smoke',
+}
+for (const [id, expected] of Object.entries(SHORT_NAMES)) {
+  const profile = raw.fixtureTypes[id]
+  assert(profile !== undefined, `${id} must be in the patch`)
+  assert(
+    profile?.short === expected,
+    `${id} must be called "${expected}" in the interface, not "${String(profile?.short)}"`,
+  )
+  assert(
+    typeof profile?.name === 'string' && profile.name !== expected,
+    `${id} must keep the manufacturer's name as well, for Advanced`,
+  )
+}
+
+// ----- 2c. a patch older than the build -------------------------------------
+// Updating never overwrites data/, so every install is running a patch written
+// by whichever build first created it. The shipped reference is how a newer
+// build says what it has since learned -- and the rule that makes that safe is
+// that it may only ever fill in a blank. This is the case that broke once
+// already, and it cannot be reproduced on a machine whose patch is current.
+{
+  const old: Patch = {
+    fixtureTypes: {
+      // The Tambora exactly as the first build wrote it: no kind, no short
+      // name, but a channel map the operator's install has been using.
+      'tambora-std-pixel': {
+        name: 'Clay Paky Tambora Batten',
+        footprint: 61,
+        pixels: 16,
+        pixelOrder: 'RGB',
+        pixelStart: 14,
+        standardMap: { red: 1, green: 2, blue: 3, dimmer: 7, dimmerFine: 8 },
+      },
+    },
+    fixtures: [
+      {
+        id: 'L1',
+        type: 'tambora-std-pixel',
+        head: 1,
+        universe: 1,
+        address: 1,
+        // Moved in Placement mode: the more recent truth, whatever we ship.
+        position: [1.5, 4.25, -6],
+        rotation: [0, 0, 0],
+        group: 'wall-left',
+      },
+    ],
+    groups: ['wall-left', 'wall-right'],
+  }
+  const shipped = JSON.parse(readFileSync(fileURLToPath(patchPath()), 'utf8')) as Patch
+  const result = mergePatch(old, shipped)
+  const tambora = result.patch.fixtureTypes['tambora-std-pixel']
+
+  assert(tambora.short === 'Tambora', 'a blank in an installed profile is filled from the reference')
+  assert(
+    (tambora as unknown as { kind?: string }).kind === 'batten',
+    'and so is the family, on a patch written before families existed',
+  )
+  assert(
+    tambora.standardMap.dimmer === 7 && tambora.standardMap.strobe === undefined,
+    'a channel map the install already has is never replaced, not even to extend it',
+  )
+  const l1 = result.patch.fixtures.find((fixture) => fixture.id === 'L1')!
+  assert(l1.position[1] === 4.25, 'a fixture that exists keeps its placement')
+  assert(result.added === 69, `the other 69 fixtures are added (got ${result.added})`)
+  assert(
+    result.patch.fixtures.filter((fixture) => fixture.id === 'L1').length === 1,
+    'and none of them is a duplicate of one that was already there',
+  )
 }
 
 // A family whose chart is not confirmed must say so rather than read as zero.

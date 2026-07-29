@@ -70,6 +70,7 @@ et pointait tous les battens à 110° du niveau, console éteinte. Corrigé le
 | 61 canaux, 16 pixels, pixelStart 14 | `data/patch.json` → `fixtureTypes` | données |
 | course de tilt 220°, sens | `data/patch.json` → `tiltRangeDeg`, `tiltInvert` | données |
 | famille / adaptateur | `data/patch.json` → `kind` | données |
+| **nom de famille affiché** | `data/patch.json` → `short` | données |
 | **comment lire ces canaux** | `core/fixtures.ts` → `readFixture()` | **code, un seul endroit** |
 | **comment écrire ces canaux** | `output.ts` → `mergeUniverse()` | **code** |
 
@@ -165,6 +166,41 @@ déclare au moins de quelle famille elle est.
 
 Les attentes viennent de `data/patch.json` et du document lumière, jamais du
 code testé : modifier le code fait échouer le test au lieu de le suivre.
+
+## 4b. Le vocabulaire, et un patch plus vieux que le build
+
+Deux noms par famille, et ils ne servent pas au même moment :
+
+| Champ | Exemple | Où on le voit |
+| --- | --- | --- |
+| `name` | `Clay Paky Tambora Batten` | Advanced seulement |
+| `short` | `Tambora` | partout ailleurs |
+
+`core/fixtures.ts` → `familyName()` est le seul endroit qui tranche ; sans
+`short`, il retombe sur le libellé de la famille (`Battens`, `Panels`…), jamais
+sur le nom fabricant. Le menu Lights et l'inspecteur lisent le même
+`ui/src/lightGroups.ts` : cliquer « Stage Left » doit rouvrir un panneau
+intitulé « Stage Left », pas « 24 lights ».
+
+Les groupes sont **dérivés** du patch, pas stockés dedans : `patch.groups`
+signifie déjà deux choses (le câblage des deux murs, et ce qu'une scène peut
+cibler), et un troisième sens sur le même champ rend le fichier illisible.
+
+**La mise à jour ne réécrit jamais `data/`** — c'est la règle qui protège les
+placements de l'opérateur, et c'est aussi celle qui a fait qu'un build sachant
+plus de choses ne pouvait pas le dire. `loadPatch()` fusionne donc
+`patch.reference.json` (le patch de ce build, copié au packaging) *dans* le
+patch installé, à un seul niveau de règle :
+
+- une machine qui existe n'est **jamais** touchée (position, adresse, univers) ;
+- un profil qui existe garde **toutes** ses clés ;
+- une clé **absente** d'un profil installé est remplie depuis la référence.
+
+C'est ce qui fait qu'un poste installé avant cette version apprend `short` et
+`kind` sans rien perdre — et ce qui fera qu'il apprendra un `standardMap` le
+jour où un chart manquant sera confirmé. Vérifié dans `pipeline-selftest`
+(§2c) sur un patch volontairement ancien : une seule Tambora, sans `kind`,
+sans `short`, avec une carte de canaux partielle et une position déplacée.
 
 ## 5. Le rig complet, d'après le document lumière
 

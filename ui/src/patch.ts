@@ -2,7 +2,10 @@ import type { FixtureKind } from '../../core/fixtures'
 import { apiUrl } from './config'
 
 export interface FixtureType {
+  /** The manufacturer's. Shown in Advanced, and nowhere else. */
   name: string
+  /** What the room calls the family: Tambora, Side Panels, Beams. */
+  short?: string
   /** Which adapter in core/fixtures.ts reads it. Absent = nobody can. */
   kind?: FixtureKind
   footprint: number

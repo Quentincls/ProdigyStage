@@ -48,7 +48,12 @@ export type Capability =
 export type ChannelMap = Record<string, number>
 
 export interface FixtureProfile {
+  /** The manufacturer's name. Correct, long, and beside the point when you are
+   *  choosing what should turn blue -- so it lives in Advanced, not on screen. */
   name: string
+  /** What the room calls this family: Tambora, Side Panels, Beams. Absent from
+   *  every patch written before there was more than one model in the plot. */
+  short?: string
   /** Which adapter reads it. Absent means nobody can, and that is a state. */
   kind?: FixtureKind
   footprint: number
@@ -146,6 +151,34 @@ export function kindOf(profile: FixtureProfile): FixtureKind {
   if (profile.kind) return profile.kind
   if ((profile.pixels ?? 0) > 0 && profile.pixelStart !== undefined) return 'batten'
   return 'unknown'
+}
+
+/** What a family is called when nobody wrote down what to call it. Wrong for a
+ *  plot with two moving-head models in it -- which is why `short` exists -- but
+ *  never a lie, and always shorter than the manufacturer's name. */
+const FAMILY_NAME: Record<FixtureKind, string> = {
+  batten: 'Battens',
+  movinghead: 'Moving heads',
+  blinder: 'Blinders',
+  panel: 'Panels',
+  fog: 'Haze',
+  unknown: 'Unknown',
+}
+
+/**
+ * The name to put in front of the operator.
+ *
+ * There is no light designer on this team, so "Clay Paky Tambora Batten" is
+ * three words of packaging around the one word anybody says out loud. The short
+ * name comes from the patch, because naming a family is a fact about this show
+ * and not about this code; when the patch has none -- every install updated
+ * from an older build -- the family label stands in.
+ */
+export function familyName(profile: FixtureProfile | undefined): string {
+  if (!profile) return 'Unknown'
+  const short = profile.short?.trim()
+  if (short) return short
+  return FAMILY_NAME[kindOf(profile)]
 }
 
 export function capabilitiesOf(profile: FixtureProfile): Capability[] {

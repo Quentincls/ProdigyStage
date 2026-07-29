@@ -2560,6 +2560,62 @@ select:focus {
   color: var(--text-faint);
 }
 
+/* ----- what a selection is made of -----
+   A family and how many of it. The row is a button: clicking it keeps that
+   family and drops the rest, which is the only way down into a selection the
+   interface offers -- and the reason there is no permanent fixture tree. */
+
+.family-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 8px;
+}
+
+.family-row:hover {
+  background: var(--panel-2);
+}
+
+.family-row-name {
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.family-row-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A fact about the rig rather than about the show: model, family, footprint.
+   Only ever inside Advanced. */
+
+.ins-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.ins-fact-key {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.ins-fact-value {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: right;
+}
+
 .live-bar {
   position: relative;
   flex: 1;

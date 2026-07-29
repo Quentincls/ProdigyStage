@@ -61,6 +61,10 @@ const patch = {
   fixtureTypes: {
     'tambora-std-pixel': {
       name: 'Clay Paky Tambora Batten',
+      // What the room calls them. The manufacturer's name is the truth on the
+      // invoice; this is the word the operator says, and the only one the
+      // artistic side of the interface shows.
+      short: 'Tambora',
       // Which adapter in core/fixtures.ts reads it. A profile without a kind
       // reads as unknown -- the honest answer for a model nobody has charted.
       kind: 'batten',
@@ -105,11 +109,13 @@ const patch = {
 
     'blinded1-4ch': {
       name: 'Luxibel B Blinded1',
+      short: 'Blinders',
       kind: 'blinder',
       footprint: 4, // "4 Channel" in the patch list
     },
     'perseo-ex': {
       name: 'Ayrton Perseo Beam',
+      short: 'Beams',
       kind: 'movinghead',
       // Mode "Ex". 42 is the address step in the patch list (41, 83, 125, 167),
       // which is the footprint whatever the chart turns out to say.
@@ -117,11 +123,13 @@ const patch = {
     },
     'xframe-43ch': {
       name: 'Clay Paky Sharpy X Frame',
+      short: 'X-Frame',
       kind: 'movinghead',
       footprint: 43,
     },
     'bpanel-3ch': {
       name: 'Luxibel B Panel 240WW',
+      short: 'Side Panels',
       kind: 'panel',
       // Three channels for a warm-white panel: dimmer plus two more, and which
       // two is exactly the kind of thing worth being wrong about. Unmapped.
@@ -129,6 +137,7 @@ const patch = {
     },
     'captaind-1ch': {
       name: 'Smoke Factory Captain D',
+      short: 'Smoke',
       kind: 'fog',
       footprint: 1,
       // The one case where a map is not a guess: a one-channel hazer has one

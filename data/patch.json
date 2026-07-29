@@ -2,6 +2,7 @@
   "fixtureTypes": {
     "tambora-std-pixel": {
       "name": "Clay Paky Tambora Batten",
+      "short": "Tambora",
       "kind": "batten",
       "footprint": 61,
       "pixels": 16,
@@ -27,26 +28,31 @@
     },
     "blinded1-4ch": {
       "name": "Luxibel B Blinded1",
+      "short": "Blinders",
       "kind": "blinder",
       "footprint": 4
     },
     "perseo-ex": {
       "name": "Ayrton Perseo Beam",
+      "short": "Beams",
       "kind": "movinghead",
       "footprint": 42
     },
     "xframe-43ch": {
       "name": "Clay Paky Sharpy X Frame",
+      "short": "X-Frame",
       "kind": "movinghead",
       "footprint": 43
     },
     "bpanel-3ch": {
       "name": "Luxibel B Panel 240WW",
+      "short": "Side Panels",
       "kind": "panel",
       "footprint": 3
     },
     "captaind-1ch": {
       "name": "Smoke Factory Captain D",
+      "short": "Smoke",
       "kind": "fog",
       "footprint": 1,
       "standardMap": {
