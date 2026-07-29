@@ -11,3 +11,4 @@ data/direction.json
 !data/music/.gitkeep
 *.log
 .DS_Store
+data/patch.reference.json

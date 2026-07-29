@@ -167,8 +167,10 @@ function listMusic(): unknown {
 
 const { wss } = startWebServer({
   port: WEB_PORT,
-  // Re-read on every request so a hand-edited patch.json is picked up on reload.
-  readPatch: () => readFileSync(patchPath(), 'utf8'),
+  // Re-read on every request so a hand-edited patch.json is picked up on
+  // reload, and merged with the shipped reference so a build that knows about
+  // more of the plot can show it without touching the operator's file.
+  readPatch: () => JSON.stringify(loadPatch()),
   writePatch: (raw) => {
     const parsed = JSON.parse(raw) as { fixtureTypes?: unknown; fixtures?: unknown }
     if (!parsed || typeof parsed !== 'object' || !parsed.fixtureTypes || !Array.isArray(parsed.fixtures)) {

@@ -40,6 +40,23 @@ export const VIEWS: Record<number, { name: string; dir: [number, number, number]
   3: { name: 'Top', dir: [0, 1, 0.02] },
 }
 
+// A fixture whose channel chart nobody has confirmed: drawn as a body, never
+// as light. The same grey as an unlit batten, because that is what it is -- a
+// physical object in a dark room. Making it dimmer to mean "unread" only made
+// the plot harder to see, and the honest place to say a fixture cannot be read
+// is the inspector, not a shade of grey nobody can name.
+const UNREAD_COLOR = '#242932'
+
+// Roughly what each family is, in metres, so the plot reads as a plot. Not a
+// model of the fixture -- a mark at the right place, at the right scale.
+const BODY_SIZE: Record<string, [number, number, number]> = {
+  blinder: [0.55, 0.28, 0.3],
+  panel: [0.5, 0.5, 0.12],
+  movinghead: [0.36, 0.5, 0.36],
+  fog: [0.6, 0.4, 0.35],
+  unknown: [0.3, 0.3, 0.3],
+}
+
 const DEFAULT_VIEW = 1
 const FRAME_MARGIN = 1.18
 const BEAM_LENGTH = 7
@@ -120,6 +137,11 @@ export class PrevizScene {
   // flat emissive plane alone never suggests.
   private halos: THREE.InstancedMesh | null = null
   private beams: THREE.InstancedMesh | null = null
+  // Everything that is not a batten. Kept apart from `fixtures` on purpose:
+  // every index in pixelSlots, poses and tiltSlots refers to that list, and
+  // widening it would have meant touching all of them at once.
+  private others: Fixture[] = []
+  private otherBodies: THREE.InstancedMesh | null = null
   private fixtures: Fixture[] = []
   private pixelSlots: PixelSlot[] = []
   private tiltSlots: TiltSlot[] = []
@@ -220,10 +242,19 @@ export class PrevizScene {
       -((event.clientY - rect.top) / rect.height) * 2 + 1,
     )
     this.raycaster.setFromCamera(pointer, this.camera)
-    const hit = this.raycaster.intersectObject(this.bars, false)[0]
-    this.onPick(
-      hit?.instanceId !== undefined ? (this.fixtures[hit.instanceId]?.id ?? null) : null,
-    )
+    // Battens and every other family are separate meshes, so the nearest hit
+    // across both is the one the operator meant -- clicking a Perseo has to
+    // pick that Perseo, not the batten behind it.
+    const targets: THREE.Object3D[] = [this.bars]
+    if (this.otherBodies) targets.push(this.otherBodies)
+    const hit = this.raycaster.intersectObjects(targets, false)[0]
+    const picked =
+      hit?.instanceId === undefined
+        ? null
+        : hit.object === this.otherBodies
+          ? (this.others[hit.instanceId]?.id ?? null)
+          : (this.fixtures[hit.instanceId]?.id ?? null)
+    this.onPick(picked)
   }
 
   setSelection(ids: string[]): void {
@@ -232,11 +263,19 @@ export class PrevizScene {
   }
 
   private applySelectionTint(): void {
-    if (!this.bars) return
-    this.fixtures.forEach((fixture, index) => {
-      this.bars!.setColorAt(index, this.selected.has(fixture.id) ? BAR_SELECTED_COLOR : BAR_BASE_COLOR)
-    })
-    if (this.bars.instanceColor) this.bars.instanceColor.needsUpdate = true
+    if (this.bars) {
+      this.fixtures.forEach((fixture, index) => {
+        this.bars!.setColorAt(index, this.selected.has(fixture.id) ? BAR_SELECTED_COLOR : BAR_BASE_COLOR)
+      })
+      if (this.bars.instanceColor) this.bars.instanceColor.needsUpdate = true
+    }
+    if (this.otherBodies) {
+      const unread = new THREE.Color(UNREAD_COLOR)
+      this.others.forEach((fixture, index) => {
+        this.otherBodies!.setColorAt(index, this.selected.has(fixture.id) ? BAR_SELECTED_COLOR : unread)
+      })
+      if (this.otherBodies.instanceColor) this.otherBodies.instanceColor.needsUpdate = true
+    }
   }
 
   // ----- static scenery ---------------------------------------------------
@@ -302,12 +341,12 @@ export class PrevizScene {
     }
     this.pixelSlots = []
     this.tiltSlots = []
+    this.others = []
+    this.otherBodies = null
     this.lastTiltVersion = -1
-    // Battens only, for now. The rest of the plot is in the patch and on the
-    // wire, but a Perseo is not a bar of sixteen pixels and drawing it as one
-    // would be worse than not drawing it: the viewport's job is to be true.
-    // Their own geometry comes next; until then the room looks exactly as it
-    // did, which is the point of adding them in this order.
+    // Battens get the bar-and-pixels treatment; every other family is drawn by
+    // buildOthers below, as a body at its place in the plot. A Perseo is not a
+    // bar of sixteen pixels, so it is not drawn as one.
     this.fixtures = patch.fixtures.filter((fixture) => {
       const profile = patch.fixtureTypes[fixture.type]
       return profile !== undefined && kindOf(profile) === 'batten'
@@ -481,8 +520,55 @@ export class PrevizScene {
     // points.
     for (let index = 0; index < this.fixtures.length; index++) this.poseFixture(index, this.aim)
     this.fixtureGroup.add(bars, pixels, glows, halos, beams)
+    this.buildOthers(patch)
     this.applySelectionTint()
     this.lastVersion = -1 // force a recolor on the next frame
+  }
+
+  /**
+   * Everything that is not a batten: the blinders and the beams upstage, the
+   * panels along the tribune, the X Frames at the corners, the hazers.
+   *
+   * They are drawn as bodies, not as light. Their channel charts are not in
+   * the lighting document, so nothing here knows what the console is telling
+   * them -- and a fixture drawn lit when we cannot read it would be a lie the
+   * previz exists to avoid. What this gives is the true answer to "what is in
+   * this room and where": the operator can see the plot, and the moment a
+   * chart is filled in, the same fixture starts showing what it is doing.
+   *
+   * One body per family, sized to what the thing actually is, so a rig reads
+   * as a rig rather than as seventy identical cubes.
+   */
+  private buildOthers(patch: Patch): void {
+    this.others = patch.fixtures.filter((fixture) => {
+      const profile = patch.fixtureTypes[fixture.type]
+      return profile !== undefined && kindOf(profile) !== 'batten'
+    })
+    if (this.others.length === 0) return
+
+    const dummy = new THREE.Object3D()
+    const bodies = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ color: '#ffffff' }),
+      this.others.length,
+    )
+    bodies.frustumCulled = false
+    const unread = new THREE.Color(UNREAD_COLOR)
+
+    this.others.forEach((fixture, index) => {
+      const kind = kindOf(patch.fixtureTypes[fixture.type])
+      const size = BODY_SIZE[kind] ?? BODY_SIZE.unknown
+      dummy.position.fromArray(fixture.position)
+      dummy.rotation.set(0, 0, 0)
+      dummy.scale.set(size[0], size[1], size[2])
+      dummy.updateMatrix()
+      bodies.setMatrixAt(index, dummy.matrix)
+      bodies.setColorAt(index, unread)
+    })
+    dummy.scale.set(1, 1, 1)
+
+    this.otherBodies = bodies
+    this.fixtureGroup.add(bodies)
   }
 
   // ----- per-frame --------------------------------------------------------
@@ -715,7 +801,8 @@ export class PrevizScene {
     const box = new THREE.Box3()
     const point = new THREE.Vector3()
     for (const fixture of this.fixtures) box.expandByPoint(point.fromArray(fixture.position))
-    if (this.fixtures.length === 0) {
+    for (const fixture of this.others) box.expandByPoint(point.fromArray(fixture.position))
+    if (this.fixtures.length + this.others.length === 0) {
       box.set(new THREE.Vector3(-8, 5, -6), new THREE.Vector3(8, 7, 6))
     }
     box.expandByScalar(0.8) // batten length and its glow

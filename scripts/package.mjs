@@ -40,6 +40,10 @@ for (const file of readdirSync(join(ROOT, 'server', 'dist'))) {
 }
 cpSync(join(ROOT, 'ui', 'dist'), join(STAGE, 'ui'), { recursive: true })
 copyFileSync(join(ROOT, 'data', 'patch.json'), join(STAGE, 'data', 'patch.json'))
+// The same file under a second name: data/patch.json belongs to the operator
+// from the first launch onwards and is never overwritten again, so this is how
+// a later build tells an old install about fixtures it has never heard of.
+copyFileSync(join(ROOT, 'data', 'patch.json'), join(STAGE, 'data', 'patch.reference.json'))
 
 // The music folder ships empty but present, with a note in it. Telling someone
 // to "drop the audio in data/music" only works if the folder is there to be
