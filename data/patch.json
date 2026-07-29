@@ -2,6 +2,7 @@
   "fixtureTypes": {
     "tambora-std-pixel": {
       "name": "Clay Paky Tambora Batten",
+      "kind": "batten",
       "footprint": 61,
       "pixels": 16,
       "pixelOrder": "RGB",

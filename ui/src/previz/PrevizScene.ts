@@ -11,6 +11,13 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { activeScene, renderScenePixel } from '../../../core/effects'
+import {
+  blankState,
+  litColour,
+  readFixture,
+  type FixtureProfile,
+  type FixtureState,
+} from '../../../core/fixtures'
 import { editor, effectiveShowTime } from '../editor'
 import { feed } from '../feed'
 import type { Fixture, Patch } from '../patch'
@@ -116,6 +123,13 @@ export class PrevizScene {
   private pixelSlots: PixelSlot[] = []
   private tiltSlots: TiltSlot[] = []
   private poses: Pose[] = []
+  // One profile and one reusable state per fixture: the DMX arithmetic lives
+  // in core/fixtures.ts and this is where its answers are kept for the frame.
+  // Read once per fixture rather than once per pixel -- sixteen pixels of a
+  // batten were recomputing the same fixture-wide colour sixteen times.
+  private profiles: FixtureProfile[] = []
+  private states: FixtureState[] = []
+  private litColours = new Float32Array(0)
   private tiltRange = 0 // radians of full travel
   // Where the battens point when no console is saying. Local radians, negated
   // from the degrees the operator sets because a positive local rotation sends
@@ -368,6 +382,9 @@ export class PrevizScene {
     }
 
     this.poses = []
+    this.profiles = this.fixtures.map((fixture) => patch.fixtureTypes[fixture.type] as FixtureProfile)
+    this.states = this.fixtures.map(() => blankState())
+    this.litColours = new Float32Array(this.fixtures.length * 3)
     this.fixtures.forEach((fixture: Fixture, fixtureIndex: number) => {
       dummy.position.set(...fixture.position)
       dummy.rotation.set(
@@ -485,6 +502,25 @@ export class PrevizScene {
     this.glowSums.fill(0)
     const sums = this.glowSums
 
+    // Every fixture, once, through the one place that knows what a DMX channel
+    // means. `live` is the difference between a rig that is dark and a rig
+    // nobody is talking to -- see core/fixtures.ts.
+    const lit: [number, number, number] = [0, 0, 0]
+    for (let index = 0; index < fixtureCount; index++) {
+      const fixture = this.fixtures[index]
+      const state = readFixture(
+        this.profiles[index],
+        feed.universes.get(fixture.universe) ?? null,
+        fixture.address - 1,
+        feed.active.get(fixture.universe) === true,
+        this.states[index],
+      )
+      litColour(state, lit)
+      this.litColours[index * 3] = lit[0]
+      this.litColours[index * 3 + 1] = lit[1]
+      this.litColours[index * 3 + 2] = lit[2]
+    }
+
     this.pixelSlots.forEach((slot, instance) => {
       let r = 0
       let g = 0
@@ -506,34 +542,24 @@ export class PrevizScene {
         r = sceneColor[0] / 255
         g = sceneColor[1] / 255
         b = sceneColor[2] / 255
+      } else if (slot.globalRgb) {
+        // What the real fixture displays under the console's programming
+        // (validated on the venue recording): the fixture-wide RGBW of the
+        // Standard block, through its master dimmer and shutter. The parked
+        // pixel zone is not what the eye sees in the room. Already read above.
+        const o = slot.fixtureIndex * 3
+        r = this.litColours[o]
+        g = this.litColours[o + 1]
+        b = this.litColours[o + 2]
       } else {
+        // Personalities with no fixture-wide colour: the pixel zone is the
+        // colour, through a plain 8-bit dimmer. Nothing in this plot uses it.
         const buffer = feed.universes.get(slot.universe)
-        if (buffer) {
-          if (slot.globalRgb) {
-            // What the real fixture displays under the console's programming
-            // (validated on the venue recording): the fixture-wide RGBW of
-            // the Standard block, through its master dimmer and shutter. The
-            // parked pixel zone is not what the eye sees in the room.
-            let intensity = 1
-            if (slot.masterDimmer !== null) {
-              intensity =
-                slot.masterDimmerFine !== null
-                  ? (buffer[slot.masterDimmer] * 256 + buffer[slot.masterDimmerFine]) / 65535
-                  : buffer[slot.masterDimmer] / 255
-            }
-            // Tambora strobe channel: 0-3 = light off; strobing/pulsation
-            // ranges render as lit (flashes are not simulated yet).
-            if (slot.strobe !== null && buffer[slot.strobe] <= 3) intensity = 0
-            const w = slot.white !== null ? buffer[slot.white] / 255 : 0
-            r = Math.min(1, buffer[slot.globalRgb[0]] / 255 + w) * intensity
-            g = Math.min(1, buffer[slot.globalRgb[1]] / 255 + w) * intensity
-            b = Math.min(1, buffer[slot.globalRgb[2]] / 255 + w) * intensity
-          } else {
-            const dimmer = buffer[slot.dimmerChannel] / 255
-            r = (buffer[slot.colorChannel] / 255) * dimmer
-            g = (buffer[slot.colorChannel + 1] / 255) * dimmer
-            b = (buffer[slot.colorChannel + 2] / 255) * dimmer
-          }
+        if (buffer && feed.active.get(slot.universe) === true) {
+          const dimmer = buffer[slot.dimmerChannel] / 255
+          r = (buffer[slot.colorChannel] / 255) * dimmer
+          g = (buffer[slot.colorChannel + 1] / 255) * dimmer
+          b = (buffer[slot.colorChannel + 2] / 255) * dimmer
         }
       }
       color.setRGB(r, g, b, THREE.SRGBColorSpace)
@@ -651,19 +677,20 @@ export class PrevizScene {
 
     let dirty = false
     for (const slot of this.tiltSlots) {
-      const buffer = feed.universes.get(slot.universe)
+      const fixture = this.fixtures[slot.fixtureIndex]
       // A universe nobody is sending is not a universe saying zero. Zero is
       // one end of the mechanical travel, so reading a silent console as data
       // aimed every batten a hundred and ten degrees away from level -- which
       // is why the light in the previz used to come out sideways, on a rig
-      // that was simply switched off.
-      const live = buffer !== undefined && feed.active.get(slot.universe) === true
-      const raw = live
-        ? slot.tiltFine !== null
-          ? buffer![slot.tilt] * 256 + buffer![slot.tiltFine]
-          : buffer![slot.tilt] * 257
-        : 0
-      const angle = live ? (raw / 65535 - 0.5) * this.tiltRange : this.aim
+      // that was simply switched off. core/fixtures.ts answers `null` for it.
+      const state = readFixture(
+        this.profiles[slot.fixtureIndex],
+        feed.universes.get(fixture.universe) ?? null,
+        fixture.address - 1,
+        feed.active.get(fixture.universe) === true,
+        this.states[slot.fixtureIndex],
+      )
+      const angle = state.tilt ?? this.aim
       if (angle === slot.lastAngle) continue
       slot.lastAngle = angle
       dirty = true

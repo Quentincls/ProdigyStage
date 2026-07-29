@@ -14,6 +14,10 @@
     "./vocabulary": {
       "types": "./dist/vocabulary.d.ts",
       "default": "./dist/vocabulary.js"
+    },
+    "./fixtures": {
+      "types": "./dist/fixtures.d.ts",
+      "default": "./dist/fixtures.js"
     }
   },
   "files": [

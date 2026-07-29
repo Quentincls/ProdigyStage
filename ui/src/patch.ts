@@ -1,7 +1,10 @@
+import type { FixtureKind } from '../../core/fixtures'
 import { apiUrl } from './config'
 
 export interface FixtureType {
   name: string
+  /** Which adapter in core/fixtures.ts reads it. Absent = nobody can. */
+  kind?: FixtureKind
   footprint: number
   pixels: number
   pixelOrder: string

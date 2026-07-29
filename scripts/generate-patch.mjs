@@ -61,6 +61,9 @@ const patch = {
   fixtureTypes: {
     'tambora-std-pixel': {
       name: 'Clay Paky Tambora Batten',
+      // Which adapter in core/fixtures.ts reads it. A profile without a kind
+      // reads as unknown -- the honest answer for a model nobody has charted.
+      kind: 'batten',
       footprint: 61,
       pixels: 16,
       pixelOrder: 'RGB',

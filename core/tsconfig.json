@@ -13,6 +13,7 @@
   },
   "include": [
     "effects.ts",
-    "vocabulary.ts"
+    "vocabulary.ts",
+    "fixtures.ts"
   ]
 }
