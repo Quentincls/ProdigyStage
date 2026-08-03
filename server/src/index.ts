@@ -8,6 +8,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { networkInterfaces } from 'node:os'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { SceneSpec } from '@prodigy-stage/core'
@@ -397,6 +398,27 @@ function encodeFrame(): Buffer {
   return frame
 }
 
+// Which addresses this machine actually holds, so the report can answer a
+// question nobody thought to ask on site: is this Mac even ON the lighting
+// network? Receiving proves nothing -- a console broadcasting Art-Net reaches
+// every machine on the wire, including one whose own address is on a different
+// subnet entirely. That machine hears everything and can reply to nothing:
+// a unicast to the Art-Net node has no route out, so the frames leave the
+// software, fail in the kernel, and the room stays dark while every line on
+// the screen says the link is healthy.
+//
+// Read-only: node:os reads the local interface table, it touches no network.
+function localAddresses(): { iface: string; address: string; netmask: string }[] {
+  const found: { iface: string; address: string; netmask: string }[] = []
+  for (const [iface, addresses] of Object.entries(networkInterfaces())) {
+    for (const entry of addresses ?? []) {
+      if (entry.family !== 'IPv4' || entry.internal) continue
+      found.push({ iface, address: entry.address, netmask: entry.netmask })
+    }
+  }
+  return found
+}
+
 function encodeStats(): string {
   const perUniverse: Record<string, { pps: number; from: string | null }> = {}
   for (const universe of SHOW_UNIVERSES) {
@@ -407,6 +429,7 @@ function encodeStats(): string {
     type: 'stats',
     version: BUILD_VERSION,
     udp: { port: listener.port, listening: listener.listening, error: listener.lastError },
+    network: localAddresses(),
     perUniverse,
     otherPps: listener.otherPps,
     record: recorder.status(),

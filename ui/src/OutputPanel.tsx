@@ -3,7 +3,8 @@
 // only -- no DMX vocabulary, per the product rules.
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { feed, targetsPointingAtTheConsole, type OutputMode } from './feed'
+import { feed, type OutputMode } from './feed'
+import { targetsPointingAtTheConsole, unroutableTargets } from './net'
 import { controlOutput } from './show'
 
 const HOLD_MS = 1000
@@ -63,9 +64,11 @@ export default function OutputPanel({ onClose }: { onClose: () => void }) {
   const mode: OutputMode = output?.mode ?? 'off'
   const configured = (output?.targets.length ?? 0) > 0
   const loopedBack = targetsPointingAtTheConsole(stats)
+  const unroutable = unroutableTargets(stats)
   const consoleAddress = stats
     ? (Object.values(stats.perUniverse).find((universe) => universe.from)?.from ?? null)
     : null
+  const ourAddresses = (stats?.network ?? []).map((entry) => entry.address).join(', ')
 
   useEffect(() => {
     if (output && targetDraft === '') setTargetDraft(output.targets.join(', '))
@@ -126,6 +129,17 @@ export default function OutputPanel({ onClose }: { onClose: () => void }) {
             back to the desk it came from and the lights never hear it. Ask the lighting operator
             for the address of the lighting network box, and change it under Advanced below.
           </div>
+        )}
+        {unroutable.length > 0 && (
+          <div className="output-warning">
+            {unroutable.join(', ')} is not on a network this computer belongs to
+            {ourAddresses ? ` (this computer is ${ourAddresses})` : ''}. The frames are built and
+            then dropped before they reach the cable. Either the address is wrong, or this
+            computer needs an address on the lighting network — ask the lighting operator.
+          </div>
+        )}
+        {output?.lastError && mode !== 'off' && (
+          <div className="output-warning">The network refused the last frame: {output.lastError}</div>
         )}
         {error && <div className="output-warning">{error}</div>}
       </div>

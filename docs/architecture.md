@@ -227,6 +227,24 @@ Diagnostics et dans le panneau Live output. **Avertissement, pas blocage** :
 une install où le nœud et le pupitre partagent une adresse est le problème
 de quelqu'un, pas quelque chose à interdire.
 
+### Recevoir ne prouve pas qu'on peut émettre
+
+Corollaire du même aveuglement, ajouté le 2026-08-03. Une console qui diffuse
+en broadcast atteint **toutes** les machines du câble, y compris une dont
+l'adresse est sur un autre sous-réseau : un Mac resté en DHCP, ou retombé sur
+une auto-attribuée 169.254.x.x, entend tout le show parfaitement et ne peut
+répondre à rien — l'unicast vers le nœud n'a pas de route, les trames meurent
+dans le noyau, et l'écran affiche du vert partout.
+
+Le serveur rapporte donc ses propres adresses IPv4 (`localAddresses()`,
+lecture locale via `node:os`, aucun accès réseau) et l'UI compare
+(`ui/src/net.ts`, pur, testé par `npm run test:net`). Règle de ce module :
+`onOurNetwork()` renvoie `null` quand il ne peut pas savoir (serveur plus
+ancien, cible qui n'est pas une IPv4, broadcast) et **le null est un
+silence, jamais un défaut** — accuser à tort le réseau devant un rig éteint
+coûte plus cher que de se taire. `output.lastError` (EHOSTUNREACH & co) est
+également remonté dans le panneau.
+
 Merge (`mergeUniverse`, pure et testée) : base = trame console, puis pour
 chaque batten couvert par une piste de la scène active — RGB ← couleur de la
 scène, blanc ← 0, dimmer ← plein, shutter ← ouvert, le tout fondu par

@@ -7,7 +7,8 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { capabilitiesOf, familyName } from '../../core/fixtures'
 import { previzStats } from './previz/PrevizScene'
-import { feed, targetsPointingAtTheConsole } from './feed'
+import { feed } from './feed'
+import { targetsPointingAtTheConsole, unroutableTargets } from './net'
 import type { Patch } from './patch'
 import type { ShowFile } from './show'
 import { formatTime, pad } from './TimeInput'
@@ -115,11 +116,14 @@ function checks(
   // the cause, because it is the one failure where every other line on this
   // screen stays green while the room stays dark.
   const loopedBack = targetsPointingAtTheConsole(stats)
+  const unroutable = unroutableTargets(stats)
   rows.push(
     !out || out.mode === 'off'
       ? { label: 'Lights', value: 'nothing is sent', level: 'idle' }
       : loopedBack.length > 0
         ? { label: 'Lights', value: `sent to ${loopedBack[0]} — that is the console, not the lights`, level: 'down' }
+      : unroutable.length > 0
+        ? { label: 'Lights', value: `${unroutable[0]} is not on this computer's network`, level: 'down' }
       : out.watchdogTripped
         ? { label: 'Lights', value: 'on hold — no console signal', level: 'idle' }
         : out.mode === 'spectator'
@@ -154,6 +158,15 @@ function buildReport(
       `Art-Net port  ${stats.udp.port} ${stats.udp.listening ? 'listening' : 'NOT LISTENING'}` +
         (stats.udp.error ? ` (${stats.udp.error})` : ''),
     )
+    // This machine's own addresses, because "we receive perfectly" and "we can
+    // send" are two different questions and only the first one was ever on
+    // this screen.
+    for (const entry of stats.network ?? []) {
+      lines.push(`This computer ${entry.address} / ${entry.netmask} on ${entry.iface}`)
+    }
+    if ((stats.network ?? []).length === 0) {
+      lines.push('This computer has no network address of its own')
+    }
     let total = 0
     for (const [universe, u] of Object.entries(stats.perUniverse)) {
       total += u.pps
@@ -194,6 +207,13 @@ function buildReport(
     const loopedBack = targetsPointingAtTheConsole(stats)
     if (loopedBack.length > 0) {
       lines.push(`WRONG TARGET   ${loopedBack.join(', ')} is the console itself — the lights never receive this`)
+    }
+    const unroutable = unroutableTargets(stats)
+    if (unroutable.length > 0) {
+      lines.push(
+        `NO ROUTE       ${unroutable.join(', ')} is not on any network this computer belongs to —` +
+          ' the frames are built and then dropped by the system',
+      )
     }
     if (out.activeSceneName) lines.push(`Playing        ${out.activeSceneName}`)
     if (out.lastError) lines.push(`Last error     ${out.lastError}`)

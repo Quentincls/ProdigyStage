@@ -29,36 +29,22 @@ export interface OutputStatus {
   writableFamilies?: { name: string; count: number }[]
 }
 
+export interface LocalAddress {
+  iface: string
+  address: string
+  netmask: string
+}
+
 export interface FeedStats {
   version?: string
   udp: { port: number; listening: boolean; error: string | null }
+  /** This machine's own IPv4 addresses. Absent on servers older than this UI. */
+  network?: LocalAddress[]
   perUniverse: Record<string, UniverseStat>
   otherPps: number
   record: { recording: boolean; file: string | null; seconds: number; frames: number }
   replay: { replaying: boolean; file: string | null; seconds: number }
   output: OutputStatus
-}
-
-/**
- * Output addresses that are in fact the console talking to us.
- *
- * On site this cost a whole session. The address field was set to the console's
- * own IP, so every merged frame was posted straight back at the desk that sent
- * it and the rig never heard a word -- while the panel cheerfully reported
- * frames going out, because they were. Nothing in the software knew that the
- * one address it must never send to was the one address it already knew.
- *
- * It knows now. Not a block: an install where the node and the desk really do
- * share an address is somebody's problem to solve, not ours to forbid.
- */
-export function targetsPointingAtTheConsole(stats: FeedStats | null): string[] {
-  if (!stats) return []
-  const sources = new Set(
-    Object.values(stats.perUniverse)
-      .map((universe) => universe.from)
-      .filter((from): from is string => from !== null),
-  )
-  return stats.output.targets.filter((target) => sources.has(target))
 }
 
 export interface FeedTimecode {

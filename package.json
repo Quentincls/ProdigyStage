@@ -20,12 +20,13 @@
     "generate-patch": "node scripts/generate-patch.mjs",
     "test:core": "node core/selftest.ts",
     "test:output": "npm run build -w core && npm run test:output -w server",
-    "test": "npm run test:core && npm run test:fixtures && npm run test:layers && npm run test:pipeline && npm run test:output && npm run test:audio",
+    "test": "npm run test:core && npm run test:fixtures && npm run test:layers && npm run test:pipeline && npm run test:output && npm run test:audio && npm run test:net",
     "test:pipeline": "npm run build -w core && npm run test:pipeline -w server",
     "package": "node scripts/package.mjs",
     "test:audio": "npm run build -w core && npm run test:audio -w server",
     "test:fixtures": "npm run build -w core && npm run test:fixtures -w server",
-    "test:layers": "npm run build -w core && npm run test:layers -w server"
+    "test:layers": "npm run build -w core && npm run test:layers -w server",
+    "test:net": "tsx ui/src/net-selftest.ts"
   },
   "devDependencies": {
     "archiver": "^7.0.0",
