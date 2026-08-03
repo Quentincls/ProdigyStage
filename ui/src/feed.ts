@@ -39,6 +39,28 @@ export interface FeedStats {
   output: OutputStatus
 }
 
+/**
+ * Output addresses that are in fact the console talking to us.
+ *
+ * On site this cost a whole session. The address field was set to the console's
+ * own IP, so every merged frame was posted straight back at the desk that sent
+ * it and the rig never heard a word -- while the panel cheerfully reported
+ * frames going out, because they were. Nothing in the software knew that the
+ * one address it must never send to was the one address it already knew.
+ *
+ * It knows now. Not a block: an install where the node and the desk really do
+ * share an address is somebody's problem to solve, not ours to forbid.
+ */
+export function targetsPointingAtTheConsole(stats: FeedStats | null): string[] {
+  if (!stats) return []
+  const sources = new Set(
+    Object.values(stats.perUniverse)
+      .map((universe) => universe.from)
+      .filter((from): from is string => from !== null),
+  )
+  return stats.output.targets.filter((target) => sources.has(target))
+}
+
 export interface FeedTimecode {
   receiving: boolean
   hours: number

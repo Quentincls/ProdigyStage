@@ -31,8 +31,12 @@ on site — plays those scenes on the real fixtures as a man-in-the-middle.
       The previz follows colour, intensity and movement.
 - [x] **Phase 6** — Art-Net man-in-the-middle output: passthrough measured at
       ~0.2 ms, scene substitution with a 0.5 s crossfade (the `/core` engine
-      runs server-side too), blackout, 250 ms watchdog, press-and-hold to arm.
-      **Built and tested off site — commissioning at the venue is next.**
+      runs server-side too), blackout, a watchdog, press-and-hold to arm.
+      Commissioned at the venue on 2026-08-03, which taught it two things a
+      bench never could: a console idling on a static look drops to about one
+      frame per second, so the rig is refreshed on our own 40 Hz clock while
+      armed rather than at the console's pace, and the output address is
+      checked against the address the console talks to us from.
 - [x] **COMPOSE — the third space.** The product now reads
       `COMPOSE → EDIT → LIVE`: Compose proposes, Edit decides and owns the
       result, Watch runs it. Compose imports a track, shows the whole set at
@@ -132,7 +136,8 @@ sink on 6455, use `npm run fake-show` as the console, then drive `/api/output`
 (`spectator` → `armed` → `blackout`). Verified this way: nothing is sent while
 `off`, byte-exact passthrough, the scene substituted exactly on its timecode,
 the console taking back over at the end, blackout holding with the console
-killed, and the watchdog cutting output within 250 ms.
+killed, the armed clock keeping our animations running while the console
+sits idle, and the watchdog cutting output once the link really is silent.
 
 ## Requirements
 

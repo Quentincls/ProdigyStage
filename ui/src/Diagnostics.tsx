@@ -7,7 +7,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { capabilitiesOf, familyName } from '../../core/fixtures'
 import { previzStats } from './previz/PrevizScene'
-import { feed } from './feed'
+import { feed, targetsPointingAtTheConsole } from './feed'
 import type { Patch } from './patch'
 import type { ShowFile } from './show'
 import { formatTime, pad } from './TimeInput'
@@ -111,9 +111,15 @@ function checks(
   )
 
   const out = stats?.output
+  // The wrong-target case is checked before anything else that could look like
+  // the cause, because it is the one failure where every other line on this
+  // screen stays green while the room stays dark.
+  const loopedBack = targetsPointingAtTheConsole(stats)
   rows.push(
     !out || out.mode === 'off'
       ? { label: 'Lights', value: 'nothing is sent', level: 'idle' }
+      : loopedBack.length > 0
+        ? { label: 'Lights', value: `sent to ${loopedBack[0]} — that is the console, not the lights`, level: 'down' }
       : out.watchdogTripped
         ? { label: 'Lights', value: 'on hold — no console signal', level: 'idle' }
         : out.mode === 'spectator'
@@ -185,6 +191,10 @@ function buildReport(
       `Delay         ${(out.passthroughUs / 1000).toFixed(2)} ms (worst ${(out.maxPassthroughUs / 1000).toFixed(2)} ms)`,
     )
     if (out.watchdogTripped) lines.push('WATCHDOG       tripped — no console signal, output on hold')
+    const loopedBack = targetsPointingAtTheConsole(stats)
+    if (loopedBack.length > 0) {
+      lines.push(`WRONG TARGET   ${loopedBack.join(', ')} is the console itself — the lights never receive this`)
+    }
     if (out.activeSceneName) lines.push(`Playing        ${out.activeSceneName}`)
     if (out.lastError) lines.push(`Last error     ${out.lastError}`)
   }

@@ -247,12 +247,95 @@ await settle()
   check('blackout is all zeros', packet !== null && packet.data.every((v) => v === 0))
 }
 
-// 7g. watchdog trips after 250 ms of console silence.
+// 7g. The watchdog is measured against the console's IDLE refresh rate, not
+// against the rate a moving look happens to produce. On site, sitting on a
+// static look, the console refreshed roughly once per second per universe and
+// the old 250 ms threshold reported that healthy link as dead for most of every
+// second. The real dead-link case is still caught, just further out.
 output.setMode('spectator')
 output.onConsoleFrame(universe, consoleFrame, process.hrtime.bigint())
 check('watchdog clear right after a frame', output.watchdogTripped() === false)
 await new Promise((resolve) => setTimeout(resolve, 300))
-check('watchdog trips after 250 ms of silence', output.watchdogTripped() === true)
+check('300 ms between frames is not a dead console', output.watchdogTripped() === false)
+check(
+  'nor is a console idling at one frame per second',
+  output.watchdogTripped(Date.now() + 1200) === false,
+)
+check('a truly silent link still trips it', output.watchdogTripped(Date.now() + 6000) === true)
+
+// 7i. Armed, this software refreshes the rig on its own clock. Without this,
+// our animations were sampled at the console's rate -- one frame per second on
+// a static look -- so a scene that sparkles reached the rig as a slideshow
+// while the previz showed it running at 60 fps.
+{
+  output.setMode('armed')
+  showTime = 15
+  output.onConsoleFrame(universe, consoleFrame, process.hrtime.bigint())
+  received.length = 0
+  await new Promise((resolve) => setTimeout(resolve, 150)) // no console frame at all
+  check(
+    'armed keeps refreshing without new console frames',
+    received.length >= 3,
+    `got ${received.length} in 150 ms`,
+  )
+  const packet = received.length > 0 ? parseArtDmx(received[received.length - 1]) : null
+  check(
+    'and every refresh still carries the scene',
+    packet !== null && packet.data[fixtures[0].base + map.red] === 255,
+  )
+}
+
+// 7j. Re-rendering is not re-merging. A merge blends towards the console frame,
+// so applying it again on an already-merged buffer would walk a half-faded
+// scene up to full and collapse the 0,5 s crossfade into a cut. Every emission
+// starts from the console's last frame, so the tenth refresh equals the first.
+{
+  showTime = 10.25 // half way through the fade in
+  received.length = 0
+  output.onConsoleFrame(universe, consoleFrame, process.hrtime.bigint())
+  await settle()
+  const base = fixtures[0].base + map.red
+  const first = parseArtDmx(received[0])
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  const last = parseArtDmx(received[received.length - 1])
+  check(
+    'mid-crossfade sits between the console and us',
+    first !== null && first.data[base] > 100 && first.data[base] < 160,
+    `got ${first?.data[base]}`,
+  )
+  check(
+    'refreshing does not walk the crossfade up to full',
+    first !== null && last !== null && last.data[base] === first.data[base],
+    `first ${first?.data[base]}, after 150 ms ${last?.data[base]}`,
+  )
+}
+
+// 7k. Spectator has no clock. One console frame in, exactly one frame out --
+// the property that makes passthrough auditable.
+output.setMode('spectator')
+received.length = 0
+output.onConsoleFrame(universe, consoleFrame, process.hrtime.bigint())
+await new Promise((resolve) => setTimeout(resolve, 150))
+check('spectator never invents a frame', received.length === 1, `got ${received.length}`)
+
+// 7l. The refresh clock may never outlive the console link. A watchdog whose
+// only job is "a dead console cannot leave the rig frozen on our last frame" is
+// worth nothing if a timer keeps re-sending that last frame forever.
+{
+  const orphan = new ArtnetOutput({ targets: ['127.0.0.1'], port: TEST_PORT }, patch)
+  orphan.getScenes = () => [scene]
+  orphan.getShowTime = () => 15
+  received.length = 0
+  orphan.setMode('armed') // armed, but no console frame has ever arrived
+  check('a link that never spoke reads as dead', orphan.watchdogTripped() === true)
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  check(
+    'the refresh clock transmits nothing while the link is dead',
+    received.length === 0,
+    `got ${received.length}`,
+  )
+  orphan.stop()
+}
 
 // ----- a universe we know nothing about must still get through ---------------
 // The one thing a man in the middle may never do is swallow a frame. Universes

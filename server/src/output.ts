@@ -10,11 +10,12 @@
 //   3. A target that would loop back into our own listener is rejected.
 //   4. 'spectator' forwards the console byte-for-byte; only 'armed'
 //      substitutes our scenes; 'blackout' forces zeros.
-//   5. A 250 ms input watchdog stops emission when the console link dies, so
-//      a dead console can never leave the rig frozen on our last frame.
+//   5. An input watchdog stops emission when the console link dies, so a dead
+//      console can never leave the rig frozen on our last frame.
 //
-// Latency: we emit on receipt (not on a timer), so passthrough costs one
-// merge pass -- measured and exposed as passthroughUs.
+// Latency: we emit on receipt, so passthrough costs one merge pass -- measured
+// and exposed as passthroughUs. While armed we ALSO emit on our own clock, for
+// the reason spelled out at ARMED_REFRESH_MS.
 
 import { createSocket, type Socket } from 'node:dgram'
 import { activeScene, renderScenePixel, type SceneSpec } from '@prodigy-stage/core'
@@ -35,9 +36,30 @@ export type OutputMode = 'off' | 'spectator' | 'armed' | 'blackout'
 // Console -> scene blend at a scene's edges (brief: 0,5 s).
 const CROSSFADE_S = 0.5
 // No console frame for this long = the link is dead; stop emitting.
-const WATCHDOG_MS = 250
+//
+// This was 250 ms, which assumed the console streams continuously. It does
+// not. A console sends when it has something to say: sitting on a static look,
+// a ChamSys drops to about one refresh per second per universe, and Art-Net
+// only asks a controller to re-send unchanged data every 4 s. So on site, with
+// a perfectly healthy link, the panel spent most of every second announcing
+// "no console signal". The threshold has to be read against the idle refresh
+// guarantee, not against the rate a moving look happens to produce.
+const WATCHDOG_MS = 5000
 // Blackout must hold the rig dark even if the console stopped talking.
 const BLACKOUT_KEEPALIVE_MS = 40
+// While armed, refresh the rig on our own clock instead of only when a console
+// frame arrives.
+//
+// Same root cause as the watchdog, with worse consequences: emitting only on
+// receipt sampled OUR OWN animations at the console's rate. During a static
+// look that is one frame per second -- so a scene that sparkles, chases or
+// strobes would have crawled onto the rig at 1 fps while the previz showed it
+// running at 60. The previz was not lying about the scene; the wire was.
+//
+// 25 ms is 40 Hz, just under the 44 Hz ceiling Art-Net sets. Console frames
+// and this clock share one budget per universe (see lastSentAt), so a console
+// running at full rate does not get doubled.
+const ARMED_REFRESH_MS = 25
 
 export interface OutputConfig {
   targets: string[]
@@ -215,7 +237,17 @@ export class ArtnetOutput {
   private membersVersion = -1
   private members = new Map<string, Map<string, string[]>>()
   private buffers = new Map<number, Uint8Array>()
+  // The console's last frame, per universe, untouched.
+  //
+  // Kept apart from `buffers` (which holds what we emitted) because a merge is
+  // a blend towards the console frame, not an idempotent overwrite: re-merging
+  // on top of an already-merged buffer would walk a half-faded scene up to full
+  // every refresh, and the 0,5 s crossfade would collapse into a cut. Every
+  // emission is rendered from this, so the hundredth refresh of a frame is
+  // identical to the first.
+  private raw = new Map<number, Uint8Array>()
   private sequences = new Map<number, number>()
+  private lastSentAt = new Map<number, number>()
   private lastConsoleAt = 0
   private framesSent = 0
   private sentThisSecond = 0
@@ -225,6 +257,7 @@ export class ArtnetOutput {
   private activeSceneName: string | null = null
   private lastError: string | null = null
   private blackoutTimer: NodeJS.Timeout | null = null
+  private refreshTimer: NodeJS.Timeout | null = null
   private statsTimer: NodeJS.Timeout | null = null
 
   // Scenes, layers and show time are pulled at emit time so the editor stays
@@ -358,6 +391,17 @@ export class ArtnetOutput {
       this.blackoutTimer = setInterval(() => this.sendBlackout(), BLACKOUT_KEEPALIVE_MS)
       this.sendBlackout()
     }
+
+    // The refresh clock exists only while our own scenes are on the rig.
+    // Spectator stays strictly reactive: one console frame in, one frame out,
+    // byte for byte, which is the property that makes passthrough auditable.
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer)
+      this.refreshTimer = null
+    }
+    if (mode === 'armed') {
+      this.refreshTimer = setInterval(() => this.refresh(), ARMED_REFRESH_MS)
+    }
     console.log(`output: mode -> ${mode}${mode === 'off' ? '' : ` (targets ${this.config.targets.join(', ')})`}`)
     return this.status()
   }
@@ -379,7 +423,7 @@ export class ArtnetOutput {
     this.lastConsoleAt = Date.now()
     if (this.mode === 'off' || this.mode === 'blackout') return
 
-    // Every universe the console sends is forwarded, including the ones we
+    // Every universe the console sends is remembered, including the ones we
     // have no fixtures on and the ones whose charts nobody has confirmed.
     //
     // This is not an optimisation detail, it is what "man in the middle" means.
@@ -388,13 +432,32 @@ export class ArtnetOutput {
     // the console was routed through this software, the sixteen B Panels on
     // universes 6 and 7 stopped receiving anything at all. Passing a frame we
     // do not understand straight through is the whole job.
+    let raw = this.raw.get(universe)
+    if (!raw) {
+      raw = new Uint8Array(DMX_CHANNELS)
+      this.raw.set(universe, raw)
+    }
+    raw.set(data.subarray(0, DMX_CHANNELS))
+
+    this.emit(universe)
+    const elapsed = Number(process.hrtime.bigint() - at) / 1000
+    this.passthroughUs = elapsed
+    if (elapsed > this.maxPassthroughUs) this.maxPassthroughUs = elapsed
+  }
+
+  // Render one universe from the console's last frame and put it on the wire.
+  // Called both on receipt and from the armed refresh clock; the two are the
+  // same operation, which is why re-rendering has to be free of side effects on
+  // the console frame it starts from.
+  private emit(universe: number): void {
+    const raw = this.raw.get(universe)
+    if (!raw) return
     let out = this.buffers.get(universe)
     if (!out) {
       out = new Uint8Array(DMX_CHANNELS)
       this.buffers.set(universe, out)
     }
-
-    out.set(data.subarray(0, DMX_CHANNELS))
+    out.set(raw)
 
     if (this.mode === 'armed') {
       const showTime = this.getShowTime()
@@ -423,9 +486,21 @@ export class ArtnetOutput {
     }
 
     this.send(universe, out)
-    const elapsed = Number(process.hrtime.bigint() - at) / 1000
-    this.passthroughUs = elapsed
-    if (elapsed > this.maxPassthroughUs) this.maxPassthroughUs = elapsed
+    this.lastSentAt.set(universe, Date.now())
+  }
+
+  // The armed clock. Re-emits any universe the console has not refreshed for
+  // us recently, so our animations run at their own speed rather than at the
+  // console's. Deliberately does nothing when the link is dead: the watchdog's
+  // whole promise is that a silent console cannot leave the rig frozen on our
+  // last frame, and a refresh clock is exactly how that promise gets broken.
+  private refresh(): void {
+    if (this.mode !== 'armed' || this.watchdogTripped()) return
+    const now = Date.now()
+    for (const universe of this.raw.keys()) {
+      if (now - (this.lastSentAt.get(universe) ?? 0) < ARMED_REFRESH_MS) continue
+      this.emit(universe)
+    }
   }
 
   private sendBlackout(): void {
@@ -476,8 +551,10 @@ export class ArtnetOutput {
     this.socket = null
   }
 
-  watchdogTripped(): boolean {
-    return this.mode !== 'off' && Date.now() - this.lastConsoleAt > WATCHDOG_MS
+  /** `now` is injectable so the self-test can reach the dead-link case without
+   *  sleeping for the whole watchdog window. */
+  watchdogTripped(now = Date.now()): boolean {
+    return this.mode !== 'off' && now - this.lastConsoleAt > WATCHDOG_MS
   }
 
   status(): OutputStatus {
@@ -498,6 +575,7 @@ export class ArtnetOutput {
 
   stop(): void {
     if (this.blackoutTimer) clearInterval(this.blackoutTimer)
+    if (this.refreshTimer) clearInterval(this.refreshTimer)
     if (this.statsTimer) clearInterval(this.statsTimer)
     this.closeSocket()
     this.mode = 'off'

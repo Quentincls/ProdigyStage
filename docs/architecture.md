@@ -171,14 +171,61 @@ ordre :
    refusée (elle réinjecterait dans notre listener).
 4. **`spectator`** relaie la console octet pour octet ; seul **`armed`**
    substitue nos scènes ; **`blackout`** force des zéros.
-5. **Watchdog 250 ms** : plus de trame console = on cesse d'émettre, pour ne
+5. **Watchdog 5 s** : plus de trame console = on cesse d'émettre, pour ne
    jamais figer le rig sur notre dernière image. Exception voulue : en
    `blackout` on continue d'émettre des zéros à 25 Hz (une sécurité doit
    fonctionner même console morte).
 
-Émission **à la réception** (pas sur timer) : le passthrough coûte une passe
-de merge, mesurée et exposée (`passthroughUs`). Mesuré ici : **~0,2 ms au
-pire**, budget 5 ms.
+### Le débit console n'est pas le débit du show (piège, corrigé le 2026-08-03)
+
+Une console n'émet pas en continu : elle émet quand elle a quelque chose à
+dire. Posée sur un look statique, la ChamSys retombe à **~1 trame/s par
+univers** (l'Art-Net n'exige un rafraîchissement d'une donnée inchangée que
+toutes les 4 s). Deux conséquences, toutes deux constatées en salle :
+
+- un watchdog à 250 ms lisait ce lien parfaitement sain comme mort pendant
+  la quasi-totalité de chaque seconde (« LIGHTS — on hold, no console
+  signal » alors que la console était là, en vert, juste au-dessus) ;
+- émettre **uniquement à la réception** échantillonnait **nos propres
+  animations** au rythme de la console : une scène qui scintille sortait à
+  1 fps pendant que la previz la montrait à 60. La previz ne mentait pas sur
+  la scène, c'est le fil qui la ralentissait.
+
+Donc : le seuil du watchdog se lit contre le rafraîchissement **au repos**,
+et en `armed` on rafraîchit le rig sur **notre** horloge
+(`ARMED_REFRESH_MS = 25`, soit 40 Hz, juste sous le plafond Art-Net de
+44 Hz). Trames console et horloge partagent un budget par univers
+(`lastSentAt`) : une console à plein régime ne se retrouve pas doublée.
+
+Deux propriétés à ne pas casser, chacune tenue par un test :
+
+- **`spectator` n'a pas d'horloge.** Une trame console entrée = exactement
+  une trame sortie. C'est ce qui rend le passthrough auditable.
+- **Rendre à nouveau n'est pas re-merger.** Un merge fond *vers* la trame
+  console ; le réappliquer sur un tampon déjà fondu ferait monter un
+  crossfade à mi-course jusqu'au plein à chaque rafraîchissement, et le fondu
+  de 0,5 s deviendrait une coupe. D'où `raw` (dernière trame console intacte)
+  séparé de `buffers` (ce qu'on a émis) : **chaque émission repart de `raw`**,
+  donc le centième rafraîchissement d'une trame est identique au premier.
+- Et l'horloge ne survit jamais au lien : `refresh()` ne fait rien si le
+  watchdog est déclenché, sinon un timer rejouerait éternellement notre
+  dernière image — précisément ce que le watchdog promet d'empêcher.
+
+Émission **à la réception** (plus l'horloge ci-dessus quand `armed`) : le
+passthrough coûte une passe de merge, mesurée et exposée (`passthroughUs`).
+Mesuré ici : **~0,2 ms au pire**, budget 5 ms.
+
+### La cible ne doit pas être la console (piège, salle, 2026-08-03)
+
+Le champ « Lighting network address » avait été réglé sur l'IP **de la
+console**. Chaque trame fusionnée repartait donc vers le pupitre qui venait
+de l'envoyer, le rig n'entendait rien — et le panneau annonçait joyeusement
+des trames en sortie, puisqu'il y en avait. Le logiciel connaissait déjà
+l'adresse d'où arrivent les trames console : il ne s'en servait pas.
+`targetsPointingAtTheConsole()` (UI) compare les deux et le dit, dans
+Diagnostics et dans le panneau Live output. **Avertissement, pas blocage** :
+une install où le nœud et le pupitre partagent une adresse est le problème
+de quelqu'un, pas quelque chose à interdire.
 
 Merge (`mergeUniverse`, pure et testée) : base = trame console, puis pour
 chaque batten couvert par une piste de la scène active — RGB ← couleur de la

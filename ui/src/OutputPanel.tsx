@@ -3,7 +3,7 @@
 // only -- no DMX vocabulary, per the product rules.
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { feed, type OutputMode } from './feed'
+import { feed, targetsPointingAtTheConsole, type OutputMode } from './feed'
 import { controlOutput } from './show'
 
 const HOLD_MS = 1000
@@ -62,6 +62,10 @@ export default function OutputPanel({ onClose }: { onClose: () => void }) {
   const output = stats?.output
   const mode: OutputMode = output?.mode ?? 'off'
   const configured = (output?.targets.length ?? 0) > 0
+  const loopedBack = targetsPointingAtTheConsole(stats)
+  const consoleAddress = stats
+    ? (Object.values(stats.perUniverse).find((universe) => universe.from)?.from ?? null)
+    : null
 
   useEffect(() => {
     if (output && targetDraft === '') setTargetDraft(output.targets.join(', '))
@@ -114,6 +118,13 @@ export default function OutputPanel({ onClose }: { onClose: () => void }) {
         {output?.watchdogTripped && mode !== 'off' && (
           <div className="output-warning">
             No signal from the console. Output is on hold until it comes back.
+          </div>
+        )}
+        {loopedBack.length > 0 && (
+          <div className="output-warning">
+            {loopedBack.join(', ')} is the console, not the lights. Everything sent there goes
+            back to the desk it came from and the lights never hear it. Ask the lighting operator
+            for the address of the lighting network box, and change it under Advanced below.
           </div>
         )}
         {error && <div className="output-warning">{error}</div>}
@@ -191,6 +202,8 @@ export default function OutputPanel({ onClose }: { onClose: () => void }) {
             <span className="panel-label">Lighting network address</span>
             <span className="muted-note">
               Ask the lighting operator. Leave empty and this computer can never send anything.
+              {consoleAddress && ` The console talks to us from ${consoleAddress}, so that is the
+              one address this is never meant to be.`}
             </span>
             <div className="preset-row">
               <input
