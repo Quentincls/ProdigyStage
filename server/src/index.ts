@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { SceneSpec } from '@prodigy-stage/core'
+import type { LightLayer } from '@prodigy-stage/core/layers'
 import { WebSocket } from 'ws'
 import { timecodeToSeconds } from './artnet.js'
 import { analyseWav, type AudioAnalysis } from './audio.js'
@@ -88,21 +89,36 @@ const BUILD_VERSION = (() => {
 
 const output = new ArtnetOutput(loadOutputConfig(), patch)
 
-// Scenes are cached: the merge runs on every console frame, it must never
-// touch the disk. Invalidated whenever the editor saves.
+// Scenes and light layers are cached: the merge runs on every console frame,
+// it must never touch the disk. Invalidated whenever the editor saves, and the
+// version is what tells the output its precomputed layer membership is stale.
 let scenesCache: SceneSpec[] | null = null
+let layersCache: LightLayer[] | null = null
+let showVersion = 0
 function scenes(): SceneSpec[] {
   if (scenesCache) return scenesCache
+  readShowFile()
+  return scenesCache ?? []
+}
+function layers(): LightLayer[] {
+  if (layersCache) return layersCache
+  readShowFile()
+  return layersCache ?? []
+}
+function readShowFile(): void {
   try {
-    const parsed = JSON.parse(readShow()) as { scenes?: SceneSpec[] }
+    const parsed = JSON.parse(readShow()) as { scenes?: SceneSpec[]; layers?: LightLayer[] }
     scenesCache = Array.isArray(parsed.scenes) ? parsed.scenes : []
+    layersCache = Array.isArray(parsed.layers) ? parsed.layers : []
   } catch {
     scenesCache = []
+    layersCache = []
   }
-  return scenesCache
 }
 
 output.getScenes = scenes
+output.getLayers = layers
+output.getEditorVersion = () => showVersion
 output.getShowTime = () =>
   listener.isTimecodeActive() && listener.timecode ? timecodeToSeconds(listener.timecode) : null
 listener.onFrame = (universe, data, at) => output.onConsoleFrame(universe, data, at)
@@ -198,6 +214,8 @@ const { wss } = startWebServer({
     }
     writeFileSync(showPath, JSON.stringify(parsed, null, 2) + '\n')
     scenesCache = null
+    layersCache = null
+    showVersion++
   },
   controlOutput: (action, value) => {
     if (action === 'mode') return output.setMode(value as OutputMode)

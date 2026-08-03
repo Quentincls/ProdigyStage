@@ -24,6 +24,9 @@ export interface OutputStatus {
   watchdogTripped: boolean
   activeSceneName: string | null
   lastError: string | null
+  /** Which families this install could actually transmit to. A family whose
+   *  channel chart is unconfirmed is absent, and cannot be driven. */
+  writableFamilies?: { name: string; count: number }[]
 }
 
 export interface FeedStats {

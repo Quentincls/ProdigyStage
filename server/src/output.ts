@@ -18,6 +18,15 @@
 
 import { createSocket, type Socket } from 'node:dgram'
 import { activeScene, renderScenePixel, type SceneSpec } from '@prodigy-stage/core'
+import { blankIntent } from '@prodigy-stage/core/behaviors'
+import { isWritable, writeFixture, type FixtureProfile } from '@prodigy-stage/core/fixtures'
+import {
+  activeLayer,
+  layerMembers,
+  renderLayerIntent,
+  type FixtureRef,
+  type LightLayer,
+} from '@prodigy-stage/core/layers'
 import { ARTNET_PORT, buildArtDmxPacket, DMX_CHANNELS, showUniverseToArtnet } from './artnet.js'
 import type { Patch } from './patch.js'
 
@@ -46,6 +55,9 @@ export interface OutputStatus {
   watchdogTripped: boolean
   activeSceneName: string | null
   lastError: string | null
+  /** Which families this install could transmit to, and how many of each. The
+   *  panel shows it so nobody discovers the answer by arming and watching. */
+  writableFamilies: { name: string; count: number }[]
 }
 
 // One emitting fixture: where it lives in the DMX buffer and where it sits
@@ -125,6 +137,62 @@ export function mergeUniverse(
   return touched
 }
 
+/**
+ * A fixture a light layer can actually drive.
+ *
+ * "Actually" is the whole word. A fixture lands in this list only if its
+ * profile carries a channel map -- which is why the B Panels and the Perseo
+ * Beams cannot be transmitted to even when a layer names them: there is no
+ * address to write. Nothing checks for them by name; the absence of a chart
+ * does the work, and the day someone fills one in they start being driven with
+ * no other change.
+ */
+interface WriteTarget {
+  ref: FixtureRef
+  profile: FixtureProfile
+  base: number
+}
+
+/** How much a layer owns the output right now: 0 = console, 1 = fully ours. */
+export function layerMix(layer: LightLayer, showTime: number): number {
+  if (showTime < layer.start || showTime >= layer.end) return 0
+  const into = showTime - layer.start
+  const left = layer.end - showTime
+  const ramp = Math.min(CROSSFADE_S, (layer.end - layer.start) / 2)
+  if (ramp <= 0) return 1
+  return Math.max(0, Math.min(1, Math.min(into / ramp, left / ramp)))
+}
+
+/**
+ * Pure merge for a light layer: console frame in, emitted frame out.
+ *
+ * Runs after the scene merge, so a layer wins over a scene on the same
+ * fixture. That is the same priority the previz uses, which is what keeps the
+ * screen and the room showing the same thing.
+ *
+ * Exported for the self-test.
+ */
+export function mergeLayerUniverse(
+  out: Uint8Array,
+  targets: WriteTarget[],
+  layer: LightLayer | null,
+  members: Map<string, string[]>,
+  showTime: number,
+): boolean {
+  if (!layer) return false
+  const mix = layerMix(layer, showTime)
+  if (mix <= 0) return false
+  let touched = false
+  for (const target of targets) {
+    const intent = renderLayerIntent(layer, target.ref, members, showTime, scratchIntent)
+    if (!intent) continue // no part of this layer names it: console stays visible
+    if (writeFixture(target.profile, intent, out, target.base, mix)) touched = true
+  }
+  return touched
+}
+
+const scratchIntent = blankIntent()
+
 export class ArtnetOutput {
   private socket: Socket | null = null
   private mode: OutputMode = 'off'
@@ -138,6 +206,14 @@ export class ArtnetOutput {
     dimmerFine: null,
     strobe: null,
   }
+  // Everything a light layer could drive, by universe. Built once from the
+  // patch: a fixture is here only if its profile has a channel map.
+  private writable = new Map<number, WriteTarget[]>()
+  /** Which families a layer can reach, for the Live output panel to show. */
+  private writableFamilies: { name: string; count: number }[] = []
+  private allRefs: FixtureRef[] = []
+  private membersVersion = -1
+  private members = new Map<string, Map<string, string[]>>()
   private buffers = new Map<number, Uint8Array>()
   private sequences = new Map<number, number>()
   private lastConsoleAt = 0
@@ -151,8 +227,14 @@ export class ArtnetOutput {
   private blackoutTimer: NodeJS.Timeout | null = null
   private statsTimer: NodeJS.Timeout | null = null
 
-  // Scenes and show time are pulled at emit time so the editor stays live.
+  // Scenes, layers and show time are pulled at emit time so the editor stays
+  // live: what the operator changes on screen is what goes out on the next
+  // console frame, with no restart and no apply button.
   getScenes: () => SceneSpec[] = () => []
+  getLayers: () => LightLayer[] = () => []
+  /** Bumped by the caller whenever the show file changes, so the layer
+   *  membership map is rebuilt then rather than on every console frame. */
+  getEditorVersion: () => number = () => 0
   getShowTime: () => number | null = () => null
 
   constructor(
@@ -210,6 +292,48 @@ export class ArtnetOutput {
         }
       })
     }
+
+    // ----- what a light layer can drive -------------------------------------
+    // Wider than the walls, because a layer is meant to reach the whole rig --
+    // but only as wide as the documentation goes. A fixture whose profile has
+    // no channel map is not in this list and therefore cannot be transmitted
+    // to, whatever a layer says about it. That is the same rule the previz
+    // uses to refuse to draw it lit, enforced by the same missing data.
+    this.writable.clear()
+    this.allRefs = patch.fixtures.map((fixture) => ({
+      id: fixture.id,
+      type: fixture.type,
+      group: fixture.group,
+    }))
+    this.membersVersion = -1
+    const families = new Map<string, number>()
+    for (const fixture of patch.fixtures) {
+      const profile = patch.fixtureTypes[fixture.type] as FixtureProfile | undefined
+      if (!profile || !isWritable(profile)) continue
+      const list = this.writable.get(fixture.universe) ?? []
+      list.push({
+        ref: { id: fixture.id, type: fixture.type, group: fixture.group },
+        profile,
+        base: fixture.address - 1,
+      })
+      this.writable.set(fixture.universe, list)
+      if (!this.buffers.has(fixture.universe)) {
+        this.buffers.set(fixture.universe, new Uint8Array(DMX_CHANNELS))
+      }
+      const label = profile.short ?? profile.name
+      families.set(label, (families.get(label) ?? 0) + 1)
+    }
+    this.writableFamilies = [...families].map(([name, count]) => ({ name, count }))
+  }
+
+  /** Membership per layer part, rebuilt only when the layers change. */
+  private membersFor(layers: LightLayer[], version: number): Map<string, Map<string, string[]>> {
+    if (version !== this.membersVersion) {
+      this.membersVersion = version
+      this.members = new Map()
+      for (const layer of layers) this.members.set(layer.id, layerMembers(layer, this.allRefs))
+    }
+    return this.members
   }
 
   setMode(mode: OutputMode): OutputStatus {
@@ -262,10 +386,25 @@ export class ArtnetOutput {
     if (this.mode === 'armed') {
       const showTime = this.getShowTime()
       const scene = showTime !== null ? activeScene(this.getScenes(), showTime) : null
-      this.activeSceneName = scene ? scene.name : null
       if (scene) {
         mergeUniverse(out, this.fixtures.get(universe) ?? [], this.map, scene, showTime!)
       }
+
+      // Light layers, after the scenes, so a layer wins on a fixture both
+      // mention -- the same priority the previz uses, which is what keeps the
+      // screen and the room showing the same thing.
+      const layers = this.getLayers()
+      const layer = showTime !== null ? activeLayer(layers, showTime) : null
+      if (layer) {
+        mergeLayerUniverse(
+          out,
+          this.writable.get(universe) ?? [],
+          layer,
+          this.membersFor(layers, this.getEditorVersion()).get(layer.id) ?? new Map(),
+          showTime!,
+        )
+      }
+      this.activeSceneName = layer ? layer.name : scene ? scene.name : null
     } else {
       this.activeSceneName = null
     }
@@ -340,6 +479,7 @@ export class ArtnetOutput {
       watchdogTripped: this.watchdogTripped(),
       activeSceneName: this.activeSceneName,
       lastError: this.lastError,
+      writableFamilies: this.writableFamilies,
     }
   }
 

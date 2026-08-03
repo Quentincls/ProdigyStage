@@ -6,7 +6,10 @@
 import { createSocket } from 'node:dgram'
 import type { SceneSpec } from '@prodigy-stage/core'
 import { parseArtDmx } from './artnet.js'
-import { ArtnetOutput, crossfadeMix, mergeUniverse } from './output.js'
+import { ArtnetOutput, crossfadeMix, mergeLayerUniverse, mergeUniverse } from './output.js'
+import { defaultBehaviorParams } from '@prodigy-stage/core/behaviors'
+import { isWritable } from '@prodigy-stage/core/fixtures'
+import { layerMembers, type FixtureRef, type LightLayer } from '@prodigy-stage/core/layers'
 import { loadPatch } from './patch.js'
 
 const TEST_PORT = 6455 // never 6454: that would feed our own listener
@@ -265,4 +268,113 @@ if (failures > 0) {
   console.error(`output selftest: ${failures} FAILURES`)
   process.exit(1)
 }
-console.log('output selftest: OK (safety, passthrough fidelity, scene merge, watchdog)')
+// ----- light layers on the wire ---------------------------------------------
+// The output learned to drive families beyond the two walls. Everything below
+// exists because that widened what this software can transmit to, and the one
+// property that keeps it safe is not a check anyone has to remember: a family
+// with no channel map has no address to write to, so it cannot be reached.
+
+{
+  const refs: FixtureRef[] = patch.fixtures.map((f) => ({ id: f.id, type: f.type, group: f.group }))
+  const targetsFor = (universeWanted: number) =>
+    patch.fixtures
+      .filter((f) => f.universe === universeWanted && isWritable(patch.fixtureTypes[f.type]))
+      .map((f) => ({
+        ref: { id: f.id, type: f.type, group: f.group },
+        profile: patch.fixtureTypes[f.type],
+        base: f.address - 1,
+      }))
+
+  const part = (id: string, kind: 'family' | 'group' | 'fixture', key: string, behavior = 'static') => ({
+    id,
+    target: { kind, key } as const,
+    behavior: behavior as 'static',
+    params: { ...defaultBehaviorParams(behavior), level: 1, color: '#ff0000' },
+    fadeIn: 0,
+    fadeOut: 0,
+  })
+
+  // --- a family we CAN drive: the blinders, universe 5, dimmer on channel 1.
+  const blinderLayer: LightLayer = {
+    id: 'L', name: 'Hit', start: 10, end: 20,
+    parts: [part('p', 'family', 'blinded1-4ch')],
+  }
+  const blinderMembers = layerMembers(blinderLayer, refs)
+  const frame = new Uint8Array(512)
+  const touched = mergeLayerUniverse(frame, targetsFor(5), blinderLayer, blinderMembers, 15)
+  check('a layer drives a family whose chart is confirmed', touched)
+  const b1 = patch.fixtures.find((f) => f.id === 'B1')!
+  check(
+    'the blinder dimmer is opened',
+    frame[b1.address - 1] === 255,
+    `got ${frame[b1.address - 1]} at channel ${b1.address}`,
+  )
+  check(
+    'and its 16-bit fine channel with it',
+    frame[b1.address] === 255,
+    `got ${frame[b1.address]}`,
+  )
+  // Channel 4 is the dimmer-speed control channel: not ours, never touched.
+  check('a channel the profile does not declare is left to the console', frame[b1.address + 2] === 0)
+
+  // --- a family we CANNOT drive: not one byte, however loudly the layer asks.
+  for (const [family, type] of [['Side Panels', 'bpanel-3ch'], ['Beams', 'perseo-ex']] as const) {
+    const layer: LightLayer = {
+      id: 'X', name: 'Ask', start: 10, end: 20,
+      parts: [part('q', 'family', type)],
+    }
+    for (const u of [5, 6, 7, 8]) {
+      const buffer = new Uint8Array(512)
+      const untouched = new Uint8Array(buffer)
+      mergeLayerUniverse(buffer, targetsFor(u), layer, layerMembers(layer, refs), 15)
+      check(
+        `${family}: a layer cannot transmit to a family with no channel map (universe ${u})`,
+        buffer.every((byte, i) => byte === untouched[i]),
+      )
+    }
+  }
+
+  // --- the console keeps everything the layer does not name.
+  const mixed = new Uint8Array(512).fill(77)
+  const keep = new Uint8Array(mixed)
+  mergeLayerUniverse(mixed, targetsFor(5), blinderLayer, blinderMembers, 15)
+  const xl = patch.fixtures.find((f) => f.id === 'XL')!
+  check(
+    'an X-Frame no part names keeps the console frame byte for byte',
+    mixed.slice(xl.address - 1, xl.address - 1 + 43).every((byte) => byte === keep[0]),
+  )
+
+  // --- subtractive colour: an X-Frame asked for red filters cyan, not red.
+  const xLayer: LightLayer = {
+    id: 'C', name: 'Red', start: 10, end: 20,
+    parts: [part('r', 'family', 'xframe-43ch')],
+  }
+  const cmy = new Uint8Array(512)
+  mergeLayerUniverse(cmy, targetsFor(5), xLayer, layerMembers(xLayer, refs), 15)
+  const base = xl.address - 1
+  check('red on a CMY fixture means no cyan', cmy[base] === 0, `cyan ${cmy[base]}`)
+  check('and full magenta and yellow', cmy[base + 1] === 255 && cmy[base + 2] === 255)
+  // Framing blades, gobos and prisms are the console's business, not ours.
+  check('framing blades are never written', cmy[base + 25] === 0 && cmy[base + 32] === 0)
+  check('gobos and prisms are never written', cmy[base + 13] === 0 && cmy[base + 16] === 0)
+
+  // --- the crossfade owns the edges, exactly as it does for scenes.
+  const edge = new Uint8Array(512).fill(100)
+  mergeLayerUniverse(edge, targetsFor(5), blinderLayer, blinderMembers, 10)
+  check('at the very start a layer owns nothing', edge.every((byte) => byte === 100))
+  const late = new Uint8Array(512).fill(100)
+  mergeLayerUniverse(late, targetsFor(5), blinderLayer, blinderMembers, 20)
+  check('and nothing at the very end', late.every((byte) => byte === 100))
+
+  // --- outside its own time, a layer is not there at all.
+  const outside = new Uint8Array(512).fill(9)
+  check(
+    'a layer that is not running writes nothing',
+    !mergeLayerUniverse(outside, targetsFor(5), blinderLayer, blinderMembers, 5) &&
+      outside.every((byte) => byte === 9),
+  )
+}
+
+console.log(
+  'output selftest: OK (safety, passthrough fidelity, scene merge, layer merge, watchdog)',
+)

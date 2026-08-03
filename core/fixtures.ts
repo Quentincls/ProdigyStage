@@ -596,6 +596,155 @@ export function litColour(state: FixtureState, out: [number, number, number]): [
   return out
 }
 
+// ----- writing ---------------------------------------------------------------
+//
+// The mirror of readFixture, and it lives here for the same reason: this file
+// is the one place that knows what a DMX channel means, and it has to know it
+// in both directions or the two will drift.
+//
+// One rule does all the safety work. **A profile with no channel map writes
+// nothing.** Not "writes zeros", not "writes what we guessed" -- nothing at
+// all, and it says so by returning false. So the families whose charts nobody
+// has confirmed cannot be transmitted to even by accident: there is no address
+// to write to. That is not a check someone has to remember to add, it is the
+// absence of data doing its job.
+
+/** What a caller wants a fixture to do. Structural on purpose -- FixtureIntent
+ *  from behaviors.ts satisfies it, without this file importing that one. */
+export interface WriteValues {
+  intensity: number
+  r: number
+  g: number
+  b: number
+  pan: number | null
+  tilt: number | null
+  zoom: number | null
+  fog: number | null
+}
+
+function put(dmx: Uint8Array, at: number, target: number, mix: number): void {
+  const current = dmx[at] ?? 0
+  dmx[at] = Math.max(0, Math.min(255, Math.round(current + (target - current) * mix)))
+}
+
+/** A 16-bit pair written from a 0-1 value, honouring the crossfade. */
+function put16(dmx: Uint8Array, coarse: number, fine: number | null, value: number, mix: number): void {
+  const raw = Math.max(0, Math.min(65535, Math.round(value * 65535)))
+  put(dmx, coarse, raw >> 8, mix)
+  if (fine !== null) put(dmx, fine, raw & 255, mix)
+}
+
+/**
+ * Write one fixture's share of a DMX frame, in place, over whatever the console
+ * put there.
+ *
+ * `mix` is ownership: 0 leaves the console's frame untouched, 1 replaces it.
+ * Anything between is the crossfade at a layer's edges.
+ *
+ * Only channels the profile actually declares are touched. Everything else --
+ * gobos, prisms, framing, the fixture's own macros -- is left exactly as the
+ * console sent it, so taking over a colour never resets a moving head's blades.
+ *
+ * Returns false when nothing could be written, which is the honest answer for
+ * a family whose chart is not confirmed.
+ */
+export function writeFixture(
+  profile: FixtureProfile | undefined,
+  values: WriteValues,
+  dmx: Uint8Array,
+  base: number,
+  mix: number,
+): boolean {
+  const map = profile?.standardMap
+  if (!profile || !map || mix <= 0) return false
+  const at = (key: string): number | null => (map[key] !== undefined ? base + map[key] - 1 : null)
+
+  let wrote = false
+
+  // Intensity goes to the fixture's own dimmer rather than into the colour.
+  // A desk dims with the dimmer, and a blinder that has nothing but a dimmer
+  // is then driven by exactly the same code as a batten that has both.
+  const dimmer = at('dimmer')
+  if (dimmer !== null) {
+    put16(dmx, dimmer, at('dimmerFine'), Math.max(0, Math.min(1, values.intensity)), mix)
+    wrote = true
+  }
+
+  // Colour, additive or subtractive, whichever this machine actually has.
+  const red = at('red')
+  const green = at('green')
+  const blue = at('blue')
+  if (red !== null && green !== null && blue !== null) {
+    put(dmx, red, values.r * 255, mix)
+    put(dmx, green, values.g * 255, mix)
+    put(dmx, blue, values.b * 255, mix)
+    // White would wash the colour out, so it fades away with the crossfade.
+    const white = at('white')
+    if (white !== null) put(dmx, white, 0, mix)
+    wrote = true
+  } else {
+    const cyan = at('cyan')
+    const magenta = at('magenta')
+    const yellow = at('yellow')
+    if (cyan !== null && magenta !== null && yellow !== null) {
+      // Subtractive: the filter is what the colour is NOT.
+      put(dmx, cyan, (1 - values.r) * 255, mix)
+      put(dmx, magenta, (1 - values.g) * 255, mix)
+      put(dmx, yellow, (1 - values.b) * 255, mix)
+      wrote = true
+    }
+  }
+
+  // The shutter has to be open or nothing above matters. 255 is "open" on
+  // every chart in this plot -- the Tambora's 252-255 band and the Blinded1's
+  // 250-255 band both are -- but a hardware strobe rate is NOT driven from
+  // here: the value bands differ per chart and inventing one would make a
+  // fixture flash at a rate nobody asked for.
+  const shutter = at('strobe') ?? at('shutter')
+  if (shutter !== null) {
+    put(dmx, shutter, 255, mix)
+    wrote = true
+  }
+
+  // Movement, only where the travel is documented. A profile that declares a
+  // pan channel but no range is a profile that cannot be aimed, and guessing
+  // the range would swing a head somewhere nobody chose.
+  const pan = at('pan')
+  if (pan !== null && values.pan !== null && (profile.panRangeDeg ?? 0) > 0) {
+    const span = ((profile.panRangeDeg as number) * Math.PI) / 180
+    const normalised = (profile.panInvert ? -values.pan : values.pan) / span + 0.5
+    put16(dmx, pan, at('panFine'), Math.max(0, Math.min(1, normalised)), mix)
+    wrote = true
+  }
+  const tilt = at('tilt')
+  if (tilt !== null && values.tilt !== null && (profile.tiltRangeDeg ?? 0) > 0) {
+    const span = ((profile.tiltRangeDeg as number) * Math.PI) / 180
+    const normalised = (profile.tiltInvert ? -values.tilt : values.tilt) / span + 0.5
+    put16(dmx, tilt, at('tiltFine'), Math.max(0, Math.min(1, normalised)), mix)
+    wrote = true
+  }
+
+  const zoom = at('zoom')
+  if (zoom !== null && values.zoom !== null) {
+    put(dmx, zoom, Math.max(0, Math.min(1, values.zoom)) * 255, mix)
+    wrote = true
+  }
+
+  const fog = at('fog')
+  if (fog !== null && values.fog !== null) {
+    put(dmx, fog, Math.max(0, Math.min(1, values.fog)) * 255, mix)
+    wrote = true
+  }
+
+  return wrote
+}
+
+/** Whether Stage could transmit to this family at all. The Live output panel
+ *  shows this, so nobody has to discover it by arming and watching. */
+export function isWritable(profile: FixtureProfile | undefined): boolean {
+  return profile?.standardMap !== undefined
+}
+
 /** One pixel of a fixture that has a pixel zone, 0-1 per channel. */
 export function readPixel(
   profile: FixtureProfile,

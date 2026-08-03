@@ -128,6 +128,27 @@ export default function OutputPanel({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {/* What arming would actually reach. Said before anyone arms, because
+          the alternative is discovering it by watching a family not move and
+          wondering whether the cable is out. A family is absent from this list
+          when its channel chart is not confirmed -- there is no address to
+          write to, so it cannot be driven however a layer names it. */}
+      {configured && (output?.writableFamilies?.length ?? 0) > 0 && (
+        <div className="panel-section">
+          <span className="ins-label">Stage can drive</span>
+          {output!.writableFamilies!.map((family) => (
+            <div className="ins-fact" key={family.name}>
+              <span className="ins-fact-key">{family.name}</span>
+              <span className="ins-fact-value">{family.count}</span>
+            </div>
+          ))}
+          <span className="muted-note">
+            Any family missing from this list has no confirmed channel chart, and is never
+            written to — the console keeps it.
+          </span>
+        </div>
+      )}
+
       {configured && (
         <div className="panel-section">
           {mode === 'off' && (

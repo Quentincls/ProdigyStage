@@ -317,3 +317,47 @@ nos scènes devront sans doute émettre sur les ch 1–3 + dimmer par machine
 - Parser ArtDMX écrit à la main (format trivial, pas de lib abandonnée).
 - Pas de base de données, pas de framework backend. WebSocket via `ws`.
 - UI anglais, sobre, sombre. Aucune notion de canal DMX visible côté éditeur.
+
+
+## Light layers sur le fil (2026-08-03)
+
+Jusqu'ici seules les **Scenes** pouvaient sortir, et seulement vers les deux murs.
+Un light layer se voyait dans la previz et n'atteignait jamais la salle — donc
+« je modifie dans le soft » ne modifiait rien.
+
+Le chemin est maintenant complet, et il reste dans le seul module qui émet :
+
+```
+LightLayer → renderLayerIntent (/core) → FixtureIntent
+                                           ↓
+                        writeFixture (/core/fixtures.ts)
+                                           ↓
+                    mergeLayerUniverse (output.ts) → Art-Net
+```
+
+`writeFixture()` est le miroir exact de `readFixture()`, et vit au même endroit
+pour la même raison : un seul fichier sait ce que veut dire un canal, et il doit
+le savoir **dans les deux sens** ou les deux vont diverger.
+
+### La règle qui fait toute la sécurité
+
+**Un profil sans `standardMap` n'écrit rien.** Pas des zéros, pas une
+supposition : rien, et il le dit en retournant `false`. Les Side Panels et les
+Perseo Beams sont donc physiquement inatteignables — il n'y a pas d'adresse où
+écrire. Ce n'est pas une vérification que quelqu'un doit penser à ajouter, c'est
+l'absence de donnée qui fait le travail. Et le jour où l'un des deux charts est
+relevé sur site, la famille devient pilotable sans aucune autre modification.
+
+Vérifié dans `output-selftest` : un layer qui nomme explicitement ces deux
+familles ne change **pas un octet**, sur les quatre univers.
+
+### Ce qui n'est jamais écrit
+
+Seuls les canaux que le profil déclare. Gobos, prismes, couteaux de découpe,
+iris, macros : laissés exactement comme la console les envoie. Prendre la main
+sur une couleur ne remet jamais à zéro les blades d'une lyre.
+
+### Priorité
+
+`preview > layer > scene > console`, identique à l'écran et sur le fil — c'est
+ce qui garantit que la salle montre ce que la previz montre.
