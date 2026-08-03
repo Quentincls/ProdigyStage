@@ -254,6 +254,39 @@ check('watchdog clear right after a frame', output.watchdogTripped() === false)
 await new Promise((resolve) => setTimeout(resolve, 300))
 check('watchdog trips after 250 ms of silence', output.watchdogTripped() === true)
 
+// ----- a universe we know nothing about must still get through ---------------
+// The one thing a man in the middle may never do is swallow a frame. Universes
+// 6 and 7 carry the sixteen B Panels, whose chart is not confirmed, so this
+// software has no fixtures on them and nothing to merge into them -- and it
+// used to drop them entirely, which took those sixteen lights off the rig the
+// moment the console was routed through it.
+{
+  const stray = new Uint8Array(512)
+  for (let i = 0; i < 512; i++) stray[i] = (i * 7) % 256
+  received.length = 0
+  output.setMode('spectator')
+  await settle()
+  output.onConsoleFrame(6, stray, process.hrtime.bigint())
+  output.onConsoleFrame(7, stray, process.hrtime.bigint())
+  await settle()
+  const universes = received
+    .map((packet) => parseArtDmx(packet))
+    .filter((packet) => packet !== null)
+    .map((packet) => packet!.artnetUniverse + 1)
+  check(
+    'a universe with no patched fixtures is forwarded, not dropped',
+    universes.includes(6) && universes.includes(7),
+    `forwarded ${universes.join(',') || 'nothing'}`,
+  )
+  const forwarded = received
+    .map((packet) => parseArtDmx(packet))
+    .find((packet) => packet !== null && packet.artnetUniverse + 1 === 6)
+  check(
+    'and forwarded byte for byte',
+    forwarded !== undefined && stray.every((byte, i) => forwarded!.data[i] === byte),
+  )
+}
+
 // 7h. back to off: transmission stops immediately.
 output.setMode('off')
 received.length = 0

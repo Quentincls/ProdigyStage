@@ -378,8 +378,21 @@ export class ArtnetOutput {
   onConsoleFrame(universe: number, data: Uint8Array, at: bigint): void {
     this.lastConsoleAt = Date.now()
     if (this.mode === 'off' || this.mode === 'blackout') return
-    const out = this.buffers.get(universe)
-    if (!out) return
+
+    // Every universe the console sends is forwarded, including the ones we
+    // have no fixtures on and the ones whose charts nobody has confirmed.
+    //
+    // This is not an optimisation detail, it is what "man in the middle" means.
+    // Buffers used to exist only for universes carrying fixtures we knew about,
+    // and a universe with no buffer was dropped on the floor -- so the moment
+    // the console was routed through this software, the sixteen B Panels on
+    // universes 6 and 7 stopped receiving anything at all. Passing a frame we
+    // do not understand straight through is the whole job.
+    let out = this.buffers.get(universe)
+    if (!out) {
+      out = new Uint8Array(DMX_CHANNELS)
+      this.buffers.set(universe, out)
+    }
 
     out.set(data.subarray(0, DMX_CHANNELS))
 
