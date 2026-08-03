@@ -69,6 +69,15 @@ export default function OutputPanel({ onClose }: { onClose: () => void }) {
     ? (Object.values(stats.perUniverse).find((universe) => universe.from)?.from ?? null)
     : null
   const ourAddresses = (stats?.network ?? []).map((entry) => entry.address).join(', ')
+  // What is typed versus what is actually in effect, compared the same way
+  // saveTargets() splits it, so "Saved" never lies about whitespace.
+  const unsaved =
+    output !== undefined &&
+    targetDraft
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .join(',') !== output.targets.join(',')
 
   useEffect(() => {
     if (output && targetDraft === '') setTargetDraft(output.targets.join(', '))
@@ -219,17 +228,34 @@ export default function OutputPanel({ onClose }: { onClose: () => void }) {
               {consoleAddress && ` The console talks to us from ${consoleAddress}, so that is the
               one address this is never meant to be.`}
             </span>
+            {/* Enter saves. A field with a small separate button, no reaction
+                to Enter and no sign of whether it took is a field people leave
+                thinking they changed something -- and the only symptom is a rig
+                that does not light. */}
             <div className="preset-row">
               <input
                 className="text-input"
                 value={targetDraft}
                 placeholder="e.g. 2.0.0.10"
                 onChange={(event) => setTargetDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void saveTargets()
+                }}
               />
-              <button className="chip" onClick={() => void saveTargets()}>
-                Save
+              <button
+                className={unsaved ? 'chip primary' : 'chip'}
+                onClick={() => void saveTargets()}
+                disabled={!unsaved}
+              >
+                {unsaved ? 'Save' : 'Saved'}
               </button>
             </div>
+            {unsaved && (
+              <span className="output-warning">
+                Not saved yet. This computer is still sending to{' '}
+                {output?.targets.length ? output.targets.join(', ') : 'nothing'}.
+              </span>
+            )}
             {output && (
               <span className="muted-note">
                 {output.pps} frames/s out · delay {(output.passthroughUs / 1000).toFixed(2)} ms

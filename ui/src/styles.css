@@ -1449,6 +1449,24 @@ input[type='range']::-moz-range-thumb {
   border-color: var(--accent);
 }
 
+/* A pending change has to look pending: this one decides whether the rig
+   lights, and it used to look identical whether or not it had been clicked. */
+.chip.primary {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chip:disabled:hover {
+  color: var(--text-dim);
+  background: var(--panel-2);
+}
+
 .chip-row {
   display: flex;
   gap: 6px;
